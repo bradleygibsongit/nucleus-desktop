@@ -1,6 +1,6 @@
 /**
  * Chat feature types.
- * These are local types for the chat feature while Agent SDK is being set up.
+ * These types are owned by the app so multiple agent harnesses can map into one UI.
  */
 
 export type ChatStatus = "idle" | "streaming" | "error";
@@ -12,6 +12,132 @@ export interface Tab {
   type: TabType;
   title: string;
   filePath?: string;
+}
+
+export type HarnessId = "codex" | "claude-code";
+
+export interface HarnessCapabilities {
+  supportsCommands: boolean;
+  supportsAgentMentions: boolean;
+  supportsFileSearch: boolean;
+  supportsSubagents: boolean;
+  supportsArchive: boolean;
+  supportsDelete: boolean;
+}
+
+export interface HarnessDefinition {
+  id: HarnessId;
+  label: string;
+  description: string;
+  adapterStatus: "planned" | "experimental" | "ready";
+  capabilities: HarnessCapabilities;
+}
+
+export interface RuntimeSession {
+  id: string;
+  harnessId: HarnessId;
+  title?: string;
+  projectPath?: string;
+  parentSessionId?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface RuntimeMessage {
+  id: string;
+  sessionId: string;
+  role: "user" | "assistant";
+  createdAt: number;
+  finishReason?: "end_turn" | "stop" | "error";
+}
+
+export interface RuntimeTextPart {
+  id: string;
+  type: "text";
+  text: string;
+}
+
+export type ToolExecutionStatus = "pending" | "running" | "completed" | "error";
+
+export interface RuntimeToolState {
+  status: ToolExecutionStatus;
+  input: Record<string, unknown>;
+  output?: unknown;
+  error?: unknown;
+  title?: string;
+}
+
+export interface RuntimeToolPart {
+  id: string;
+  type: "tool";
+  messageId: string;
+  sessionId: string;
+  tool: string;
+  state: RuntimeToolState;
+}
+
+export type RuntimeMessagePart = RuntimeTextPart | RuntimeToolPart;
+
+export interface MessageWithParts {
+  info: RuntimeMessage;
+  parts: RuntimeMessagePart[];
+}
+
+export interface ChildSessionState {
+  session: RuntimeSession;
+  toolParts: RuntimeToolPart[];
+  isActive: boolean;
+}
+
+export interface RuntimeAgent {
+  name: string;
+  description: string;
+  mode: "primary" | "subagent" | "all";
+  builtIn: boolean;
+}
+
+export interface RuntimeCommand {
+  name: string;
+  description: string;
+  kind: "builtin" | "custom";
+  agent?: string;
+  model?: string;
+}
+
+export interface RuntimeFileSearchResult {
+  path: string;
+  type: "file" | "directory";
+}
+
+export interface HarnessTurnInput {
+  session: RuntimeSession;
+  projectPath?: string;
+  text: string;
+  agent?: string;
+}
+
+export interface HarnessCommandInput {
+  session: RuntimeSession;
+  projectPath?: string;
+  command: string;
+  args?: string;
+}
+
+export interface HarnessTurnResult {
+  messages?: MessageWithParts[];
+  childSessions?: ChildSessionState[];
+}
+
+export interface HarnessAdapter {
+  definition: HarnessDefinition;
+  initialize: () => Promise<void>;
+  createSession: (projectPath: string) => Promise<RuntimeSession>;
+  listAgents: () => Promise<RuntimeAgent[]>;
+  listCommands: () => Promise<RuntimeCommand[]>;
+  searchFiles: (query: string, directory?: string) => Promise<RuntimeFileSearchResult[]>;
+  sendMessage: (input: HarnessTurnInput) => Promise<HarnessTurnResult>;
+  executeCommand: (input: HarnessCommandInput) => Promise<HarnessTurnResult>;
+  abortSession: (session: RuntimeSession) => Promise<void>;
 }
 
 /** Content block in a message */

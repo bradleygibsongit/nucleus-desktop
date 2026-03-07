@@ -1,4 +1,4 @@
-import { CaretRight, CaretDown, GearSix, Plus } from "@phosphor-icons/react"
+import { CaretRight, CaretDown, GearSix, Plus } from "@/components/icons"
 import type { Repository } from "../types"
 import { WorkspaceItem } from "./WorkspaceItem"
 import { cn } from "@/lib/utils"
@@ -24,7 +24,7 @@ export function RepositoryGroup({
         {/* Colored letter avatar */}
         <div
           className={cn(
-            "size-5 rounded shrink-0 flex items-center justify-center text-[10px] font-semibold text-white leading-none",
+            "size-5 rounded shrink-0 flex items-center justify-center text-xs font-semibold text-white leading-none",
             getColorFromName(repository.name)
           )}
         >

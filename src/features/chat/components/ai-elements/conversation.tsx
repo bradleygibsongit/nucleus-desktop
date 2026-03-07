@@ -2,7 +2,7 @@
 
 import { Button } from "@/features/shared/components/ui/button";
 import { cn } from "@/lib/utils";
-import { ArrowDown } from "@phosphor-icons/react";
+import { ArrowDown } from "@/components/icons";
 import type { ComponentProps } from "react";
 import { useCallback } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
@@ -28,7 +28,7 @@ export const ConversationContent = ({
   ...props
 }: ConversationContentProps) => (
   <StickToBottom.Content
-    className={cn("flex flex-col gap-8 p-4", className)}
+    className={cn("flex flex-col gap-12 p-4", className)}
     {...props}
   />
 );

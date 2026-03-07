@@ -34,7 +34,7 @@ export function FileChangesList({ changes, onFileClick }: FileChangesListProps) 
           key={file.path}
           type="button"
           onClick={() => onFileClick?.(file)}
-          className="flex items-center justify-between gap-2 px-2 py-1.5 text-[13px] hover:bg-muted/50 rounded-sm text-left"
+          className="flex items-center justify-between gap-2 px-2 py-1.5 text-sm hover:bg-muted/50 rounded-sm text-left"
         >
           <div className="flex items-center gap-2 min-w-0 flex-1">
             <span className={cn("shrink-0 w-4 text-center font-medium", statusColors[file.status])}>

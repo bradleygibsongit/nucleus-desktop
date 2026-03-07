@@ -1,8 +1,10 @@
 import { ChatContainer, TabBar } from "@/features/chat/components"
 import { FileViewer, DiffViewer } from "@/features/editor/components"
 import { getDiffData } from "@/features/editor/mocks/mock-diffs"
+import { SettingsPage } from "@/features/settings/components/SettingsPage"
 import { useTabStore } from "@/features/editor/store"
 import type { Tab } from "@/features/chat/types"
+import type { SettingsSectionId } from "@/features/settings/config"
 
 interface DiffTabContentProps {
   tab: Tab
@@ -41,15 +43,31 @@ function TabContent({ tab }: TabContentProps) {
 }
 
 const CHAT_TAB: Tab = { id: "chat", type: "chat", title: "Chat" }
+const TOP_DRAG_STRIP_HEIGHT = 32
 
-export function MainContent() {
+interface MainContentProps {
+  activeView: "chat" | "settings"
+  activeSettingsSection: SettingsSectionId
+}
+
+export function MainContent({ activeView, activeSettingsSection }: MainContentProps) {
   const { tabs, activeTabId, setActiveTab, closeTab } = useTabStore()
+
+  if (activeView === "settings") {
+    return (
+      <main className="flex-1 min-w-80 bg-main-content text-main-content-foreground overflow-hidden flex flex-col">
+        <div data-tauri-drag-region className="shrink-0" style={{ height: TOP_DRAG_STRIP_HEIGHT }} />
+        <SettingsPage activeSection={activeSettingsSection} />
+      </main>
+    )
+  }
 
   const tabsWithChat = [CHAT_TAB, ...tabs.filter((tab) => tab.type !== "chat")]
   const activeTab = tabsWithChat.find((tab) => tab.id === activeTabId) ?? CHAT_TAB
 
   return (
     <main className="flex-1 min-w-80 bg-main-content text-main-content-foreground overflow-hidden flex flex-col">
+      <div data-tauri-drag-region className="shrink-0" style={{ height: TOP_DRAG_STRIP_HEIGHT }} />
       <TabBar
         tabs={tabsWithChat}
         activeTabId={activeTabId ?? CHAT_TAB.id}

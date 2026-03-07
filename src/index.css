@@ -1,7 +1,22 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/figtree";
+
+@font-face {
+    font-family: "Geist";
+    src: url("./assets/fonts/Geist-Variable.woff2") format("woff2");
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "Geist Mono";
+    src: url("./assets/fonts/GeistMono-Variable.woff2") format("woff2");
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+}
 
 @custom-variant dark (&:is(.dark *));
 
@@ -36,6 +51,10 @@
     --sidebar-primary-foreground: oklch(0.985 0 0);
     --sidebar-accent: oklch(0.97 0 0);
     --sidebar-accent-foreground: oklch(0.205 0 0);
+    --sidebar-glass: oklch(0.99 0 0 / 0.62);
+    --sidebar-glass-strong: oklch(0.99 0 0 / 0.75);
+    --sidebar-item-hover: oklch(0 0 0 / 0.04);
+    --sidebar-item-active: oklch(0 0 0 / 0.07);
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.708 0 0);
     --main-content: oklch(0.9999 0 0);
@@ -76,6 +95,10 @@
     --sidebar-primary-foreground: oklch(0.985 0 0);
     --sidebar-accent: oklch(0.269 0 0);
     --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-glass: oklch(0.18 0.005 250 / 0.50);
+    --sidebar-glass-strong: oklch(0.18 0.005 250 / 0.60);
+    --sidebar-item-hover: oklch(1 0 0 / 0.05);
+    --sidebar-item-active: oklch(1 0 0 / 0.10);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.556 0 0);
     --main-content: oklch(0.192 0 0);
@@ -87,7 +110,8 @@
 }
 
 @theme inline {
-    --font-sans: 'Figtree Variable', sans-serif;
+    --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     --color-terminal: var(--terminal);
     --color-terminal-foreground: var(--terminal-foreground);
     --color-main-content: var(--main-content);
@@ -137,10 +161,10 @@
     @apply border-border outline-ring/50;
     }
   body {
-    @apply font-sans bg-background text-foreground overscroll-none;
+    @apply font-sans bg-transparent text-foreground overscroll-none;
     }
   html {
-    @apply font-sans overscroll-none;
+    @apply font-sans bg-transparent overscroll-none;
     }
 }
 
@@ -160,4 +184,86 @@
   50% {
     opacity: 1;
   }
+}
+
+/* Streamdown markdown typography */
+[data-streamdown="paragraph"] {
+  @apply my-4 leading-relaxed;
+}
+
+[data-streamdown="heading-1"] {
+  @apply text-2xl font-bold mt-6 mb-4;
+}
+
+[data-streamdown="heading-2"] {
+  @apply text-xl font-semibold mt-5 mb-3;
+}
+
+[data-streamdown="heading-3"] {
+  @apply text-lg font-semibold mt-4 mb-2;
+}
+
+[data-streamdown="heading-4"] {
+  @apply text-base font-semibold mt-3 mb-2;
+}
+
+[data-streamdown="heading-5"],
+[data-streamdown="heading-6"] {
+  @apply text-sm font-semibold mt-2 mb-1;
+}
+
+[data-streamdown="strong"] {
+  @apply font-bold;
+}
+
+[data-streamdown="link"] {
+  @apply text-primary underline underline-offset-2 hover:text-primary/80;
+}
+
+[data-streamdown="inline-code"] {
+  @apply bg-muted px-1.5 py-0.5 rounded text-sm font-mono;
+}
+
+[data-streamdown="code-block"] {
+  @apply my-4 rounded-lg overflow-hidden border border-border;
+}
+
+[data-streamdown="unordered-list"] {
+  @apply list-disc pl-6 my-4 space-y-2;
+}
+
+[data-streamdown="ordered-list"] {
+  @apply list-decimal pl-6 my-4 space-y-2;
+}
+
+[data-streamdown="list-item"] {
+  @apply leading-relaxed py-0.5;
+}
+
+[data-streamdown="blockquote"] {
+  @apply border-l-4 border-muted-foreground/30 pl-4 italic my-4 text-muted-foreground;
+}
+
+[data-streamdown="horizontal-rule"] {
+  @apply my-6 border-t border-border;
+}
+
+[data-streamdown="table-wrapper"] {
+  @apply my-4 overflow-x-auto;
+}
+
+[data-streamdown="table"] {
+  @apply w-full border-collapse text-sm;
+}
+
+[data-streamdown="table-header"] {
+  @apply bg-muted;
+}
+
+[data-streamdown="table-header-cell"] {
+  @apply px-4 py-2 text-left font-semibold border border-border;
+}
+
+[data-streamdown="table-cell"] {
+  @apply px-4 py-2 border border-border;
 }

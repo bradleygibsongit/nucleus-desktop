@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react"
 import { hotkeysCoreFeature, syncDataLoaderFeature } from "@headless-tree/core"
 import { useTree } from "@headless-tree/react"
-import { Folder, FolderOpen } from "@phosphor-icons/react"
+import { Folder, FolderOpen } from "@/components/icons"
 import { Tree, TreeItem, TreeItemLabel } from "@/features/shared/components/ui/tree"
 import { getFileIcon } from "@/features/editor/utils/fileIcons"
 import type { FileTreeItem } from "../types"

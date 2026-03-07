@@ -1,6 +1,6 @@
-import type { MessageWithParts } from "../store"
+import type { MessageWithParts, ChildSessionState } from "../store"
 import type { Project } from "@/features/workspace/types"
-import type { TextPart, ToolPart, Part } from "@opencode-ai/sdk/client"
+import type { RuntimeMessagePart, RuntimeTextPart, RuntimeToolPart } from "../types"
 import {
   Conversation,
   ConversationContent,
@@ -10,43 +10,46 @@ import {
   Message as MessageComponent,
   MessageContent,
   MessageResponse,
+  MessageUserContent,
 } from "./ai-elements/message"
 import { Loader } from "./ai-elements/loader"
 import { AgentActivitySDK } from "./agent-activity/AgentActivitySDK"
+import type { ChildSessionData } from "./agent-activity/AgentActivitySubagent"
 import {
   Folder,
   GitBranch,
   CaretDown,
   PencilSimple,
-} from "@phosphor-icons/react"
+} from "@/components/icons"
 
 interface ChatMessagesProps {
   messages: MessageWithParts[]
   status: "idle" | "streaming" | "error"
   selectedProject?: Project | null
+  childSessions?: Map<string, ChildSessionState>
 }
 
 /**
- * Extract text from SDK message parts.
+ * Extract text from message parts.
  */
-function getMessageText(parts: Part[]): string {
+function getMessageText(parts: RuntimeMessagePart[]): string {
   return parts
-    .filter((p): p is TextPart => p.type === "text")
+    .filter((p): p is RuntimeTextPart => p.type === "text")
     .map((p) => p.text)
     .join("")
 }
 
 /**
- * Get tool parts from SDK message parts.
+ * Get tool parts from message parts.
  */
-function getToolParts(parts: Part[]): ToolPart[] {
-  return parts.filter((p): p is ToolPart => p.type === "tool")
+function getToolParts(parts: RuntimeMessagePart[]): RuntimeToolPart[] {
+  return parts.filter((p): p is RuntimeToolPart => p.type === "tool")
 }
 
 /**
  * Check if a message has any activity (tool calls, multiple content blocks, etc.)
  */
-function hasActivity(parts: Part[]): boolean {
+function hasActivity(parts: RuntimeMessagePart[]): boolean {
   return parts.some((p) => p.type === "tool")
 }
 
@@ -59,7 +62,7 @@ type MessageGroup =
 
 /**
  * Group consecutive assistant messages together.
- * OpenCode creates separate messages for each "step" (tool call),
+ * Some harnesses create separate messages for each "step" (tool call),
  * but we want to render them in a single "Show steps" dropdown.
  */
 function groupMessages(messages: MessageWithParts[]): MessageGroup[] {
@@ -125,24 +128,26 @@ function ChatEmptyState({ selectedProject }: ChatEmptyStateProps) {
 interface AssistantMessageGroupProps {
   messages: MessageWithParts[]
   isStreaming: boolean
+  childSessions?: Map<string, ChildSessionData>
 }
 
 /**
  * Renders a group of assistant messages with a single AgentActivity dropdown
  * for all tool calls, plus the final response text.
  */
-function AssistantMessageGroup({ messages, isStreaming }: AssistantMessageGroupProps) {
+function AssistantMessageGroup({ messages, isStreaming, childSessions }: AssistantMessageGroupProps) {
   // Combine all parts from all messages in the group
   const allParts = messages.flatMap((m) => m.parts)
   
   // Get text from all messages (usually only the last one has final text)
   const text = getMessageText(allParts)
-  const showActivity = hasActivity(allParts) || isStreaming
+  const hasChildSessions = childSessions && childSessions.size > 0
+  const showActivity = hasActivity(allParts) || isStreaming || hasChildSessions
 
   // Check if the last message in the group is finished
   const lastMessage = messages[messages.length - 1]
-  const assistantInfo = lastMessage.info as { role: "assistant"; finish?: string }
-  const showFinalText = !isStreaming && text && (!showActivity || assistantInfo.finish === "end_turn")
+  const assistantInfo = lastMessage.info
+  const showFinalText = !isStreaming && text && (!showActivity || assistantInfo.finishReason === "end_turn")
 
   return (
     <MessageComponent from="assistant">
@@ -151,12 +156,13 @@ function AssistantMessageGroup({ messages, isStreaming }: AssistantMessageGroupP
           <AgentActivitySDK
             parts={allParts}
             isStreaming={isStreaming}
-            className="mb-3"
+            childSessions={childSessions}
+            className="mb-6"
           />
         )}
 
         {showFinalText ? (
-          <MessageResponse>{text}</MessageResponse>
+          <MessageResponse isStreaming={isStreaming} className="leading-relaxed [&>p]:mb-4">{text}</MessageResponse>
         ) : (
           isStreaming && !text && !showActivity && <Loader className="mt-2" />
         )}
@@ -165,13 +171,27 @@ function AssistantMessageGroup({ messages, isStreaming }: AssistantMessageGroupP
   )
 }
 
-export function ChatMessages({ messages, status, selectedProject }: ChatMessagesProps) {
+export function ChatMessages({ messages, status, selectedProject, childSessions }: ChatMessagesProps) {
   const hasContent = messages.length > 0
   const groups = groupMessages(messages)
 
+  // Convert ChildSessionState to ChildSessionData for the component
+  const childSessionData: Map<string, ChildSessionData> | undefined = childSessions 
+    ? new Map(
+        Array.from(childSessions.entries()).map(([id, state]) => [
+          id,
+          {
+            session: state.session,
+            toolParts: state.toolParts,
+            isActive: state.isActive,
+          },
+        ])
+      )
+    : undefined
+
   return (
     <Conversation className="h-full">
-      <ConversationContent className="px-10 pb-32">
+      <ConversationContent className="px-10 pb-4">
         {!hasContent ? (
           <ChatEmptyState selectedProject={selectedProject} />
         ) : (
@@ -181,16 +201,20 @@ export function ChatMessages({ messages, status, selectedProject }: ChatMessages
 
               if (group.type === "user") {
                 const text = getMessageText(group.message.parts)
+                // Don't render empty user messages
+                if (!text.trim()) {
+                  return null
+                }
                 return (
                   <MessageComponent key={group.message.info.id} from="user">
                     <MessageContent>
-                      <span>{text}</span>
+                      <MessageUserContent>{text}</MessageUserContent>
                     </MessageContent>
                   </MessageComponent>
                 )
               }
 
-              // Assistant message group
+              // Assistant message group - only pass child sessions to the last group
               const isStreaming = status === "streaming" && isLastGroup
               const groupKey = group.messages.map((m) => m.info.id).join("-")
 
@@ -199,6 +223,7 @@ export function ChatMessages({ messages, status, selectedProject }: ChatMessages
                   key={groupKey}
                   messages={group.messages}
                   isStreaming={isStreaming}
+                  childSessions={isLastGroup ? childSessionData : undefined}
                 />
               )
             })}

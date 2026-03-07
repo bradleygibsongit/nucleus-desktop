@@ -21,7 +21,7 @@ import {
   CircleDashed,
   CircleNotch,
   GitDiff,
-} from "@phosphor-icons/react";
+} from "@/components/icons";
 import type { ToolCallState, ToolKind, ToolCallContent } from "../../types";
 import { cn } from "@/lib/utils";
 

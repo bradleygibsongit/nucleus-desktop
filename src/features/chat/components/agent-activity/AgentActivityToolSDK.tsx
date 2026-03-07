@@ -1,5 +1,5 @@
 /**
- * AgentActivityToolSDK - Compact inline tool row for OpenCode SDK tool calls.
+ * AgentActivityToolSDK - Compact inline tool row for harness tool calls.
  *
  * Shows:
  * - Icon based on tool name
@@ -21,16 +21,17 @@ import {
   CircleDashed,
   CircleNotch,
   GitDiff,
-} from "@phosphor-icons/react"
-import type { ToolPart, ToolState } from "@opencode-ai/sdk/client"
+  Lightbulb,
+} from "@/components/icons"
 import { cn } from "@/lib/utils"
+import type { RuntimeToolPart, RuntimeToolState } from "../../types"
 
 interface AgentActivityToolSDKProps {
-  toolPart: ToolPart
+  toolPart: RuntimeToolPart
   className?: string
 }
 
-type ToolKind = "read" | "edit" | "delete" | "move" | "search" | "execute" | "think" | "fetch" | "diff" | "unknown"
+type ToolKind = "read" | "edit" | "delete" | "move" | "search" | "execute" | "think" | "fetch" | "diff" | "memory" | "unknown"
 
 /**
  * Infer tool kind from tool name.
@@ -44,7 +45,7 @@ function inferToolKind(toolName: string): ToolKind {
   if (name.includes("edit") || name.includes("write") || name.includes("patch")) {
     return "edit"
   }
-  if (name.includes("delete") || name.includes("remove") || name.includes("rm")) {
+  if (name.includes("delete") || name.includes("remove") || /\brm\b/.test(name)) {
     return "delete"
   }
   if (name.includes("move") || name.includes("mv") || name.includes("rename")) {
@@ -65,6 +66,9 @@ function inferToolKind(toolName: string): ToolKind {
   if (name.includes("diff")) {
     return "diff"
   }
+  if (name.includes("memory") || name.includes("supermemory")) {
+    return "memory"
+  }
 
   return "unknown"
 }
@@ -72,9 +76,8 @@ function inferToolKind(toolName: string): ToolKind {
 /**
  * Get human-readable tool label.
  */
-function getToolLabel(kind: ToolKind, state: ToolState): string {
-  // Use title from state if available (e.g. "Read 456 lines")
-  if ("title" in state && state.title) {
+function getToolLabel(kind: ToolKind, state: RuntimeToolState): string {
+  if (state.title) {
     return state.title
   }
 
@@ -97,6 +100,8 @@ function getToolLabel(kind: ToolKind, state: ToolState): string {
       return "Fetch"
     case "diff":
       return "Workspace Diff"
+    case "memory":
+      return "Memory"
     default:
       return "Tool"
   }
@@ -106,7 +111,7 @@ function getToolLabel(kind: ToolKind, state: ToolState): string {
  * Render the tool kind icon.
  */
 function ToolKindIcon({ kind, className }: { kind: ToolKind; className?: string }) {
-  const iconClass = cn("size-4 shrink-0", className)
+  const iconClass = cn("size-3.5 shrink-0", className)
 
   switch (kind) {
     case "read":
@@ -127,6 +132,8 @@ function ToolKindIcon({ kind, className }: { kind: ToolKind; className?: string 
       return <Globe className={iconClass} />
     case "diff":
       return <GitDiff className={iconClass} />
+    case "memory":
+      return <Lightbulb className={iconClass} />
     default:
       return <CircleDashed className={iconClass} />
   }
@@ -179,7 +186,9 @@ export function AgentActivityToolSDK({
 
   // Input is available on all states
   const input = toolPart.state.input
-  const inputChip = getInputChip(input)
+  // Only show input chip if label doesn't already contain path info (from title)
+  const hasPathInLabel = label.includes("/") || label.includes("\\")
+  const inputChip = hasPathInLabel ? null : getInputChip(input)
 
   // Output only on completed/error
   const output =
@@ -192,7 +201,7 @@ export function AgentActivityToolSDK({
   const canExpand = isCompleted || isFailed
 
   return (
-    <div className={cn("text-sm", className)}>
+    <div className={cn("text-sm w-full rounded-md border border-border bg-card px-2.5 py-1.5", className)}>
       {/* Compact row */}
       <button
         type="button"
@@ -207,16 +216,26 @@ export function AgentActivityToolSDK({
         {/* Icon */}
         <ToolKindIcon kind={kind} className="text-muted-foreground" />
 
-        {/* Label */}
-        <span className={cn("font-medium", isFailed && "text-destructive")}>
-          {label}
-        </span>
-
-        {/* Input chip (e.g. file path) */}
-        {inputChip && (
-          <code className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground font-mono truncate max-w-[300px]">
-            {inputChip}
-          </code>
+        {/* Label - split into action and path if label contains a path */}
+        {hasPathInLabel ? (
+          <span className={cn("flex items-center gap-2", isFailed && "text-destructive")}>
+              <span className="font-medium">{getToolLabel(kind, { ...toolPart.state, title: undefined })}</span>
+            <code className="text-xs text-muted-foreground font-mono truncate max-w-[300px]">
+              {label}
+            </code>
+          </span>
+        ) : (
+          <>
+            <span className={cn("font-medium", isFailed && "text-destructive")}>
+              {label}
+            </span>
+            {/* Input chip (e.g. file path) */}
+            {inputChip && (
+              <code className="text-xs text-muted-foreground font-mono truncate max-w-[300px]">
+                {inputChip}
+              </code>
+            )}
+          </>
         )}
 
         {/* Spinner for active */}

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { mkdir, exists } from "@tauri-apps/plugin-fs"
-import { Command } from "@phosphor-icons/react"
+import { Command } from "@/components/icons"
 import {
   Dialog,
   DialogContent,

@@ -1,7 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react"
-import { cn } from "@/lib/utils"
 import { FileTreeViewer } from "@/features/version-control/components"
-import { TerminalPanel } from "@/features/terminal/components"
 import { useProjectStore } from "@/features/workspace/store"
 import { useTabStore } from "@/features/editor/store"
 import { useChatStore } from "@/features/chat/store"
@@ -9,8 +7,13 @@ import { readProjectFiles } from "@/features/workspace/utils/fileSystem"
 import { useRightSidebar } from "./useRightSidebar"
 import type { FileTreeItem } from "@/features/version-control/types"
 
-export function RightSidebar() {
-  const [terminalOpen, setTerminalOpen] = useState(false)
+interface RightSidebarProps {
+  activeView?: "chat" | "settings"
+}
+
+const TOP_DRAG_STRIP_HEIGHT = 32
+
+export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
   const [fileTreeData, setFileTreeData] = useState<Record<string, FileTreeItem>>({})
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   const { isCollapsed } = useRightSidebar()
@@ -67,7 +70,7 @@ export function RightSidebar() {
     loadFiles(true) // Initial load with loading indicator
   }, [selectedProjectId, switchProject, loadFiles])
 
-  // Subscribe to file change events from OpenCode
+  // Subscribe to file change events from the active harness
   useEffect(() => {
     if (!selectedProject?.path) return
 
@@ -90,12 +93,13 @@ export function RightSidebar() {
     }
   }, [selectedProject?.path, onFileChange, scheduleRefresh])
 
-  if (isCollapsed) {
+  if (isCollapsed || activeView === "settings") {
     return null
   }
 
   return (
     <aside className="w-[400px] max-w-[400px] min-w-48 shrink bg-sidebar text-sidebar-foreground border-l border-sidebar-border flex flex-col">
+      <div data-tauri-drag-region className="shrink-0" style={{ height: TOP_DRAG_STRIP_HEIGHT }} />
       {/* Header */}
       <div className="h-12 bg-sidebar border-b border-sidebar-border flex items-center px-4 shrink-0">
         <span className="text-sm text-sidebar-foreground">Files</span>
@@ -107,7 +111,7 @@ export function RightSidebar() {
       </div>
 
       {/* Content area */}
-      <div className={cn("overflow-y-auto px-2 py-2", terminalOpen ? "h-1/2" : "flex-1")}>
+      <div className="overflow-y-auto px-2 py-2 flex-1">
         {isInitialLoad ? (
           <div className="flex items-center justify-center py-8">
             <span className="text-sm text-muted-foreground">Loading files...</span>
@@ -129,11 +133,6 @@ export function RightSidebar() {
         )}
       </div>
 
-      {/* Terminal panel */}
-      <TerminalPanel
-        isOpen={terminalOpen}
-        onToggle={() => setTerminalOpen(!terminalOpen)}
-      />
     </aside>
   )
 }

@@ -1,4 +1,4 @@
-import { ChatCircle, GitDiff, X } from "@phosphor-icons/react"
+import { ChatCircle, GitDiff, X } from "@/components/icons"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/features/shared/components/ui/tooltip"
 import { getFileIcon } from "@/features/editor/utils/fileIcons"

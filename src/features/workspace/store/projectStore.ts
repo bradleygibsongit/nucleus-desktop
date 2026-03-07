@@ -18,6 +18,7 @@ interface ProjectState {
   loadProjects: () => Promise<void>
   addProject: (path: string, name?: string) => Promise<void>
   removeProject: (id: string) => Promise<void>
+  setProjectOrder: (projects: Project[]) => Promise<void>
   selectProject: (id: string) => Promise<void>
   setDefaultLocation: (path: string) => Promise<void>
 }
@@ -55,8 +56,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       }
 
       if (persisted && Array.isArray(persisted)) {
-        // Sort by addedAt descending (newest first)
-        const projects = [...persisted].sort((a, b) => b.addedAt - a.addedAt)
+        const projects = [...persisted]
 
         // Restore saved selection if valid, otherwise select first project
         const validSelectedId = savedSelectedId && projects.some(p => p.id === savedSelectedId)
@@ -126,6 +126,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
 
     set({ projects: updatedProjects, selectedProjectId: newSelectedId })
+  },
+
+  setProjectOrder: async (projects: Project[]) => {
+    const store = await getStore()
+    await store.set(STORE_KEY, projects)
+    await store.save()
+
+    set({ projects })
   },
 
   selectProject: async (id: string) => {

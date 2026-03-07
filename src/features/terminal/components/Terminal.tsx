@@ -35,7 +35,7 @@ export function Terminal({ className }: TerminalProps) {
 
     const term = new XTerm({
       theme: getTerminalTheme(),
-      fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      fontFamily: '"Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
       fontSize: 13,
       lineHeight: 1.4,
       cursorBlink: true,

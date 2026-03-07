@@ -1,9 +1,14 @@
-import { Sidebar } from "@phosphor-icons/react"
+import { Sidebar } from "@/components/icons"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import { useSidebar } from "./useSidebar"
 import { useRightSidebar } from "./useRightSidebar"
+import { cn } from "@/lib/utils"
 
-export function TitleBar() {
+interface TitleBarProps {
+  activeView?: "chat" | "settings"
+}
+
+export function TitleBar({ activeView = "chat" }: TitleBarProps) {
   const { toggle: toggleLeft } = useSidebar()
   const { toggle: toggleRight } = useRightSidebar()
 
@@ -18,7 +23,10 @@ export function TitleBar() {
   return (
     <header
       data-tauri-drag-region
-      className="h-10 flex items-center shrink-0 select-none bg-sidebar border-b border-sidebar-border"
+      className={cn(
+        "h-10 flex items-center shrink-0 select-none bg-sidebar",
+        activeView === "chat" && "border-b border-sidebar-border",
+      )}
       onMouseDown={handleMouseDown}
       onDoubleClick={handleDoubleClick}
     >

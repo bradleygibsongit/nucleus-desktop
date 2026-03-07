@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 import type { ItemInstance } from '@headless-tree/core';
-import { ChevronDownIcon, SquareMinus, SquarePlus } from 'lucide-react';
+import { ChevronDownIcon, SquareMinus, SquarePlus } from '@/components/icons';
 import { Slot as SlotPrimitive } from 'radix-ui';
 
 type ToggleIconType = 'chevron' | 'plus-minus';
@@ -127,7 +127,7 @@ function TreeItemLabel<T = any>({ item: propItem, children, className, ...props 
     <span
       data-slot="tree-item-label"
       className={cn(
-        'in-focus-visible:ring-ring/50 hover:bg-sidebar-accent/50 in-data-[selected=true]:bg-sidebar-accent in-data-[selected=true]:text-sidebar-accent-foreground in-data-[drag-target=true]:bg-sidebar-accent flex items-center gap-1 rounded-sm px-2 py-1.5 text-[13px] not-in-data-[folder=true]:ps-7 in-focus-visible:ring-[3px] in-data-[search-match=true]:bg-blue-50! [&_svg]:pointer-events-none [&_svg]:shrink-0',
+        'in-focus-visible:ring-ring/50 hover:bg-sidebar-accent/50 in-data-[selected=true]:bg-sidebar-accent in-data-[selected=true]:text-sidebar-accent-foreground in-data-[drag-target=true]:bg-sidebar-accent flex items-center gap-1 rounded-sm px-2 py-1.5 text-sm not-in-data-[folder=true]:ps-7 in-focus-visible:ring-[3px] in-data-[search-match=true]:bg-blue-50! [&_svg]:pointer-events-none [&_svg]:shrink-0',
         className,
       )}
       {...props}
@@ -135,9 +135,9 @@ function TreeItemLabel<T = any>({ item: propItem, children, className, ...props 
       {item.isFolder() &&
         (toggleIconType === 'plus-minus' ? (
           item.isExpanded() ? (
-            <SquareMinus className="text-muted-foreground size-3.5" stroke="currentColor" strokeWidth="1" />
+            <SquareMinus className="text-muted-foreground size-3.5" stroke="currentColor" strokeWidth={1} />
           ) : (
-            <SquarePlus className="text-muted-foreground size-3.5" stroke="currentColor" strokeWidth="1" />
+            <SquarePlus className="text-muted-foreground size-3.5" stroke="currentColor" strokeWidth={1} />
           )
         ) : (
           <ChevronDownIcon className="text-muted-foreground size-4 in-aria-[expanded=false]:-rotate-90" />

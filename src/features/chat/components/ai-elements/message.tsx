@@ -18,7 +18,7 @@ import {
   CaretRight,
   Paperclip,
   X,
-} from "@phosphor-icons/react";
+} from "@/components/icons";
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
 import {
   createContext,
@@ -37,7 +37,7 @@ export type MessageProps = HTMLAttributes<HTMLDivElement> & {
 export const Message = ({ className, from, ...props }: MessageProps) => (
   <div
     className={cn(
-      "group flex w-full flex-col gap-2",
+      "group flex w-full flex-col gap-4",
       from === "user" ? "is-user" : "is-assistant",
       className
     )}
@@ -54,8 +54,8 @@ export const MessageContent = ({
 }: MessageContentProps) => (
   <div
     className={cn(
-      "flex w-full min-w-0 flex-col gap-2 overflow-hidden text-sm text-foreground",
-      "group-[.is-user]:bg-secondary group-[.is-user]:border-l-4 group-[.is-user]:border-l-primary group-[.is-user]:px-4 group-[.is-user]:py-3",
+      "flex w-full min-w-0 flex-col gap-4 overflow-hidden text-sm text-foreground",
+      "group-[.is-user]:bg-blue-500/10 group-[.is-user]:border-l-4 group-[.is-user]:border-l-blue-500 group-[.is-user]:px-3 group-[.is-user]:py-2",
       className
     )}
     {...props}
@@ -314,11 +314,34 @@ export const MessageBranchPage = ({
   );
 };
 
-export type MessageResponseProps = ComponentProps<typeof Streamdown>;
+export type MessageResponseProps = ComponentProps<typeof Streamdown> & {
+  isStreaming?: boolean;
+};
 
 export const MessageResponse = memo(
-  ({ className, ...props }: MessageResponseProps) => (
+  ({ className, isStreaming, ...props }: MessageResponseProps) => (
     <Streamdown
+      mode={isStreaming ? "streaming" : "static"}
+      className={cn(
+        "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+        className
+      )}
+      {...props}
+    />
+  ),
+  (prevProps, nextProps) =>
+    prevProps.children === nextProps.children &&
+    prevProps.isStreaming === nextProps.isStreaming
+);
+
+MessageResponse.displayName = "MessageResponse";
+
+export type MessageUserContentProps = ComponentProps<typeof Streamdown>;
+
+export const MessageUserContent = memo(
+  ({ className, ...props }: MessageUserContentProps) => (
+    <Streamdown
+      mode="static"
       className={cn(
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
         className
@@ -329,7 +352,7 @@ export const MessageResponse = memo(
   (prevProps, nextProps) => prevProps.children === nextProps.children
 );
 
-MessageResponse.displayName = "MessageResponse";
+MessageUserContent.displayName = "MessageUserContent";
 
 export type MessageAttachmentProps = HTMLAttributes<HTMLDivElement> & {
   data: FileUIPart;

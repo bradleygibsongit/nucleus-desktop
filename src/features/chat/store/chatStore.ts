@@ -1,150 +1,74 @@
 import { create } from "zustand"
+import { nanoid } from "nanoid"
 import { load, Store } from "@tauri-apps/plugin-store"
-import { fetch as tauriFetch } from "@tauri-apps/plugin-http"
-import { invoke } from "@tauri-apps/api/core"
 import {
-  createOpencodeClient,
-  type Session,
-  type Message,
-  type Part,
-  type GlobalEvent,
-  type EventMessageUpdated,
-  type EventMessagePartUpdated,
-  type EventSessionCreated,
-  type EventSessionUpdated,
-  type EventFileWatcherUpdated,
-} from "@opencode-ai/sdk/client"
+  DEFAULT_HARNESS_ID,
+  getHarnessAdapter,
+  getHarnessDefinition,
+  listHarnesses,
+} from "../runtime/harnesses"
+import type {
+  ChatStatus,
+  ChildSessionState,
+  HarnessDefinition,
+  HarnessId,
+  MessageWithParts,
+  RuntimeAgent,
+  RuntimeCommand,
+  RuntimeFileSearchResult,
+  RuntimeSession,
+} from "../types"
 
 const STORE_FILE = "chat.json"
-const OPENCODE_BASE_URL = "http://localhost:4096"
 
-/**
- * Custom fetch wrapper for Tauri that uses tauri-plugin-http
- * 
- * The OpenCode SDK passes a Request object directly to fetch (not separate url + init).
- * We need to extract all properties from the Request object.
- */
-const customFetch: typeof globalThis.fetch = async (input, init) => {
-  let url: string
-  let method: string
-  let headers: Record<string, string> | undefined
-  let body: string | undefined
-
-  if (input instanceof Request) {
-    // SDK passes a Request object - extract properties from it
-    url = input.url
-    method = input.method
-    // Convert Headers to plain object
-    const headerObj: Record<string, string> = {}
-    input.headers.forEach((value, key) => {
-      headerObj[key] = value
-    })
-    headers = Object.keys(headerObj).length > 0 ? headerObj : undefined
-    // Read body if present
-    body = input.body ? await input.text() : undefined
-  } else {
-    // Standard fetch signature with separate url and init
-    url = typeof input === "string" ? input : input.toString()
-    method = init?.method ?? "GET"
-    headers = init?.headers as Record<string, string> | undefined
-    body = init?.body as string | undefined
-  }
-
-  const response = await tauriFetch(url, {
-    method,
-    headers,
-    body,
-  })
-  return response
-}
-
-/**
- * Start the OpenCode server via Tauri command
- */
-async function startOpenCodeServer(): Promise<boolean> {
-  try {
-    console.log("[chatStore] Starting OpenCode server...")
-    const result = await invoke<string>("start_opencode_server")
-    console.log("[chatStore] Server start result:", result)
-    return true
-  } catch (error) {
-    console.error("[chatStore] Failed to start OpenCode server:", error)
-    return false
-  }
-}
-
-/**
- * Message with parts for UI rendering
- */
-export interface MessageWithParts {
-  info: Message
-  parts: Part[]
-}
-
-/**
- * Per-project chat state
- */
 interface ProjectChatState {
-  sessions: Session[]
+  sessions: RuntimeSession[]
   activeSessionId: string | null
   projectPath?: string
+  archivedSessionIds?: string[]
+  selectedHarnessId: HarnessId
 }
 
-/**
- * File change event from OpenCode
- */
-export interface FileChangeEvent {
+interface PersistedChatState {
+  chatByProject: Record<string, ProjectChatState>
+  messagesBySession: Record<string, MessageWithParts[]>
+}
+
+interface FileChangeEvent {
   file: string
   event: "add" | "change" | "unlink"
 }
 
-/**
- * File change listener callback
- */
-export type FileChangeListener = (event: FileChangeEvent) => void
-
-/**
- * Chat store state
- */
 interface ChatState {
-  // Per-project chat data
   chatByProject: Record<string, ProjectChatState>
-  
-  // Current session messages (loaded on demand)
+  messagesBySession: Record<string, MessageWithParts[]>
   currentMessages: MessageWithParts[]
   currentSessionId: string | null
-  
-  // Status
-  status: "idle" | "connecting" | "streaming" | "error"
+  childSessions: Map<string, ChildSessionState>
+  status: ChatStatus | "connecting"
   error: string | null
   isLoading: boolean
-  
-  // OpenCode client instance
-  client: ReturnType<typeof createOpencodeClient> | null
-  
-  // Event stream abort controller
-  eventAbortController: AbortController | null
-  
-  // File change listeners
-  fileChangeListeners: Set<FileChangeListener>
-
-  // Actions
+  isInitialized: boolean
+  harnesses: HarnessDefinition[]
+  fileChangeListeners: Set<(event: FileChangeEvent) => void>
   initialize: () => Promise<void>
   getProjectChat: (projectId: string) => ProjectChatState
+  getHarnessDefinition: (harnessId: HarnessId) => HarnessDefinition
   loadSessionsForProject: (projectId: string, projectPath: string) => Promise<void>
-  createSession: (projectId: string, projectPath: string) => Promise<Session | null>
+  openDraftSession: (projectId: string, projectPath: string) => Promise<void>
+  createSession: (projectId: string, projectPath: string) => Promise<RuntimeSession | null>
   selectSession: (projectId: string, sessionId: string) => Promise<void>
   deleteSession: (projectId: string, sessionId: string) => Promise<void>
-  sendMessage: (sessionId: string, text: string) => Promise<void>
+  archiveSession: (projectId: string, sessionId: string) => Promise<void>
+  selectHarness: (projectId: string, harnessId: HarnessId) => Promise<void>
+  listAgents: (projectId: string) => Promise<RuntimeAgent[]>
+  listCommands: (projectId: string) => Promise<RuntimeCommand[]>
+  searchFiles: (projectId: string, query: string, directory?: string) => Promise<RuntimeFileSearchResult[]>
+  onFileChange: (listener: (event: FileChangeEvent) => void) => () => void
+  sendMessage: (sessionId: string, text: string, agent?: string) => Promise<void>
   abortSession: (sessionId: string) => Promise<void>
-  
-  // File change subscription
-  onFileChange: (listener: FileChangeListener) => () => void
-  
-  // Internal
-  _persistProjectChat: (projectId: string) => Promise<void>
-  _subscribeToEvents: () => Promise<void>
-  _unsubscribeFromEvents: () => void
+  executeCommand: (sessionId: string, command: string, args?: string) => Promise<void>
+  _persistState: () => Promise<void>
 }
 
 let storeInstance: Store | null = null
@@ -156,582 +80,678 @@ async function getStore(): Promise<Store> {
   return storeInstance
 }
 
-const emptyProjectChat: ProjectChatState = {
-  sessions: [],
-  activeSessionId: null,
+function createDefaultProjectChat(projectPath?: string): ProjectChatState {
+  return {
+    sessions: [],
+    activeSessionId: null,
+    projectPath,
+    archivedSessionIds: [],
+    selectedHarnessId: DEFAULT_HARNESS_ID,
+  }
+}
+
+function createTextMessage(
+  sessionId: string,
+  role: "user" | "assistant",
+  text: string
+): MessageWithParts {
+  const messageId = nanoid()
+
+  return {
+    info: {
+      id: messageId,
+      sessionId,
+      role,
+      createdAt: Date.now(),
+      finishReason: role === "assistant" ? "end_turn" : undefined,
+    },
+    parts: [
+      {
+        id: nanoid(),
+        type: "text",
+        text,
+      },
+    ],
+  }
+}
+
+function getSessionTitleFallback(session: RuntimeSession): string {
+  if (session.title?.trim()) {
+    return session.title
+  }
+
+  return `Session ${session.id.slice(0, 8)}`
+}
+
+function deriveSessionTitle(text: string): string {
+  const normalized = text.replace(/\s+/g, " ").trim()
+  if (!normalized) {
+    return "New session"
+  }
+
+  return normalized.length > 48 ? `${normalized.slice(0, 45)}...` : normalized
+}
+
+function sortSessions(sessions: RuntimeSession[]): RuntimeSession[] {
+  return [...sessions].sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
+function touchSession(session: RuntimeSession, title?: string): RuntimeSession {
+  return {
+    ...session,
+    title: title ?? session.title,
+    updatedAt: Date.now(),
+  }
+}
+
+function findProjectForSession(
+  chatByProject: Record<string, ProjectChatState>,
+  sessionId: string
+): { projectId: string; projectChat: ProjectChatState; session: RuntimeSession } | null {
+  for (const [projectId, projectChat] of Object.entries(chatByProject)) {
+    const session = projectChat.sessions.find((candidate) => candidate.id === sessionId)
+    if (session) {
+      return { projectId, projectChat, session }
+    }
+  }
+
+  return null
+}
+
+function replaceSession(
+  sessions: RuntimeSession[],
+  nextSession: RuntimeSession
+): RuntimeSession[] {
+  return sortSessions(
+    sessions.map((session) => (session.id === nextSession.id ? nextSession : session))
+  )
+}
+
+function remapMessagesToSession(
+  messages: MessageWithParts[],
+  sessionId: string
+): MessageWithParts[] {
+  return messages.map((message) => ({
+    ...message,
+    info: {
+      ...message.info,
+      sessionId,
+    },
+    parts: message.parts.map((part) =>
+      part.type === "tool"
+        ? {
+            ...part,
+            sessionId,
+          }
+        : part
+    ),
+  }))
+}
+
+function shouldRecreateRemoteSession(session: RuntimeSession, error: unknown): boolean {
+  if (session.harnessId !== "codex") {
+    return false
+  }
+
+  const message = String(error)
+  return message.includes("no rollout found for thread id")
+}
+
+function emitFileChanges(
+  listeners: Set<(event: FileChangeEvent) => void>,
+  messages: MessageWithParts[]
+): void {
+  if (listeners.size === 0) {
+    return
+  }
+
+  for (const message of messages) {
+    for (const part of message.parts) {
+      if (part.type !== "tool" || part.tool !== "fileChange") {
+        continue
+      }
+
+      const output = part.state.output
+      const changes =
+        output && typeof output === "object" && "changes" in output
+          ? (output as { changes?: unknown[] }).changes
+          : undefined
+
+      if (!Array.isArray(changes)) {
+        continue
+      }
+
+      for (const change of changes) {
+        if (!change || typeof change !== "object") {
+          continue
+        }
+
+        const path =
+          "path" in change && typeof change.path === "string"
+            ? change.path
+            : "newPath" in change && typeof change.newPath === "string"
+              ? change.newPath
+              : null
+
+        if (!path) {
+          continue
+        }
+
+        for (const listener of listeners) {
+          listener({
+            file: path,
+            event: "change",
+          })
+        }
+      }
+    }
+  }
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
   chatByProject: {},
+  messagesBySession: {},
   currentMessages: [],
   currentSessionId: null,
+  childSessions: new Map<string, ChildSessionState>(),
   status: "idle",
   error: null,
   isLoading: true,
-  client: null,
-  eventAbortController: null,
-  fileChangeListeners: new Set<FileChangeListener>(),
+  isInitialized: false,
+  harnesses: listHarnesses(),
+  fileChangeListeners: new Set(),
 
   initialize: async () => {
-    console.log("[chatStore] Initializing...")
+    if (get().isInitialized) {
+      return
+    }
+
     try {
-      // Start the OpenCode server
-      const serverStarted = await startOpenCodeServer()
-      if (!serverStarted) {
-        set({ 
-          isLoading: false, 
-          error: "Failed to start OpenCode server. Is 'opencode' installed?" 
-        })
-        return
-      }
-
-      // Give the server a moment to fully initialize
-      await new Promise(resolve => setTimeout(resolve, 500))
-
-      // Load persisted chat data
       const store = await getStore()
-      const persisted = await store.get<Record<string, ProjectChatState>>("chatByProject")
-      console.log("[chatStore] Loaded persisted data:", persisted)
-      
-      // Create OpenCode client with Tauri's fetch
-      const client = createOpencodeClient({
-        baseUrl: OPENCODE_BASE_URL,
-        fetch: customFetch,
-      })
-      console.log("[chatStore] Created OpenCode client for", OPENCODE_BASE_URL)
+      const persisted = await store.get<PersistedChatState>("chatState")
 
       set({
-        chatByProject: persisted ?? {},
-        client,
+        chatByProject: persisted?.chatByProject ?? {},
+        messagesBySession: persisted?.messagesBySession ?? {},
         isLoading: false,
+        isInitialized: true,
       })
-      
-      await get()._subscribeToEvents()
-      console.log("[chatStore] Initialization complete")
+
+      const uniqueHarnessIds = new Set<HarnessId>()
+      for (const projectChat of Object.values(persisted?.chatByProject ?? {})) {
+        uniqueHarnessIds.add(projectChat.selectedHarnessId ?? DEFAULT_HARNESS_ID)
+        for (const session of projectChat.sessions) {
+          uniqueHarnessIds.add(session.harnessId ?? DEFAULT_HARNESS_ID)
+        }
+      }
+
+      await Promise.all(
+        Array.from(uniqueHarnessIds).map((harnessId) =>
+          getHarnessAdapter(harnessId).initialize()
+        )
+      )
     } catch (error) {
       console.error("[chatStore] Failed to initialize:", error)
-      set({ isLoading: false, error: String(error) })
+      set({
+        isLoading: false,
+        isInitialized: true,
+        error: String(error),
+      })
     }
   },
 
   getProjectChat: (projectId: string) => {
     const { chatByProject } = get()
-    return chatByProject[projectId] ?? emptyProjectChat
+    return chatByProject[projectId] ?? createDefaultProjectChat()
   },
 
+  getHarnessDefinition: (harnessId: HarnessId) => getHarnessDefinition(harnessId),
+
   loadSessionsForProject: async (projectId: string, projectPath: string) => {
-    const { client } = get()
-    if (!client) {
-      console.error("OpenCode client not initialized")
-      return
-    }
+    const { chatByProject } = get()
+    const projectChat = chatByProject[projectId] ?? createDefaultProjectChat(projectPath)
 
-    try {
-      set({ status: "connecting" })
-      
-      // Fetch sessions from OpenCode server for this project directory
-      const response = await client.session.list({
-        query: { directory: projectPath },
-      })
+    set({
+      chatByProject: {
+        ...chatByProject,
+        [projectId]: {
+          ...projectChat,
+          projectPath,
+        },
+      },
+    })
 
-      if (response.data) {
-        const allSessions = response.data as Session[]
-        
-        // Filter sessions to only those belonging to this project directory
-        const sessions = allSessions.filter(s => s.directory === projectPath)
-        
-        // Sort by updated time descending
-        sessions.sort((a, b) => b.time.updated - a.time.updated)
+    await get()._persistState()
+  },
 
-        const { chatByProject } = get()
-        const projectChat = chatByProject[projectId] ?? emptyProjectChat
-        
-        // Merge with existing state, preserving activeSessionId if valid
-        const activeSessionId = sessions.some(s => s.id === projectChat.activeSessionId)
-          ? projectChat.activeSessionId
-          : sessions[0]?.id ?? null
+  openDraftSession: async (projectId: string, projectPath: string) => {
+    const { chatByProject } = get()
+    const projectChat = chatByProject[projectId] ?? createDefaultProjectChat(projectPath)
 
-        set({
-          chatByProject: {
-            ...chatByProject,
-            [projectId]: {
-              sessions,
-              activeSessionId,
-              projectPath,
-            },
-          },
-          status: "idle",
-        })
+    set({
+      chatByProject: {
+        ...chatByProject,
+        [projectId]: {
+          ...projectChat,
+          projectPath,
+          activeSessionId: null,
+        },
+      },
+      currentSessionId: null,
+      currentMessages: [],
+      childSessions: new Map<string, ChildSessionState>(),
+      status: "idle",
+      error: null,
+    })
 
-        // Load messages for active session
-        if (activeSessionId) {
-          await get().selectSession(projectId, activeSessionId)
-        }
-
-        await get()._persistProjectChat(projectId)
-        
-        // Subscribe to events for this project
-        await get()._subscribeToEvents()
-      }
-    } catch (error) {
-      console.error("Failed to load sessions:", error)
-      set({ status: "error", error: String(error) })
-    }
+    await get()._persistState()
   },
 
   createSession: async (projectId: string, projectPath: string) => {
-    const { client, chatByProject } = get()
-    console.log("[chatStore] createSession called", { projectId, projectPath, hasClient: !!client })
-    
-    if (!client) {
-      console.error("[chatStore] OpenCode client not initialized")
-      return null
-    }
+    const { chatByProject } = get()
+    const projectChat = chatByProject[projectId] ?? createDefaultProjectChat(projectPath)
+    const adapter = getHarnessAdapter(projectChat.selectedHarnessId)
+    const session = await adapter.createSession(projectPath)
 
-    try {
-      set({ status: "connecting" })
-      console.log("[chatStore] Calling client.session.create...")
-
-      const response = await client.session.create({
-        body: {},
-        query: { directory: projectPath },
-      })
-      console.log("[chatStore] session.create response:", response)
-      
-      const responseData = response.data as unknown
-      let session: Session | null = null
-      
-      if (Array.isArray(responseData)) {
-        const sessions = responseData as Session[]
-        if (sessions.length > 0) {
-          session = sessions.reduce((newest, current) => {
-            const newestTime = newest.time?.created ?? 0
-            const currentTime = current.time?.created ?? 0
-            return currentTime > newestTime ? current : newest
-          })
-          console.log("[chatStore] Found newest session from array:", session.id)
-        }
-      } else if (responseData && typeof responseData === "object") {
-        const data = responseData as Record<string, unknown>
-        if ("id" in data && typeof data.id === "string") {
-          session = data as unknown as Session
-          console.log("[chatStore] Got single session:", session.id)
-        }
-      }
-      
-      if (!session?.id) {
-        console.error("[chatStore] Could not extract session from response:", responseData)
-        set({ status: "idle" })
-        return null
-      }
-      
-      console.log("[chatStore] Using session:", session.id, session.title)
-        
-      const projectChat = chatByProject[projectId] ?? emptyProjectChat
-
-      set({
-        chatByProject: {
-          ...chatByProject,
-          [projectId]: {
-            sessions: [session, ...projectChat.sessions.filter(s => s.id !== session!.id)],
-            activeSessionId: session.id,
-            projectPath,
-          },
+    set({
+      chatByProject: {
+        ...chatByProject,
+        [projectId]: {
+          ...projectChat,
+          projectPath,
+          sessions: sortSessions([session, ...projectChat.sessions]),
+          activeSessionId: session.id,
         },
-        currentMessages: [],
-        currentSessionId: session.id,
-        status: "idle",
-      })
+      },
+      currentSessionId: session.id,
+      currentMessages: [],
+      childSessions: new Map<string, ChildSessionState>(),
+      status: "idle",
+      error: null,
+    })
 
-      await get()._persistProjectChat(projectId)
-      return session
-    } catch (error) {
-      console.error("[chatStore] Failed to create session:", error)
-      set({ status: "error", error: String(error) })
-      return null
-    }
+    await get()._persistState()
+    return session
   },
 
   selectSession: async (projectId: string, sessionId: string) => {
-    const { client, chatByProject } = get()
-    if (!client) return
-
+    const { chatByProject, messagesBySession } = get()
     const projectChat = chatByProject[projectId]
-    if (!projectChat) return
+    if (!projectChat) {
+      return
+    }
 
-    // Update active session
     set({
       chatByProject: {
         ...chatByProject,
         [projectId]: {
           ...projectChat,
           activeSessionId: sessionId,
-          projectPath: projectChat.projectPath ?? projectChat.sessions.find(s => s.id === sessionId)?.directory,
         },
       },
-      currentMessages: [],
       currentSessionId: sessionId,
-      status: "connecting",
+      currentMessages: messagesBySession[sessionId] ?? [],
+      childSessions: new Map<string, ChildSessionState>(),
+      status: "idle",
+      error: null,
     })
 
-    try {
-      // Load messages for the session
-      const session = projectChat.sessions.find(s => s.id === sessionId)
-      if (!session) return
-
-      const response = await client.session.messages({
-        path: { id: sessionId },
-        query: { directory: session.directory ?? projectChat.projectPath },
-      })
-
-      if (response.data) {
-        const messages = response.data as MessageWithParts[]
-        set({
-          currentMessages: messages,
-          status: "idle",
-        })
-      }
-
-      await get()._persistProjectChat(projectId)
-    } catch (error) {
-      console.error("Failed to load messages:", error)
-      set({ status: "error", error: String(error) })
-    }
+    await get()._persistState()
   },
 
   deleteSession: async (projectId: string, sessionId: string) => {
-    const { client, chatByProject } = get()
-    if (!client) return
-
+    const { chatByProject, messagesBySession, currentSessionId } = get()
     const projectChat = chatByProject[projectId]
-    if (!projectChat) return
+    if (!projectChat) {
+      return
+    }
 
-    try {
-      const session = projectChat.sessions.find(s => s.id === sessionId)
-      if (!session) return
+    const updatedSessions = projectChat.sessions.filter((session) => session.id !== sessionId)
+    const nextMessages = { ...messagesBySession }
+    delete nextMessages[sessionId]
 
-      await client.session.delete({
-        path: { id: sessionId },
-        query: { directory: session.directory ?? projectChat.projectPath },
-      })
+    const wasActive = projectChat.activeSessionId === sessionId
+    const nextActiveSessionId = wasActive ? updatedSessions[0]?.id ?? null : projectChat.activeSessionId
 
-      const updatedSessions = projectChat.sessions.filter(s => s.id !== sessionId)
-      const wasActive = projectChat.activeSessionId === sessionId
-      const newActiveId = wasActive
-        ? updatedSessions[0]?.id ?? null
-        : projectChat.activeSessionId
-      const currentSessionId = get().currentSessionId
-      const nextCurrentSessionId = currentSessionId === sessionId ? newActiveId : currentSessionId
-
-      set({
-        chatByProject: {
-          ...chatByProject,
-          [projectId]: {
-            sessions: updatedSessions,
-            activeSessionId: newActiveId,
-            projectPath: projectChat.projectPath,
-          },
+    set({
+      chatByProject: {
+        ...chatByProject,
+        [projectId]: {
+          ...projectChat,
+          sessions: updatedSessions,
+          activeSessionId: nextActiveSessionId,
         },
-        currentMessages: wasActive ? [] : get().currentMessages,
-        currentSessionId: nextCurrentSessionId ?? null,
-      })
+      },
+      messagesBySession: nextMessages,
+      currentSessionId: currentSessionId === sessionId ? nextActiveSessionId : currentSessionId,
+      currentMessages:
+        currentSessionId === sessionId && nextActiveSessionId
+          ? nextMessages[nextActiveSessionId] ?? []
+          : currentSessionId === sessionId
+            ? []
+            : get().currentMessages,
+    })
 
-      if (newActiveId && newActiveId !== projectChat.activeSessionId) {
-        await get().selectSession(projectId, newActiveId)
-      }
+    await get()._persistState()
+  },
 
-      await get()._persistProjectChat(projectId)
-    } catch (error) {
-      console.error("Failed to delete session:", error)
+  archiveSession: async (projectId: string, sessionId: string) => {
+    const { chatByProject, currentSessionId } = get()
+    const projectChat = chatByProject[projectId]
+    if (!projectChat) {
+      return
+    }
+
+    const archivedSessionIds = new Set(projectChat.archivedSessionIds ?? [])
+    archivedSessionIds.add(sessionId)
+
+    const remainingSessions = projectChat.sessions.filter(
+      (session) => !archivedSessionIds.has(session.id)
+    )
+    const nextActiveSessionId =
+      projectChat.activeSessionId === sessionId
+        ? remainingSessions[0]?.id ?? null
+        : projectChat.activeSessionId
+
+    set({
+      chatByProject: {
+        ...chatByProject,
+        [projectId]: {
+          ...projectChat,
+          archivedSessionIds: Array.from(archivedSessionIds),
+          activeSessionId: nextActiveSessionId,
+        },
+      },
+      currentSessionId: currentSessionId === sessionId ? nextActiveSessionId : currentSessionId,
+      currentMessages:
+        currentSessionId === sessionId && nextActiveSessionId
+          ? get().messagesBySession[nextActiveSessionId] ?? []
+          : currentSessionId === sessionId
+            ? []
+            : get().currentMessages,
+    })
+
+    await get()._persistState()
+  },
+
+  selectHarness: async (projectId: string, harnessId: HarnessId) => {
+    const { chatByProject } = get()
+    const projectChat = chatByProject[projectId] ?? createDefaultProjectChat()
+
+    set({
+      chatByProject: {
+        ...chatByProject,
+        [projectId]: {
+          ...projectChat,
+          selectedHarnessId: harnessId,
+        },
+      },
+    })
+
+    await getHarnessAdapter(harnessId).initialize()
+    await get()._persistState()
+  },
+
+  listAgents: async (projectId: string) => {
+    const projectChat = get().getProjectChat(projectId)
+    const adapter = getHarnessAdapter(projectChat.selectedHarnessId)
+    return adapter.listAgents()
+  },
+
+  listCommands: async (projectId: string) => {
+    const projectChat = get().getProjectChat(projectId)
+    const adapter = getHarnessAdapter(projectChat.selectedHarnessId)
+    return adapter.listCommands()
+  },
+
+  searchFiles: async (projectId: string, query: string, directory?: string) => {
+    const projectChat = get().getProjectChat(projectId)
+    const adapter = getHarnessAdapter(projectChat.selectedHarnessId)
+    return adapter.searchFiles(query, directory)
+  },
+
+  onFileChange: (listener) => {
+    const listeners = get().fileChangeListeners
+    listeners.add(listener)
+
+    return () => {
+      listeners.delete(listener)
     }
   },
 
-  sendMessage: async (sessionId: string, text: string) => {
-    const { client, chatByProject } = get()
-    
-    if (!client) {
-      console.error("[chatStore] No client available")
-      return
-    }
+  sendMessage: async (sessionId: string, text: string, agent?: string) => {
     if (!text.trim()) {
-      console.error("[chatStore] Empty text")
       return
     }
 
-    // Find the session to get its directory
-    let sessionDirectory: string | undefined
-    for (const projectChat of Object.values(chatByProject)) {
-      const session = projectChat.sessions.find(s => s.id === sessionId)
-      if (session) {
-        sessionDirectory = session.directory
-        break
-      }
+    const sessionMatch = findProjectForSession(get().chatByProject, sessionId)
+    if (!sessionMatch) {
+      return
     }
+
+    const { projectId, projectChat, session } = sessionMatch
+    const adapter = getHarnessAdapter(session.harnessId)
+    const userMessage = createTextMessage(sessionId, "user", text.trim())
+    const nextSessionTitle = session.title ?? deriveSessionTitle(text)
+    const nextSession = touchSession(session, nextSessionTitle)
+    const nextMessages = [...(get().messagesBySession[sessionId] ?? []), userMessage]
+
+    set({
+      chatByProject: {
+        ...get().chatByProject,
+        [projectId]: {
+          ...projectChat,
+          sessions: replaceSession(projectChat.sessions, nextSession),
+          activeSessionId: sessionId,
+        },
+      },
+      messagesBySession: {
+        ...get().messagesBySession,
+        [sessionId]: nextMessages,
+      },
+      currentSessionId: sessionId,
+      currentMessages: nextMessages,
+      childSessions: new Map<string, ChildSessionState>(),
+      status: "streaming",
+      error: null,
+    })
 
     try {
-      set({ status: "streaming" })
-
-      // The prompt call will trigger SSE events that update messages
-      await client.session.prompt({
-        path: { id: sessionId },
-        body: {
-          parts: [{ type: "text", text }],
-        },
-        query: sessionDirectory ? { directory: sessionDirectory } : undefined,
+      const result = await adapter.sendMessage({
+        session: nextSession,
+        projectPath: projectChat.projectPath,
+        text: text.trim(),
+        agent,
       })
-      
-      set({ status: "idle" })
+
+      const sessionMessages = [
+        ...(get().messagesBySession[sessionId] ?? nextMessages),
+        ...(result.messages ?? []),
+      ]
+
+      set({
+        messagesBySession: {
+          ...get().messagesBySession,
+          [sessionId]: sessionMessages,
+        },
+        currentMessages: get().currentSessionId === sessionId ? sessionMessages : get().currentMessages,
+        childSessions: new Map(
+          (result.childSessions ?? []).map((childState) => [childState.session.id, childState])
+        ),
+        status: "idle",
+      })
+
+      emitFileChanges(get().fileChangeListeners, result.messages ?? [])
     } catch (error) {
-      console.error("[chatStore] Failed to send message:", error)
-      set({ status: "error", error: String(error) })
+      if (shouldRecreateRemoteSession(session, error)) {
+        try {
+          const recreatedSession = await adapter.createSession(
+            projectChat.projectPath ?? session.projectPath ?? ""
+          )
+          const migratedSession: RuntimeSession = {
+            ...recreatedSession,
+            title: nextSession.title ?? recreatedSession.title,
+            projectPath: projectChat.projectPath ?? recreatedSession.projectPath,
+          }
+          const migratedMessages = remapMessagesToSession(nextMessages, migratedSession.id)
+          const migratedProjectChat: ProjectChatState = {
+            ...projectChat,
+            sessions: sortSessions([
+              migratedSession,
+              ...projectChat.sessions.filter((candidate) => candidate.id !== session.id),
+            ]),
+            activeSessionId: migratedSession.id,
+          }
+
+          set({
+            chatByProject: {
+              ...get().chatByProject,
+              [projectId]: migratedProjectChat,
+            },
+            messagesBySession: {
+              ...Object.fromEntries(
+                Object.entries(get().messagesBySession).filter(([key]) => key !== session.id)
+              ),
+              [migratedSession.id]: migratedMessages,
+            },
+            currentSessionId: migratedSession.id,
+            currentMessages: migratedMessages,
+            status: "streaming",
+            error: null,
+          })
+
+          const retriedResult = await adapter.sendMessage({
+            session: migratedSession,
+            projectPath: migratedProjectChat.projectPath,
+            text: text.trim(),
+            agent,
+          })
+
+          const retriedMessages = [
+            ...(get().messagesBySession[migratedSession.id] ?? migratedMessages),
+            ...(retriedResult.messages ?? []),
+          ]
+
+          set({
+            messagesBySession: {
+              ...get().messagesBySession,
+              [migratedSession.id]: retriedMessages,
+            },
+            currentMessages:
+              get().currentSessionId === migratedSession.id
+                ? retriedMessages
+                : get().currentMessages,
+            childSessions: new Map(
+              (retriedResult.childSessions ?? []).map((childState) => [
+                childState.session.id,
+                childState,
+              ])
+            ),
+            status: "idle",
+          })
+
+          emitFileChanges(get().fileChangeListeners, retriedResult.messages ?? [])
+          await get()._persistState()
+          return
+        } catch (retryError) {
+          error = retryError
+        }
+      }
+
+      const failureMessage = createTextMessage(
+        sessionId,
+        "assistant",
+        `Failed to send this turn to ${adapter.definition.label}: ${String(error)}`
+      )
+      const sessionMessages = [...(get().messagesBySession[sessionId] ?? nextMessages), failureMessage]
+
+      set({
+        messagesBySession: {
+          ...get().messagesBySession,
+          [sessionId]: sessionMessages,
+        },
+        currentMessages: get().currentSessionId === sessionId ? sessionMessages : get().currentMessages,
+        status: "error",
+        error: String(error),
+      })
     }
+
+    await get()._persistState()
   },
 
   abortSession: async (sessionId: string) => {
-    const { client, chatByProject } = get()
-    if (!client) return
-
-    let sessionDirectory: string | undefined
-    for (const projectChat of Object.values(chatByProject)) {
-      const session = projectChat.sessions.find(s => s.id === sessionId)
-      if (session) {
-        sessionDirectory = session.directory
-        break
-      }
+    const sessionMatch = findProjectForSession(get().chatByProject, sessionId)
+    if (!sessionMatch) {
+      return
     }
+
+    await getHarnessAdapter(sessionMatch.session.harnessId).abortSession(sessionMatch.session)
+    set({ status: "idle" })
+  },
+
+  executeCommand: async (sessionId: string, command: string, args: string = "") => {
+    const sessionMatch = findProjectForSession(get().chatByProject, sessionId)
+    if (!sessionMatch) {
+      return
+    }
+
+    const { projectId, projectChat, session } = sessionMatch
+    const adapter = getHarnessAdapter(session.harnessId)
+    const nextSession = touchSession(session)
+
+    set({
+      chatByProject: {
+        ...get().chatByProject,
+        [projectId]: {
+          ...projectChat,
+          sessions: replaceSession(projectChat.sessions, nextSession),
+          activeSessionId: sessionId,
+        },
+      },
+      status: "streaming",
+      error: null,
+    })
 
     try {
-      await client.session.abort({
-        path: { id: sessionId },
-        query: sessionDirectory ? { directory: sessionDirectory } : undefined,
+      const result = await adapter.executeCommand({
+        session: nextSession,
+        projectPath: projectChat.projectPath,
+        command,
+        args,
       })
-      set({ status: "idle" })
+
+      const sessionMessages = [
+        ...(get().messagesBySession[sessionId] ?? []),
+        ...(result.messages ?? []),
+      ]
+
+      set({
+        messagesBySession: {
+          ...get().messagesBySession,
+          [sessionId]: sessionMessages,
+        },
+        currentMessages: get().currentSessionId === sessionId ? sessionMessages : get().currentMessages,
+        status: "idle",
+      })
     } catch (error) {
-      console.error("Failed to abort session:", error)
+      set({
+        status: "error",
+        error: String(error),
+      })
     }
+
+    await get()._persistState()
   },
 
-  onFileChange: (listener: FileChangeListener) => {
-    const { fileChangeListeners } = get()
-    fileChangeListeners.add(listener)
-    // Return unsubscribe function
-    return () => {
-      fileChangeListeners.delete(listener)
-    }
-  },
-
-  _persistProjectChat: async (projectId: string) => {
-    const { chatByProject } = get()
+  _persistState: async () => {
+    const { chatByProject, messagesBySession } = get()
     const store = await getStore()
-    await store.set("chatByProject", chatByProject)
+    await store.set("chatState", {
+      chatByProject,
+      messagesBySession,
+    } satisfies PersistedChatState)
     await store.save()
   },
-
-  _subscribeToEvents: async () => {
-    const { client, eventAbortController } = get()
-    if (!client) return
-    if (eventAbortController) return
-
-    const controller = new AbortController()
-    set({ eventAbortController: controller })
-
-    try {
-      const response = await client.global.event({
-        signal: controller.signal,
-      })
-
-      // Process events
-      for await (const event of response.stream as AsyncIterable<GlobalEvent>) {
-        if (!event?.payload) continue
-
-        const { payload } = event
-
-        // Handle message updates
-        if (payload.type === "message.updated") {
-          const { info } = (payload as EventMessageUpdated).properties
-          const { currentMessages, currentSessionId } = get()
-
-          if (!currentSessionId || info.sessionID !== currentSessionId) {
-            continue
-          }
-          
-          // Check if message already exists
-          const existingIndex = currentMessages.findIndex(m => m.info.id === info.id)
-          
-          if (existingIndex >= 0) {
-            // Update existing message
-            const updated = [...currentMessages]
-            updated[existingIndex] = { ...updated[existingIndex], info }
-            set({ currentMessages: updated })
-          } else {
-            // Add new message
-            set({
-              currentMessages: [...currentMessages, { info, parts: [] }],
-            })
-          }
-        }
-
-        // Handle message part updates
-        if (payload.type === "message.part.updated") {
-          const { part } = (payload as EventMessagePartUpdated).properties
-          const { currentMessages, currentSessionId } = get()
-
-          if (!currentSessionId || part.sessionID !== currentSessionId) {
-            continue
-          }
-          
-          const msgIndex = currentMessages.findIndex(m => m.info.id === part.messageID)
-          if (msgIndex >= 0) {
-            const updated = [...currentMessages]
-            const msg = { ...updated[msgIndex] }
-            const partIndex = msg.parts.findIndex(p => p.id === part.id)
-            
-            if (partIndex >= 0) {
-              msg.parts = [...msg.parts]
-              msg.parts[partIndex] = part
-            } else {
-              msg.parts = [...msg.parts, part]
-            }
-            
-            updated[msgIndex] = msg
-            set({ currentMessages: updated })
-          }
-        }
-
-        // Handle session created
-        if (payload.type === "session.created") {
-          const { info } = (payload as EventSessionCreated).properties
-          const { chatByProject } = get()
-
-          for (const [projectId, projectChat] of Object.entries(chatByProject)) {
-            if (projectChat.projectPath && info.directory === projectChat.projectPath) {
-              if (projectChat.sessions.some(s => s.id === info.id)) {
-                break
-              }
-
-              const nextSessions = [info, ...projectChat.sessions]
-              nextSessions.sort((a, b) => b.time.updated - a.time.updated)
-
-              set({
-                chatByProject: {
-                  ...chatByProject,
-                  [projectId]: {
-                    ...projectChat,
-                    sessions: nextSessions,
-                  },
-                },
-              })
-              break
-            }
-          }
-        }
-
-        // Handle session updated (title changes, etc.)
-        if (payload.type === "session.updated") {
-          const { info } = (payload as EventSessionUpdated).properties
-          const { chatByProject } = get()
-          
-          // Find which project this session belongs to
-          for (const [projectId, projectChat] of Object.entries(chatByProject)) {
-            const sessionIndex = projectChat.sessions.findIndex(s => s.id === info.id)
-            if (sessionIndex >= 0) {
-              const updatedSessions = [...projectChat.sessions]
-              updatedSessions[sessionIndex] = info
-              
-              set({
-                chatByProject: {
-                  ...chatByProject,
-                  [projectId]: {
-                    ...projectChat,
-                    sessions: updatedSessions,
-                  },
-                },
-              })
-              break
-            }
-          }
-        }
-
-        // Handle session deleted
-        if (payload.type === "session.deleted") {
-          const { info } = payload.properties
-          const { chatByProject, currentSessionId } = get()
-
-          for (const [projectId, projectChat] of Object.entries(chatByProject)) {
-            const updatedSessions = projectChat.sessions.filter(s => s.id !== info.id)
-            if (updatedSessions.length !== projectChat.sessions.length) {
-              const isCurrent = currentSessionId === info.id
-              set({
-                chatByProject: {
-                  ...chatByProject,
-                  [projectId]: {
-                    ...projectChat,
-                    sessions: updatedSessions,
-                    activeSessionId: projectChat.activeSessionId === info.id ? updatedSessions[0]?.id ?? null : projectChat.activeSessionId,
-                  },
-                },
-                currentMessages: isCurrent ? [] : get().currentMessages,
-                currentSessionId: isCurrent ? null : currentSessionId,
-              })
-              break
-            }
-          }
-        }
-
-        // Handle session status (busy/idle)
-        if (payload.type === "session.status") {
-          const { status: sessionStatus, sessionID } = payload.properties
-          const { currentSessionId } = get()
-          if (!currentSessionId || sessionID !== currentSessionId) {
-            continue
-          }
-          if (sessionStatus.type === "busy") {
-            set({ status: "streaming" })
-          } else if (sessionStatus.type === "idle") {
-            set({ status: "idle" })
-          }
-        }
-
-        // Handle file watcher events (file system changes)
-        if (payload.type === "file.watcher.updated") {
-          const { file, event: fileEvent } = (payload as EventFileWatcherUpdated).properties
-          console.log("[chatStore] File watcher event:", fileEvent, file)
-          const { fileChangeListeners } = get()
-          // Notify all listeners
-          for (const listener of fileChangeListeners) {
-            try {
-              listener({ file, event: fileEvent })
-            } catch (err) {
-              console.error("[chatStore] File change listener error:", err)
-            }
-          }
-        }
-
-        // Handle file.edited events (when agent edits files)
-        if (payload.type === "file.edited") {
-          const { file } = payload.properties as { file: string }
-          console.log("[chatStore] File edited event:", file)
-          const { fileChangeListeners } = get()
-          // Notify all listeners as a "change" event
-          for (const listener of fileChangeListeners) {
-            try {
-              listener({ file, event: "change" })
-            } catch (err) {
-              console.error("[chatStore] File change listener error:", err)
-            }
-          }
-        }
-      }
-    } catch (error) {
-      if ((error as Error).name !== "AbortError") {
-        console.error("Event stream error:", error)
-      }
-    }
-  },
-
-  _unsubscribeFromEvents: () => {
-    const { eventAbortController } = get()
-    eventAbortController?.abort()
-    set({ eventAbortController: null })
-  },
 }))
+
+export type { MessageWithParts, ChildSessionState, RuntimeSession as Session } from "../types"

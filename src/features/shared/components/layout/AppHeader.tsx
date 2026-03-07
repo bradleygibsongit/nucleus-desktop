@@ -1,4 +1,4 @@
-import { Eye, GitPullRequest } from "@phosphor-icons/react"
+import { Eye, GitPullRequest } from "@/components/icons"
 import { Button } from "@/features/shared/components/ui/button"
 import { ButtonGroup } from "@/features/shared/components/ui/button-group"
 import { useRightSidebar } from "./useRightSidebar"

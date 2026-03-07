@@ -1,4 +1,4 @@
-import { Plus } from "@phosphor-icons/react"
+import { Plus } from "@/components/icons"
 import { cn } from "@/lib/utils"
 import { TabItem } from "./TabItem"
 import type { Tab } from "../types"

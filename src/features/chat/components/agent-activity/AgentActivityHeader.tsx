@@ -9,7 +9,7 @@
  */
 
 import { useState, useEffect, useRef } from "react";
-import { CaretUp, CaretDown } from "@phosphor-icons/react";
+import { CaretUp, CaretDown } from "@/components/icons";
 import { LoadingDots } from "@/features/shared/components/ui/loading-dots";
 import { cn } from "@/lib/utils";
 
