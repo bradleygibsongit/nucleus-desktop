@@ -734,7 +734,7 @@ export function LeftSidebar({
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -3 }}
                           transition={{ duration: 0.16 }}
-                          className="pl-10 pr-3 py-2.5 text-sm text-muted-foreground"
+                          className="pl-10 pr-3 py-2.5 text-[12px] text-muted-foreground/85"
                         >
                             No threads
                           </motion.div>
