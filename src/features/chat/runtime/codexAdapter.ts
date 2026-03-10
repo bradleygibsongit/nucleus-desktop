@@ -14,7 +14,7 @@ import type {
 import { getCodexRpcClient } from "./codexRpcClient"
 
 const TURN_COMPLETION_TIMEOUT_MS = 120_000
-const TURN_POLL_INTERVAL_MS = 500
+const TURN_POLL_INTERVAL_MS = 150
 
 interface CodexThread {
   id: string
@@ -147,11 +147,6 @@ interface CodexTurnStartResponse {
   turn: {
     id: string
   }
-}
-
-interface CodexTurnCompletedNotification {
-  threadId: string
-  turn: CodexTurn
 }
 
 function toMilliseconds(seconds: number): number {
@@ -493,21 +488,18 @@ export class CodexHarnessAdapter implements HarnessAdapter {
     const turnId = response.turn.id
     this.activeTurns.set(input.session.id, turnId)
 
-    const completedTurn = await this.waitForTurnCompletion(input.session.id, turnId)
+    const completedTurn = await this.waitForTurnCompletion(
+      input.session.id,
+      turnId,
+      input.onUpdate
+    )
     this.activeTurns.delete(input.session.id)
 
     if (completedTurn?.status === "failed" && completedTurn.error?.message) {
       throw new Error(completedTurn.error.message)
     }
 
-    const readResponse = await this.rpc.request<CodexThreadReadResponse>("thread/read", {
-      threadId: input.session.id,
-      includeTurns: true,
-    })
-
-    const turn =
-      readResponse.thread.turns.find((candidate) => candidate.id === turnId) ??
-      readResponse.thread.turns.at(-1)
+    const turn = completedTurn ?? (await this.readTurn(input.session.id, turnId))
 
     if (!turn) {
       return { messages: [] }
@@ -552,39 +544,37 @@ export class CodexHarnessAdapter implements HarnessAdapter {
     this.activeTurns.delete(session.id)
   }
 
-  private async waitForTurnCompletion(threadId: string, turnId: string): Promise<CodexTurn | undefined> {
-    const notificationPromise = this.rpc
-      .waitForNotification<CodexTurnCompletedNotification>(
-        (notification) =>
-          notification.method === "turn/completed" &&
-          notification.params?.threadId === threadId &&
-          notification.params?.turn.id === turnId,
-        TURN_COMPLETION_TIMEOUT_MS
-      )
-      .then((notification) => notification.params?.turn)
-      .catch(() => undefined)
-
-    const pollPromise = this.pollTurnUntilComplete(threadId, turnId)
-
-    const completedTurn = await Promise.race([notificationPromise, pollPromise])
-    if (completedTurn) {
-      return completedTurn
-    }
-
-    return pollPromise
+  private async waitForTurnCompletion(
+    threadId: string,
+    turnId: string,
+    onUpdate?: HarnessTurnInput["onUpdate"]
+  ): Promise<CodexTurn | undefined> {
+    return this.pollTurnUntilComplete(threadId, turnId, onUpdate)
   }
 
-  private async pollTurnUntilComplete(threadId: string, turnId: string): Promise<CodexTurn> {
+  private async pollTurnUntilComplete(
+    threadId: string,
+    turnId: string,
+    onUpdate?: HarnessTurnInput["onUpdate"]
+  ): Promise<CodexTurn> {
     const deadline = Date.now() + TURN_COMPLETION_TIMEOUT_MS
+    let lastSnapshot = ""
 
     while (Date.now() < deadline) {
       try {
-        const readResponse = await this.rpc.request<CodexThreadReadResponse>("thread/read", {
-          threadId,
-          includeTurns: true,
-        })
+        const turn = await this.readTurn(threadId, turnId)
 
-        const turn = readResponse.thread.turns.find((candidate) => candidate.id === turnId)
+        if (turn) {
+          const snapshot = JSON.stringify(turn.items)
+
+          if (snapshot !== lastSnapshot) {
+            lastSnapshot = snapshot
+            onUpdate?.({
+              messages: mapTurnItemsToMessages(turn, threadId),
+            })
+          }
+        }
+
         if (turn && turn.status !== "inProgress") {
           return turn
         }
@@ -598,5 +588,14 @@ export class CodexHarnessAdapter implements HarnessAdapter {
     }
 
     throw new Error("Timed out waiting for Codex turn completion")
+  }
+
+  private async readTurn(threadId: string, turnId: string): Promise<CodexTurn | undefined> {
+    const readResponse = await this.rpc.request<CodexThreadReadResponse>("thread/read", {
+      threadId,
+      includeTurns: true,
+    })
+
+    return readResponse.thread.turns.find((candidate) => candidate.id === turnId)
   }
 }

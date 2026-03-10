@@ -114,6 +114,7 @@ export interface HarnessTurnInput {
   projectPath?: string;
   text: string;
   agent?: string;
+  onUpdate?: (result: HarnessTurnResult) => void;
 }
 
 export interface HarnessCommandInput {

@@ -94,15 +94,13 @@ export function ChatContainer() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex-1 min-h-0 flex justify-center overflow-hidden">
-        <div className="w-full max-w-[803px]">
-          <ChatMessages
-            messages={messages}
-            status={status}
-            selectedProject={selectedProject}
-            childSessions={childSessions}
-          />
-        </div>
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <ChatMessages
+          messages={messages}
+          status={status}
+          selectedProject={selectedProject}
+          childSessions={childSessions}
+        />
       </div>
       <div className="flex-shrink-0 flex justify-center">
         <div className="w-full max-w-[803px]">

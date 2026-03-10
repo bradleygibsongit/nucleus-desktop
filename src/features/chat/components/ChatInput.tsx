@@ -1,4 +1,4 @@
-import { ArrowUp02, Brain, CaretDown, CaretLeft, CaretRight, CheckCircle, Circle, Stop } from "@/components/icons"
+import { ArrowMoveDownLeft, ArrowUp02, Brain, CaretDown, CaretLeft, CaretRight, CheckCircle, Circle, Stop } from "@/components/icons"
 import { useState, useRef, useCallback, useMemo, useEffect, useLayoutEffect, type KeyboardEvent, type FormEvent } from "react"
 import { SlashCommandMenu } from "./SlashCommandMenu"
 import { AtMentionMenu, type FileItem } from "./AtMentionMenu"
@@ -129,7 +129,7 @@ function getModelsForHarness(harnessId: HarnessId | null): string[] {
 }
 
 const REASONING_EFFORTS = ["Low", "Medium", "High"] as const
-const COMPOSER_TEXTAREA_MIN_HEIGHT = 76
+const COMPOSER_TEXTAREA_MIN_HEIGHT = 28
 const COMPOSER_TEXTAREA_MAX_HEIGHT = 268
 const PROMPT_RESPONSE_ROW_CLASS = "min-h-[46px] rounded-2xl border px-3 py-2.5"
 
@@ -322,8 +322,25 @@ export function ChatInput({
         ...current,
         [questionId]: value,
       }))
+
+      if (
+        prompt &&
+        currentPromptQuestion &&
+        currentPromptQuestion.id === questionId &&
+        currentPromptQuestion.kind === "single_select" &&
+        isQuestionAnswered(
+          currentPromptQuestion,
+          value,
+          promptCustomAnswers[currentPromptQuestion.id]
+        ) &&
+        !isLastPromptQuestion
+      ) {
+        setCurrentPromptQuestionIndex((index) =>
+          Math.min(index + 1, prompt.questions.length - 1)
+        )
+      }
     },
-    []
+    [currentPromptQuestion, isLastPromptQuestion, prompt, promptCustomAnswers]
   )
 
   const handlePromptCustomAnswerChange = useCallback(
@@ -400,9 +417,12 @@ export function ChatInput({
       <button
         type="submit"
         disabled={!canSubmit}
-        className="inline-flex h-8 items-center rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity disabled:opacity-40"
+        className="inline-flex h-8 items-center gap-2 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity disabled:opacity-40"
       >
-        {promptCtaLabel}
+        <span>{promptCtaLabel}</span>
+        <span className="flex size-5 items-center justify-center rounded-md border border-primary-foreground/20 text-primary-foreground/85">
+          <ArrowMoveDownLeft className="size-3" />
+        </span>
       </button>
     </>
   ) : null
@@ -425,6 +445,10 @@ export function ChatInput({
         }
 
         onSubmit(serializePromptResponse(prompt, promptAnswers, promptCustomAnswers))
+        setDismissedPromptId(prompt.id)
+        setCurrentPromptQuestionIndex(0)
+        setPromptAnswers({})
+        setPromptCustomAnswers({})
         return
       }
 
@@ -655,7 +679,7 @@ export function ChatInput({
                 onCompositionEnd={() => setIsImeComposing(false)}
                 placeholder="Ask follow-up changes"
                 disabled={isStreaming}
-                className="w-full resize-none bg-transparent text-[15px] leading-5 text-foreground placeholder:text-muted-foreground/75 outline-none [scrollbar-color:var(--color-muted-foreground)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/30 [&::-webkit-scrollbar-track]:bg-transparent"
+                className="w-full resize-none bg-transparent text-[14px] leading-5 text-foreground placeholder:text-muted-foreground/75 outline-none [scrollbar-color:var(--color-muted-foreground)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/30 [&::-webkit-scrollbar-track]:bg-transparent"
                 style={{ minHeight: COMPOSER_TEXTAREA_MIN_HEIGHT }}
               />
 
@@ -692,7 +716,7 @@ export function ChatInput({
           <div className="mt-4 flex items-center gap-2">
             {selectorsRow && selectedHarness && (
               <DropdownMenu>
-                <DropdownMenuTrigger className="inline-flex h-8 items-center gap-2 px-1 text-[13px] text-muted-foreground transition-colors hover:text-foreground cursor-pointer">
+                <DropdownMenuTrigger className="inline-flex h-8 items-center gap-2 px-1 text-[12.5px] text-muted-foreground transition-colors hover:text-foreground cursor-pointer">
                   <span>{selectedHarness.label}</span>
                   <CaretDown className="size-3 text-muted-foreground" />
                 </DropdownMenuTrigger>
@@ -719,7 +743,7 @@ export function ChatInput({
             )}
 
             {selectorsRow && <DropdownMenu>
-              <DropdownMenuTrigger className="inline-flex h-8 items-center gap-2 px-1 text-[13px] text-muted-foreground transition-colors hover:text-foreground cursor-pointer">
+              <DropdownMenuTrigger className="inline-flex h-8 items-center gap-2 px-1 text-[12.5px] text-muted-foreground transition-colors hover:text-foreground cursor-pointer">
                 <span>{selectedModel}</span>
                 <CaretDown className="size-3 text-muted-foreground" />
               </DropdownMenuTrigger>
@@ -738,7 +762,7 @@ export function ChatInput({
             </DropdownMenu>}
 
             {selectorsRow && <DropdownMenu>
-              <DropdownMenuTrigger className="inline-flex h-8 items-center gap-2 px-1 text-[13px] text-muted-foreground transition-colors hover:text-foreground cursor-pointer">
+              <DropdownMenuTrigger className="inline-flex h-8 items-center gap-2 px-1 text-[12.5px] text-muted-foreground transition-colors hover:text-foreground cursor-pointer">
                 <span>{reasoningEffort}</span>
                 <CaretDown className="size-3 text-muted-foreground" />
               </DropdownMenuTrigger>

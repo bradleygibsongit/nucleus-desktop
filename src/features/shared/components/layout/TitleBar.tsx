@@ -15,8 +15,31 @@ export function TitleBar({ activeView = "chat", onOpenChat }: TitleBarProps) {
   const { isCollapsed, toggle: toggleLeft } = useSidebar()
   const { toggle: toggleRight } = useRightSidebar()
   const { projects, selectedProjectId, selectProject } = useProjectStore()
-  const { openDraftSession } = useChatStore()
+  const { openDraftSession, getProjectChat } = useChatStore()
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null
+  const projectChat = selectedProjectId ? getProjectChat(selectedProjectId) : null
+  const activeSession =
+    projectChat?.sessions.find((session) => session.id === projectChat.activeSessionId) ?? null
+
+  const formatSessionTitle = () => {
+    if (!activeSession) {
+      return "New thread"
+    }
+
+    if (activeSession.title?.trim()) {
+      return activeSession.title
+    }
+
+    const date = new Date(activeSession.createdAt)
+    return date.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+  }
+
+  const activeSessionTitle = formatSessionTitle()
 
   const handleCreateThread = async () => {
     if (!selectedProject) {
@@ -49,17 +72,29 @@ export function TitleBar({ activeView = "chat", onOpenChat }: TitleBarProps) {
           <Sidebar size={14} />
         </Button>
         {isCollapsed && activeView === "chat" ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => void handleCreateThread()}
-            disabled={!selectedProject}
-            className="text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
-            aria-label="New thread"
-          >
-            <Plus size={14} />
-          </Button>
+          <div className="flex min-w-0 items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => void handleCreateThread()}
+              disabled={!selectedProject}
+              className="shrink-0 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+              aria-label="New thread"
+            >
+              <Plus size={14} />
+            </Button>
+            <div className="flex min-w-0 items-baseline gap-3">
+              <span className="max-w-[240px] truncate text-[12px] font-medium text-foreground">
+                {activeSessionTitle}
+              </span>
+              {selectedProject?.name && (
+                <span className="truncate text-[12px] text-muted-foreground">
+                  {selectedProject.name}
+                </span>
+              )}
+            </div>
+          </div>
         ) : null}
       </div>
 
@@ -77,17 +112,29 @@ export function TitleBar({ activeView = "chat", onOpenChat }: TitleBarProps) {
           <Sidebar size={14} />
         </Button>
         {isCollapsed && activeView === "chat" ? (
-          <Button
-            type="button"
-            onClick={() => void handleCreateThread()}
-            variant="ghost"
-            size="icon-sm"
-            disabled={!selectedProject}
-            className="text-muted-foreground hover:bg-sidebar-accent hover:text-foreground md:hidden"
-            aria-label="New thread"
-          >
-            <Plus size={14} />
-          </Button>
+          <div className="flex min-w-0 items-center gap-2 md:hidden">
+            <Button
+              type="button"
+              onClick={() => void handleCreateThread()}
+              variant="ghost"
+              size="icon-sm"
+              disabled={!selectedProject}
+              className="shrink-0 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+              aria-label="New thread"
+            >
+              <Plus size={14} />
+            </Button>
+            <div className="flex min-w-0 items-baseline gap-2">
+              <span className="max-w-[160px] truncate text-[12px] font-medium text-foreground">
+                {activeSessionTitle}
+              </span>
+              {selectedProject?.name && (
+                <span className="truncate text-[12px] text-muted-foreground">
+                  {selectedProject.name}
+                </span>
+              )}
+            </div>
+          </div>
         ) : null}
         {activeView === "chat" ? (
           <Button

@@ -188,6 +188,30 @@ function remapMessagesToSession(
   }))
 }
 
+function preserveExistingMessageMetadata(
+  previousMessages: MessageWithParts[],
+  nextMessages: MessageWithParts[]
+): MessageWithParts[] {
+  const previousMessageById = new Map(
+    previousMessages.map((message) => [message.info.id, message] as const)
+  )
+
+  return nextMessages.map((message) => {
+    const previousMessage = previousMessageById.get(message.info.id)
+    if (!previousMessage) {
+      return message
+    }
+
+    return {
+      ...message,
+      info: {
+        ...message.info,
+        createdAt: previousMessage.info.createdAt,
+      },
+    }
+  })
+}
+
 function shouldRecreateRemoteSession(session: RuntimeSession, error: unknown): boolean {
   if (session.harnessId !== "codex") {
     return false
@@ -562,12 +586,34 @@ export const useChatStore = create<ChatState>((set, get) => ({
         projectPath: projectChat.projectPath,
         text: text.trim(),
         agent,
+        onUpdate: (partialResult) => {
+          const streamedMessages = partialResult.messages ?? []
+
+          set((state) => {
+            const previousMessages = state.messagesBySession[sessionId] ?? nextMessages
+            const sessionMessages = preserveExistingMessageMetadata(previousMessages, [
+              ...nextMessages,
+              ...streamedMessages,
+            ])
+
+            return {
+              messagesBySession: {
+                ...state.messagesBySession,
+                [sessionId]: sessionMessages,
+              },
+              currentMessages:
+                state.currentSessionId === sessionId ? sessionMessages : state.currentMessages,
+              status: "streaming",
+              error: null,
+            }
+          })
+        },
       })
 
-      const sessionMessages = [
-        ...(get().messagesBySession[sessionId] ?? nextMessages),
-        ...(result.messages ?? []),
-      ]
+      const sessionMessages = preserveExistingMessageMetadata(
+        get().messagesBySession[sessionId] ?? nextMessages,
+        [...nextMessages, ...(result.messages ?? [])]
+      )
 
       set({
         messagesBySession: {
@@ -625,12 +671,37 @@ export const useChatStore = create<ChatState>((set, get) => ({
             projectPath: migratedProjectChat.projectPath,
             text: text.trim(),
             agent,
+            onUpdate: (partialResult) => {
+              const streamedMessages = partialResult.messages ?? []
+
+              set((state) => {
+                const previousMessages =
+                  state.messagesBySession[migratedSession.id] ?? migratedMessages
+                const sessionMessages = preserveExistingMessageMetadata(previousMessages, [
+                  ...migratedMessages,
+                  ...streamedMessages,
+                ])
+
+                return {
+                  messagesBySession: {
+                    ...state.messagesBySession,
+                    [migratedSession.id]: sessionMessages,
+                  },
+                  currentMessages:
+                    state.currentSessionId === migratedSession.id
+                      ? sessionMessages
+                      : state.currentMessages,
+                  status: "streaming",
+                  error: null,
+                }
+              })
+            },
           })
 
-          const retriedMessages = [
-            ...(get().messagesBySession[migratedSession.id] ?? migratedMessages),
-            ...(retriedResult.messages ?? []),
-          ]
+          const retriedMessages = preserveExistingMessageMetadata(
+            get().messagesBySession[migratedSession.id] ?? migratedMessages,
+            [...migratedMessages, ...(retriedResult.messages ?? [])]
+          )
 
           set({
             messagesBySession: {

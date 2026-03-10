@@ -1,10 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react"
-import { AnimatePresence, motion, Reorder } from "framer-motion"
 import {
-  CaretRight,
+  CaretDown,
+  CaretUp,
   CircleDashed,
-  Folder,
-  FolderOpen,
   FolderSimple,
   FolderSimplePlus,
   GearSix,
@@ -25,9 +23,10 @@ import {
 } from "@/features/shared/components/ui/alert-dialog"
 import {
   DropdownMenu,
-  DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from "@/features/shared/components/ui/dropdown-menu"
 import {
   Tooltip,
@@ -36,6 +35,7 @@ import {
 } from "@/features/shared/components/ui/tooltip"
 import { QuickStartModal } from "@/features/workspace/components/modals"
 import { useProjectStore } from "@/features/workspace/store"
+import { getAgentAvatarUrl } from "@/features/workspace/utils/avatar"
 import { openFolderPicker } from "@/features/workspace/utils/folderDialog"
 import { useChatStore } from "@/features/chat/store"
 import { useSidebar } from "./useSidebar"
@@ -66,11 +66,6 @@ export function LeftSidebar({
   const [quickStartOpen, setQuickStartOpen] = useState(false)
   const [projectToRemove, setProjectToRemove] = useState<{ id: string; name: string } | null>(null)
   const [confirmArchiveSessionId, setConfirmArchiveSessionId] = useState<string | null>(null)
-  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
-  const [hoveredProjectId, setHoveredProjectId] = useState<string | null>(null)
-  const [orderedProjects, setOrderedProjects] = useState<Project[]>([])
-  const restoredSessionsRef = useRef<Set<string>>(new Set())
-  const orderedProjectsRef = useRef<Project[]>([])
   const { isCollapsed, width, setWidth } = useSidebar()
   const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const {
@@ -80,17 +75,16 @@ export function LeftSidebar({
     loadProjects,
     addProject,
     removeProject,
-    setProjectOrder,
     selectProject,
   } = useProjectStore()
 
   const {
     getProjectChat,
-    openDraftSession,
     selectSession,
     archiveSession,
     initialize: initializeChat,
     loadSessionsForProject,
+    openDraftSession,
     currentSessionId,
     status,
   } = useChatStore()
@@ -101,40 +95,31 @@ export function LeftSidebar({
     initializeChat()
   }, [loadProjects, initializeChat])
 
-  // Auto-expand selected project
+  // Sync project paths and restore the persisted active session for the selected workspace
   useEffect(() => {
-    if (selectedProjectId) {
-      setExpandedProjects((prev) => new Set([...prev, selectedProjectId]))
+    if (!selectedProjectId) {
+      return
     }
-  }, [selectedProjectId])
 
-  useEffect(() => {
-    setOrderedProjects(projects)
-    orderedProjectsRef.current = projects
-  }, [projects])
-
-  // Sync project paths and restore the persisted active session when a project is expanded
-  useEffect(() => {
-    for (const projectId of expandedProjects) {
-      const project = projects.find((p) => p.id === projectId)
-      const projectChat = getProjectChat(projectId)
-      
-      if (project?.path) {
-        if (projectChat.sessions.length === 0) {
-          // Fetch sessions from server if not already loaded
-          loadSessionsForProject(projectId, project.path)
-        } else if (
-          projectChat.activeSessionId && 
-          projectId === selectedProjectId &&
-          !restoredSessionsRef.current.has(projectId)
-        ) {
-          // Sessions already loaded from persistence, restore the active session's messages
-          restoredSessionsRef.current.add(projectId)
-          selectSession(projectId, projectChat.activeSessionId)
-        }
-      }
+    const project = projects.find((candidate) => candidate.id === selectedProjectId)
+    if (!project?.path) {
+      return
     }
-  }, [expandedProjects, projects, getProjectChat, loadSessionsForProject, selectSession, selectedProjectId])
+
+    const projectChat = getProjectChat(selectedProjectId)
+    void loadSessionsForProject(selectedProjectId, project.path)
+
+    if (projectChat.activeSessionId && currentSessionId !== projectChat.activeSessionId) {
+      void selectSession(selectedProjectId, projectChat.activeSessionId)
+    }
+  }, [
+    currentSessionId,
+    getProjectChat,
+    loadSessionsForProject,
+    projects,
+    selectSession,
+    selectedProjectId,
+  ])
 
   const handleOpenProject = async () => {
     const folderPath = await openFolderPicker()
@@ -153,18 +138,6 @@ export function LeftSidebar({
       await removeProject(projectToRemove.id)
       setProjectToRemove(null)
     }
-  }
-
-  const toggleProjectExpanded = (projectId: string) => {
-    setExpandedProjects((prev) => {
-      const next = new Set(prev)
-      if (next.has(projectId)) {
-        next.delete(projectId)
-      } else {
-        next.add(projectId)
-      }
-      return next
-    })
   }
 
   const handleSelectSession = async (projectId: string, sessionId: string) => {
@@ -192,25 +165,6 @@ export function LeftSidebar({
     setConfirmArchiveSessionId(sessionId)
   }
 
-  const handleProjectReorder = (nextProjects: Project[]) => {
-    setOrderedProjects(nextProjects)
-    orderedProjectsRef.current = nextProjects
-  }
-
-  const handleProjectDragEnd = async () => {
-    const nextProjects = orderedProjectsRef.current
-    if (nextProjects.length !== projects.length) {
-      return
-    }
-
-    const didChange = nextProjects.some((project, index) => project.id !== projects[index]?.id)
-    if (!didChange) {
-      return
-    }
-
-    await setProjectOrder(nextProjects)
-  }
-
   const formatSessionTitle = (session: Session | null | undefined): string => {
     if (!session) return "New Session"
     if (session.title) return session.title
@@ -226,8 +180,11 @@ export function LeftSidebar({
   const BackIcon = SETTINGS_BACK_ICON
   const sidebarWidth = isCollapsed ? 48 : width
   const sidebarTopPadding = isCollapsed ? 12 : 16
-  const selectedProject =
-    projects.find((project) => project.id === selectedProjectId) ?? orderedProjects[0] ?? null
+  const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null
+  const selectedProjectChat = selectedProject ? getProjectChat(selectedProject.id) : null
+  const archivedSessionIds = new Set(selectedProjectChat?.archivedSessionIds ?? [])
+  const selectedProjectSessions =
+    selectedProjectChat?.sessions.filter((session) => !archivedSessionIds.has(session.id)) ?? []
   const expandedRowClass =
     "flex h-8 w-full items-center gap-2 rounded-lg px-1.5 text-left text-[13px] font-medium"
   const expandedRowIdleClass =
@@ -307,12 +264,26 @@ export function LeftSidebar({
     setConfirmArchiveSessionId(null)
     onOpenChat?.()
     await selectProject(selectedProject.id)
-    setExpandedProjects((prev) => new Set(prev).add(selectedProject.id))
     await openDraftSession(selectedProject.id, selectedProject.path)
   }
 
   const handleOpenAutomations = () => {
     onOpenChat?.()
+  }
+
+  const handleSelectWorkspace = async (project: Project) => {
+    setConfirmArchiveSessionId(null)
+    onOpenChat?.()
+    await selectProject(project.id)
+    await loadSessionsForProject(project.id, project.path)
+
+    const projectChat = getProjectChat(project.id)
+    if (projectChat.activeSessionId) {
+      await selectSession(project.id, projectChat.activeSessionId)
+      return
+    }
+
+    await openDraftSession(project.id, project.path)
   }
 
   if (isCollapsed) {
@@ -470,6 +441,25 @@ export function LeftSidebar({
 
               <Tooltip>
                 <TooltipTrigger asChild>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger className="flex h-9 w-full items-center justify-center rounded-xl text-sidebar-foreground/68 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground cursor-pointer">
+                      <FolderSimplePlus size={16} />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent side="right" align="end" className="w-48">
+                      <DropdownMenuItem onClick={handleOpenProject}>
+                        <span>Open workspace</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setQuickStartOpen(true)}>
+                        <span>Quick start</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TooltipTrigger>
+                <TooltipContent side="right">Add workspace</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
                   <button
                     type="button"
                     onClick={handleOpenAutomations}
@@ -483,7 +473,84 @@ export function LeftSidebar({
               </Tooltip>
             </div>
           ) : (
-            <div className="mb-3 space-y-0.5">
+            <div className="mb-3 space-y-2">
+              {selectedProject ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    className={cn(
+                      "flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left",
+                      "text-sidebar-foreground/76 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground",
+                    )}
+                  >
+                    <img
+                      src={getAgentAvatarUrl(selectedProject.avatarSeed)}
+                      alt=""
+                      className="size-8 shrink-0 rounded-[28%] border border-sidebar-border/55 bg-background/10 object-cover"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span
+                        className="block truncate text-[19px] leading-none tracking-[0.06em]"
+                        style={{ fontFamily: "var(--font-pixel)" }}
+                      >
+                        {selectedProject.name}
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 flex-col items-center justify-center text-sidebar-foreground/34">
+                      <CaretUp size={10} />
+                      <CaretDown size={10} className="-mt-0.5" />
+                    </span>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent side="bottom" align="start" className="w-[260px]">
+                    {projects.map((project) => {
+                      const isActive = project.id === selectedProjectId
+
+                      return (
+                        <DropdownMenuItem
+                          key={project.id}
+                          onClick={() => void handleSelectWorkspace(project)}
+                          className="flex items-center gap-3 px-2 py-2.5"
+                        >
+                          <img
+                            src={getAgentAvatarUrl(project.avatarSeed)}
+                            alt=""
+                            className="size-7 shrink-0 rounded-[28%] border border-border/60 bg-background/10 object-cover"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span
+                              className="block truncate text-[14px] leading-none"
+                              style={{ fontFamily: "var(--font-pixel)" }}
+                            >
+                              {project.name}
+                            </span>
+                          </span>
+                          {isActive ? (
+                            <span className="text-[11px] text-muted-foreground">Current</span>
+                          ) : null}
+                        </DropdownMenuItem>
+                      )
+                    })}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleOpenProject}>
+                      <FolderSimplePlus size={16} />
+                      <span>Open workspace</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setQuickStartOpen(true)}>
+                      <PlusSquare size={16} />
+                      <span>Quick start</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleOpenProject}
+                  className={cn(expandedRowClass, expandedRowIdleClass)}
+                >
+                  <FolderSimplePlus size={15} className="shrink-0" />
+                  <span className="truncate">Open workspace</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => void handleCreateThreadFromSelectedProject()}
@@ -510,83 +577,31 @@ export function LeftSidebar({
             </div>
           )}
 
-          {isCollapsed ? (
-            <div className="flex justify-center px-1 pb-2">
-              <DropdownMenu>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <DropdownMenuTrigger className="flex items-center justify-center rounded-md p-2 text-sidebar-foreground/60 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground cursor-pointer">
-                      <FolderSimplePlus size={18} />
-                    </DropdownMenuTrigger>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">Add project</TooltipContent>
-                </Tooltip>
-                <DropdownMenuContent side="right" align="end" className="w-48">
-                  <DropdownMenuItem onClick={handleOpenProject}>
-                    <FolderSimple size={16} />
-                    <span>Open project</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setQuickStartOpen(true)}>
-                    <PlusSquare size={16} />
-                    <span>Quick start</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          ) : (
-            <div className="flex items-center justify-between px-2.5 pb-0.5">
-              <span className="text-[13px] font-normal tracking-[0.04em] text-sidebar-foreground/58">
-                Threads
-              </span>
-              <DropdownMenu>
-                <Tooltip>
-                    <TooltipTrigger asChild>
-                    <DropdownMenuTrigger className="flex items-center justify-center rounded-xl p-2 text-sidebar-foreground/58 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground cursor-pointer">
-                      <FolderSimplePlus size={16} />
-                    </DropdownMenuTrigger>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">Add project</TooltipContent>
-                </Tooltip>
-                <DropdownMenuContent side="bottom" align="end" className="w-48">
-                  <DropdownMenuItem onClick={handleOpenProject}>
-                    <FolderSimple size={16} />
-                    <span>Open project</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setQuickStartOpen(true)}>
-                    <PlusSquare size={16} />
-                    <span>Quick start</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          )}
-
           {projects.length === 0 ? (
             !isCollapsed && (
               <div className="px-2.5 py-4 text-sm text-muted-foreground text-center">
-                No projects yet.
+                No workspaces yet.
                 <br />
                 <button
                   type="button"
                   onClick={handleOpenProject}
                   className="text-primary hover:underline mt-1"
                 >
-                  Add a project
+                  Add a workspace
                 </button>
               </div>
             )
           ) : isCollapsed ? (
             <div className="space-y-0.5">
-              {orderedProjects.map((project) => {
+              {projects.map((project) => {
                 const isSelected = selectedProjectId === project.id
-                const isExpanded = expandedProjects.has(project.id)
 
                 return (
                   <Tooltip key={project.id}>
                     <TooltipTrigger asChild>
                       <button
                         type="button"
-                        onClick={() => selectProject(project.id)}
+                        onClick={() => void handleSelectWorkspace(project)}
                         className={cn(
                           "w-full flex items-center justify-center p-1.5 rounded-lg",
                           isSelected
@@ -594,7 +609,11 @@ export function LeftSidebar({
                             : "hover:bg-[var(--sidebar-item-hover)]"
                         )}
                       >
-                        {isExpanded ? <FolderOpen size={18} /> : <Folder size={18} />}
+                        <img
+                          src={getAgentAvatarUrl(project.avatarSeed)}
+                          alt=""
+                          className="size-6 rounded-[28%] object-cover"
+                        />
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="right">{project.name}</TooltipContent>
@@ -603,227 +622,101 @@ export function LeftSidebar({
               })}
             </div>
           ) : (
-            <Reorder.Group
-              axis="y"
-              values={orderedProjects}
-              onReorder={handleProjectReorder}
-              className="space-y-0.5"
-            >
-              {orderedProjects.map((project) => {
-                const isSelected = selectedProjectId === project.id
-                const isExpanded = expandedProjects.has(project.id)
-                const isHovered = hoveredProjectId === project.id
-                const projectChat = getProjectChat(project.id)
-                const archivedIds = new Set(projectChat.archivedSessionIds ?? [])
-                const sessions = projectChat.sessions.filter(s => !archivedIds.has(s.id))
-                const activeSessionId = projectChat.activeSessionId
+            <div className="space-y-4">
+              <section className="space-y-1">
+                <div className="flex items-center justify-between px-2.5 pb-0.5">
+                  <span className="text-[12px] font-medium uppercase tracking-[0.08em] text-sidebar-foreground/52">
+                    Threads
+                  </span>
+                </div>
 
-                return (
-                  <Reorder.Item
-                    key={project.id}
-                    value={project}
-                    layout="position"
-                    onDragEnd={() => void handleProjectDragEnd()}
-                    className="list-none"
-                    whileDrag={{
-                      scale: 1.01,
-                      boxShadow: "0 12px 30px rgba(0, 0, 0, 0.16)",
-                    }}
-                  >
-                    {/* Project row */}
-                    <motion.div
-                      onHoverStart={() => setHoveredProjectId(project.id)}
-                      onHoverEnd={() => setHoveredProjectId((current) => (current === project.id ? null : current))}
-                      className={cn(
-                        "group",
-                        expandedRowClass,
-                        expandedRowIdleClass,
-                      )}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => toggleProjectExpanded(project.id)}
-                        className="relative flex h-[18px] w-[18px] shrink-0 items-center justify-center text-sidebar-foreground/55 hover:text-sidebar-foreground/80"
-                      >
-                        <motion.span
-                          className="absolute inset-0 flex items-center justify-center"
-                          animate={{ opacity: isHovered ? 0 : 1, scale: isHovered ? 0.88 : 1 }}
-                          transition={{ duration: 0 }}
-                        >
-                          {isExpanded ? <FolderOpen size={15} /> : <Folder size={15} />}
-                        </motion.span>
-                        <motion.span
-                          className="absolute inset-0 flex items-center justify-center"
-                          animate={{
-                            opacity: isHovered ? 1 : 0,
-                            rotate: isExpanded ? 90 : 0,
-                            scale: isHovered ? 1 : 0.88,
-                          }}
-                          transition={{ duration: 0 }}
-                        >
-                          <CaretRight size={14} />
-                        </motion.span>
-                      </button>
+                {selectedProject ? (
+                  <div className="rounded-xl border border-sidebar-border/55 bg-background/[0.02] p-1">
+                    {selectedProjectSessions.length === 0 ? (
+                      <div className="px-2.5 py-3 text-[12px] text-sidebar-foreground/50">
+                        No threads in this workspace yet.
+                      </div>
+                    ) : (
+                      selectedProjectSessions
+                        .filter(
+                          (session): session is Session =>
+                            session != null && typeof session.id === "string"
+                        )
+                        .map((session) => {
+                          const isActiveSession = selectedProjectChat?.activeSessionId === session.id
+                          const isRunningSession =
+                            session.id === currentSessionId &&
+                            (status === "streaming" || status === "connecting")
+                          const isConfirmingArchive = confirmArchiveSessionId === session.id
 
-                      <button
-                        type="button"
-                        onClick={() => toggleProjectExpanded(project.id)}
-                        className="flex h-full min-w-0 flex-1 items-center gap-2 text-left"
-                      >
-                        <span className="truncate text-[13px] font-medium leading-none">
-                          {project.name}
-                        </span>
-                      </button>
+                          return (
+                            <div
+                              key={session.id}
+                              onMouseLeave={() => {
+                                if (confirmArchiveSessionId === session.id) {
+                                  setConfirmArchiveSessionId(null)
+                                }
+                              }}
+                              className={cn(
+                                "group/session flex h-9 items-center gap-2 rounded-lg px-2.5",
+                                isActiveSession
+                                  ? "bg-[var(--sidebar-item-active)] text-sidebar-foreground"
+                                  : "text-sidebar-foreground/68 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground",
+                              )}
+                            >
+                              <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                                {isRunningSession ? (
+                                  <span className="size-3 rounded-full border border-sidebar-foreground/18 border-t-sidebar-foreground/62 animate-spin" />
+                                ) : (
+                                  <span className="size-1.5 rounded-full bg-sidebar-foreground/28" />
+                                )}
+                              </span>
 
-                      {/* Remove button */}
-                      <button
-                        type="button"
-                        onClick={(e) => handleRemoveClick(e, project)}
-                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-destructive/20"
-                        aria-label={`Remove ${project.name}`}
-                        >
-                          <X
-                            size={14}
-                            className="text-muted-foreground hover:text-destructive"
-                          />
-                        </button>
-                    </motion.div>
+                              <button
+                                type="button"
+                                onClick={() => handleSelectSession(selectedProject.id, session.id)}
+                                className="min-w-0 flex-1 text-left"
+                              >
+                                <span className="block truncate text-[13px] font-medium leading-none">
+                                  {formatSessionTitle(session)}
+                                </span>
+                              </button>
 
-                    {/* Sessions list (collapsible) */}
-                    <AnimatePresence initial={false}>
-                      {isExpanded && (
-                        <motion.div
-                          key={`${project.id}-sessions`}
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{
-                            height: "auto",
-                            opacity: 1,
-                            transition: {
-                              height: { duration: 0.24, ease: [0.22, 1, 0.36, 1] },
-                              opacity: { duration: 0.16, delay: 0.04 },
-                              staggerChildren: 0.028,
-                              delayChildren: 0.02,
-                            },
-                          }}
-                          exit={{
-                            height: 0,
-                            opacity: 0,
-                            transition: {
-                              height: { duration: 0.18, ease: [0.4, 0, 1, 1] },
-                              opacity: { duration: 0.12 },
-                              staggerChildren: 0.018,
-                              staggerDirection: -1,
-                            },
-                          }}
-                          className="mt-1 space-y-0.5 overflow-hidden"
-                        >
-                        {sessions.length === 0 ? (
-                        <motion.div
-                          initial={{ opacity: 0, y: -4 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -3 }}
-                          transition={{ duration: 0.16 }}
-                          className="pl-10 pr-3 py-2.5 text-[12px] text-muted-foreground/85"
-                        >
-                            No threads
-                          </motion.div>
-                        ) : (
-                          sessions
-                            .filter((session): session is Session => session != null && typeof session.id === "string")
-                            .map((session, index) => {
-                              const isActiveSession = activeSessionId === session.id && isSelected
-                              const isRunningSession =
-                                session.id === currentSessionId &&
-                                (status === "streaming" || status === "connecting")
-                              const isConfirmingArchive = confirmArchiveSessionId === session.id
-                              return (
-                                <motion.div
-                                  key={session.id}
-                                  initial={{ opacity: 0, y: -6 }}
-                                  animate={{ opacity: 1, y: 0 }}
-                                  exit={{ opacity: 0, y: -4 }}
-                                  transition={{
-                                    duration: 0.18,
-                                    delay: index * 0.015,
-                                    ease: [0.22, 1, 0.36, 1],
-                                  }}
-                                  onHoverEnd={() => {
-                                    if (confirmArchiveSessionId === session.id) {
-                                      setConfirmArchiveSessionId(null)
-                                    }
-                                  }}
-                                  className={cn(
-                                    "group/session h-8 flex items-center gap-2 rounded-md px-1.5",
-                                    isActiveSession
-                                      ? "bg-[var(--sidebar-item-active)] text-sidebar-foreground"
-                                      : expandedRowIdleClass
-                                  )}
+                              {isConfirmingArchive ? (
+                                <button
+                                  type="button"
+                                  onClick={(event) =>
+                                    void handleArchiveIntent(event, selectedProject.id, session.id)
+                                  }
+                                  className="rounded-full border border-border/70 bg-muted/60 px-2 py-0.5 text-[11px] font-medium tracking-tight text-destructive hover:bg-muted/80"
+                                  aria-label="Confirm archive session"
                                 >
-                                  <div className="flex h-[18px] w-[18px] shrink-0 items-center justify-center">
-                                    <AnimatePresence mode="wait" initial={false}>
-                                      {isRunningSession ? (
-                                        <motion.span
-                                          key="spinner"
-                                          initial={{ opacity: 0, scale: 0.88 }}
-                                          animate={{ opacity: 1, scale: 1 }}
-                                          exit={{ opacity: 0, scale: 0.88 }}
-                                          transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
-                                          className="flex h-[18px] w-[18px] items-center justify-center"
-                                        >
-                                          <motion.span
-                                            animate={{ rotate: 360 }}
-                                            transition={{ duration: 0.95, ease: "linear", repeat: Infinity }}
-                                            className="flex items-center justify-center"
-                                          >
-                                            <span className="size-3.5 rounded-full border border-sidebar-foreground/18 border-t-sidebar-foreground/62" />
-                                          </motion.span>
-                                        </motion.span>
-                                      ) : (
-                                        <span className="h-[18px] w-[18px]" />
-                                      )}
-                                    </AnimatePresence>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleSelectSession(project.id, session.id)}
-                                    className="h-full min-w-0 flex-1 text-left"
-                                  >
-                                    <span className="block truncate text-[13px] font-medium">
-                                      {formatSessionTitle(session)}
-                                    </span>
-                                  </button>
-                                  <div className="flex shrink-0 items-center justify-end">
-                                    {isConfirmingArchive ? (
-                                      <button
-                                        type="button"
-                                        onClick={(e) => void handleArchiveIntent(e, project.id, session.id)}
-                                        className="rounded-full border border-border/70 bg-muted/60 px-2 py-0.5 text-[11px] font-medium tracking-tight text-destructive hover:bg-muted/80"
-                                        aria-label="Confirm archive session"
-                                      >
-                                        Confirm
-                                      </button>
-                                    ) : (
-                                      <button
-                                        type="button"
-                                        onClick={(e) => void handleArchiveIntent(e, project.id, session.id)}
-                                        className="opacity-0 group-hover/session:opacity-100 rounded p-1 hover:bg-[var(--sidebar-item-hover)]"
-                                        aria-label="Archive session"
-                                      >
-                                        <Archive size={14} className="text-muted-foreground" />
-                                      </button>
-                                    )}
-                                  </div>
-                                </motion.div>
-                              )
-                            })
-                          )}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </Reorder.Item>
-                )
-              })}
-            </Reorder.Group>
+                                  Confirm
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={(event) =>
+                                    void handleArchiveIntent(event, selectedProject.id, session.id)
+                                  }
+                                  className="rounded p-1 opacity-0 transition-opacity hover:bg-[var(--sidebar-item-hover)] group-hover/session:opacity-100"
+                                  aria-label="Archive session"
+                                >
+                                  <Archive size={14} className="text-muted-foreground" />
+                                </button>
+                              )}
+                            </div>
+                          )
+                        })
+                    )}
+                  </div>
+                ) : (
+                  <div className="px-2.5 py-3 text-[12px] text-sidebar-foreground/50">
+                    Select a workspace to see its threads.
+                  </div>
+                )}
+              </section>
+            </div>
           )}
         </div>
       </div>
