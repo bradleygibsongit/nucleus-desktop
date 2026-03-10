@@ -8,6 +8,7 @@ import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
   ArrowUp01Icon,
+  ArrowUp02Icon,
   Attachment01Icon,
   BrainIcon,
   BubbleChatIcon,
@@ -92,6 +93,7 @@ export const Archive = createIcon("Archive", Archive03Icon)
 export const ArrowDown = createIcon("ArrowDown", ArrowDown01Icon)
 export const ArrowElbowDownLeft = createIcon("ArrowElbowDownLeft", ArrowDownLeft01Icon)
 export const ArrowUp = createIcon("ArrowUp", ArrowUp01Icon)
+export const ArrowUp02 = createIcon("ArrowUp02", ArrowUp02Icon)
 export const BracketsCurly = createIcon("BracketsCurly", CodeSquareIcon)
 export const Brain = createIcon("Brain", BrainIcon)
 export const CaretDown = createIcon("CaretDown", ArrowDown01Icon)

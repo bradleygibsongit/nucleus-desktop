@@ -38,6 +38,7 @@ export const Message = ({ className, from, ...props }: MessageProps) => (
   <div
     className={cn(
       "group flex w-full flex-col gap-4",
+      from === "user" ? "items-end" : "items-stretch",
       from === "user" ? "is-user" : "is-assistant",
       className
     )}
@@ -55,7 +56,7 @@ export const MessageContent = ({
   <div
     className={cn(
       "flex w-full min-w-0 flex-col gap-4 overflow-hidden text-sm text-foreground",
-      "group-[.is-user]:bg-blue-500/10 group-[.is-user]:border-l-4 group-[.is-user]:border-l-blue-500 group-[.is-user]:px-3 group-[.is-user]:py-2",
+      "group-[.is-user]:w-auto group-[.is-user]:max-w-[min(42rem,78%)] group-[.is-user]:self-end group-[.is-user]:gap-0 group-[.is-user]:rounded-[18px] group-[.is-user]:bg-[#262626] group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-[15px] group-[.is-user]:leading-6 group-[.is-user]:text-white",
       className
     )}
     {...props}
@@ -343,7 +344,7 @@ export const MessageUserContent = memo(
     <Streamdown
       mode="static"
       className={cn(
-        "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+        "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&>*]:leading-6 [&_p+p]:mt-2",
         className
       )}
       {...props}
