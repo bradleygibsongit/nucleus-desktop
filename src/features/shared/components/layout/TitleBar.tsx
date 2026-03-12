@@ -1,4 +1,4 @@
-import { Plus, Sidebar } from "@/components/icons"
+import { PencilSimple, Sidebar } from "@/components/icons"
 import { useSidebar } from "./useSidebar"
 import { useRightSidebar } from "./useRightSidebar"
 import { Button } from "@/features/shared/components/ui/button"
@@ -23,20 +23,14 @@ export function TitleBar({ activeView = "chat", onOpenChat }: TitleBarProps) {
 
   const formatSessionTitle = () => {
     if (!activeSession) {
-      return "New thread"
+      return ""
     }
 
     if (activeSession.title?.trim()) {
       return activeSession.title
     }
 
-    const date = new Date(activeSession.createdAt)
-    return date.toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
+    return ""
   }
 
   const activeSessionTitle = formatSessionTitle()
@@ -82,12 +76,14 @@ export function TitleBar({ activeView = "chat", onOpenChat }: TitleBarProps) {
               className="shrink-0 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
               aria-label="New thread"
             >
-              <Plus size={14} />
+              <PencilSimple size={14} />
             </Button>
             <div className="flex min-w-0 items-baseline gap-3">
-              <span className="max-w-[240px] truncate text-[12px] font-medium text-foreground">
-                {activeSessionTitle}
-              </span>
+              {activeSessionTitle ? (
+                <span className="max-w-[240px] truncate text-[12px] font-medium text-foreground">
+                  {activeSessionTitle}
+                </span>
+              ) : null}
               {selectedProject?.name && (
                 <span className="truncate text-[12px] text-muted-foreground">
                   {selectedProject.name}
@@ -122,12 +118,14 @@ export function TitleBar({ activeView = "chat", onOpenChat }: TitleBarProps) {
               className="shrink-0 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
               aria-label="New thread"
             >
-              <Plus size={14} />
+              <PencilSimple size={14} />
             </Button>
             <div className="flex min-w-0 items-baseline gap-2">
-              <span className="max-w-[160px] truncate text-[12px] font-medium text-foreground">
-                {activeSessionTitle}
-              </span>
+              {activeSessionTitle ? (
+                <span className="max-w-[160px] truncate text-[12px] font-medium text-foreground">
+                  {activeSessionTitle}
+                </span>
+              ) : null}
               {selectedProject?.name && (
                 <span className="truncate text-[12px] text-muted-foreground">
                   {selectedProject.name}

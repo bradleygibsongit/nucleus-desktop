@@ -123,15 +123,6 @@ function getSessionTitleFallback(session: RuntimeSession): string {
   return `Session ${session.id.slice(0, 8)}`
 }
 
-function deriveSessionTitle(text: string): string {
-  const normalized = text.replace(/\s+/g, " ").trim()
-  if (!normalized) {
-    return "New session"
-  }
-
-  return normalized.length > 48 ? `${normalized.slice(0, 45)}...` : normalized
-}
-
 function sortSessions(sessions: RuntimeSession[]): RuntimeSession[] {
   return [...sessions].sort((a, b) => b.updatedAt - a.updatedAt)
 }
@@ -556,8 +547,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const { projectId, projectChat, session } = sessionMatch
     const adapter = getHarnessAdapter(session.harnessId)
     const userMessage = createTextMessage(sessionId, "user", text.trim())
-    const nextSessionTitle = session.title ?? deriveSessionTitle(text)
-    const nextSession = touchSession(session, nextSessionTitle)
+    const nextSession = touchSession(session)
     const nextMessages = [...(get().messagesBySession[sessionId] ?? []), userMessage]
 
     set({

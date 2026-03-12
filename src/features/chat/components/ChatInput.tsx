@@ -1,5 +1,5 @@
 import { ArrowMoveDownLeft, ArrowUp02, Brain, CaretDown, CaretLeft, CaretRight, CheckCircle, Circle, Stop } from "@/components/icons"
-import { useState, useRef, useCallback, useMemo, useEffect, useLayoutEffect, type KeyboardEvent, type FormEvent } from "react"
+import { useState, useRef, useCallback, useMemo, useEffect, type KeyboardEvent as ReactKeyboardEvent, type FormEvent, type MutableRefObject } from "react"
 import { SlashCommandMenu } from "./SlashCommandMenu"
 import { AtMentionMenu, type FileItem } from "./AtMentionMenu"
 import { useCommands, type NormalizedCommand } from "../hooks/useCommands"
@@ -12,6 +12,28 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/features/shared/components/ui/dropdown-menu"
+import { LexicalComposer } from "@lexical/react/LexicalComposer"
+import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin"
+import { ContentEditable } from "@lexical/react/LexicalContentEditable"
+import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin"
+import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin"
+import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary"
+import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
+import {
+  $createLineBreakNode,
+  $createParagraphNode,
+  $createTextNode,
+  $getRoot,
+  $getSelection,
+  $isElementNode,
+  $isLineBreakNode,
+  $isRangeSelection,
+  $isTextNode,
+  type EditorState,
+  type LexicalEditor,
+  type LexicalNode,
+} from "lexical"
+import { $createSkillChipNode, $isSkillChipNode, SkillChipNode } from "./SkillChipNode"
 
 type ComposerPlanStepStatus = "pending" | "in_progress" | "completed"
 
@@ -128,10 +150,94 @@ function getModelsForHarness(harnessId: HarnessId | null): string[] {
   }
 }
 
+function appendTextNodesToParagraph(text: string, paragraph: ReturnType<typeof $createParagraphNode>) {
+  const segments = text.split("\n")
+
+  segments.forEach((segment, index) => {
+    if (segment.length > 0) {
+      paragraph.append($createTextNode(segment))
+    }
+
+    if (index < segments.length - 1) {
+      paragraph.append($createLineBreakNode())
+    }
+  })
+}
+
+function populateComposerFromSerializedValue(
+  value: string,
+  commandsByReference: Map<string, NormalizedCommand>
+) {
+  const root = $getRoot()
+  const paragraph = $createParagraphNode()
+  let lastIndex = 0
+
+  root.clear()
+
+  for (const match of value.matchAll(SKILL_REFERENCE_PATTERN)) {
+    const fullMatch = match[0]
+    const rawReference = match[1]
+    const matchIndex = match.index ?? -1
+    const referenceName = rawReference.toLowerCase()
+    const command = commandsByReference.get(referenceName)
+
+    if (matchIndex < 0) {
+      continue
+    }
+
+    const textBefore = value.slice(lastIndex, matchIndex)
+    if (textBefore.length > 0) {
+      appendTextNodesToParagraph(textBefore, paragraph)
+    }
+
+    if (command?.referenceName) {
+      paragraph.append($createSkillChipNode(command.referenceName, command.name))
+    } else {
+      appendTextNodesToParagraph(fullMatch, paragraph)
+    }
+
+    lastIndex = matchIndex + fullMatch.length
+  }
+
+  const remainingText = value.slice(lastIndex)
+  if (remainingText.length > 0) {
+    appendTextNodesToParagraph(remainingText, paragraph)
+  }
+
+  root.append(paragraph)
+  root.selectEnd()
+}
+
+function serializeComposerNode(node: LexicalNode): string {
+  if ($isSkillChipNode(node)) {
+    return `$${node.getReferenceName()}`
+  }
+
+  if ($isLineBreakNode(node)) {
+    return "\n"
+  }
+
+  if ($isTextNode(node)) {
+    return node.getTextContent()
+  }
+
+  if ($isElementNode(node)) {
+    return node.getChildren().map((child) => serializeComposerNode(child)).join("")
+  }
+
+  return ""
+}
+
+function serializeComposerState(): string {
+  return $getRoot()
+    .getChildren()
+    .map((child) => serializeComposerNode(child))
+    .join("\n")
+}
+
 const REASONING_EFFORTS = ["Low", "Medium", "High"] as const
-const COMPOSER_TEXTAREA_MIN_HEIGHT = 28
-const COMPOSER_TEXTAREA_MAX_HEIGHT = 268
 const PROMPT_RESPONSE_ROW_CLASS = "min-h-[46px] rounded-2xl border px-3 py-2.5"
+const SKILL_REFERENCE_PATTERN = /\$([a-z0-9][a-z0-9-]*)/gi
 
 export function ChatInput({
   input,
@@ -149,6 +255,8 @@ export function ChatInput({
   const [isImeComposing, setIsImeComposing] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [dismissedMenuKey, setDismissedMenuKey] = useState<string | null>(null)
+  const [slashQuery, setSlashQuery] = useState("")
+  const [isSlashMenuOpen, setIsSlashMenuOpen] = useState(false)
   const [promptAnswers, setPromptAnswers] = useState<Record<string, string | string[]>>({})
   const [promptCustomAnswers, setPromptCustomAnswers] = useState<Record<string, string>>({})
   const [currentPromptQuestionIndex, setCurrentPromptQuestionIndex] = useState(0)
@@ -159,12 +267,31 @@ export function ChatInput({
   )
   const [selectedModel, setSelectedModel] = useState(availableModels[0] ?? "Default model")
   const [reasoningEffort, setReasoningEffort] = useState<(typeof REASONING_EFFORTS)[number]>("High")
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const editorRef = useRef<LexicalEditor | null>(null)
+  const serializedComposerValueRef = useRef(input)
+  const previousCommandSignatureRef = useRef("")
 
   const { commands, isLoading: isLoadingCommands } = useCommands()
   const { agents, isLoading: isLoadingAgents } = useAgents()
   const { results: fileResults, isLoading: isLoadingFiles, search: searchFiles, clear: clearFiles } = useFileSearch()
   const selectedHarness = harnesses.find((harness) => harness.id === selectedHarnessId) ?? null
+  const skillCommands = useMemo(
+    () => commands.filter((command) => !!command.referenceName),
+    [commands]
+  )
+  const commandsByReference = useMemo(
+    () =>
+      new Map(
+        skillCommands.flatMap((command) =>
+          command.referenceName ? [[command.referenceName.toLowerCase(), command] as const] : []
+        )
+      ),
+    [skillCommands]
+  )
+  const commandSignature = useMemo(
+    () => skillCommands.map((command) => command.referenceName).filter(Boolean).join("|"),
+    [skillCommands]
+  )
 
   const isStreaming = status === "streaming"
   const isPromptActive = !!prompt && dismissedPromptId !== prompt.id
@@ -180,10 +307,8 @@ export function ChatInput({
     ? currentPromptQuestionIndex === prompt.questions.length - 1
     : false
 
-  const slashMenuKey = input.startsWith("/") ? `slash:${input}` : null
   const atMenuKey = input.startsWith("@") ? `at:${input}` : null
-  const showSlashMenu = !isPromptActive && input.startsWith("/") && !isStreaming && dismissedMenuKey !== slashMenuKey
-  const slashQuery = showSlashMenu ? input.slice(1) : ""
+  const showSlashMenu = !isPromptActive && isSlashMenuOpen && !isStreaming
 
   const showAtMenu = !isPromptActive && input.startsWith("@") && !isStreaming && dismissedMenuKey !== atMenuKey
   const atQuery = showAtMenu ? input.slice(1) : ""
@@ -202,25 +327,35 @@ export function ChatInput({
     setSelectedModel(availableModels[0] ?? "Default model")
   }, [availableModels])
 
-  const resizeTextarea = useCallback(() => {
-    const textarea = textareaRef.current
-    if (!textarea || isPromptActive) {
+  useEffect(() => {
+    if (isPromptActive) {
+      setIsSlashMenuOpen(false)
+      setSlashQuery("")
+    }
+  }, [isPromptActive])
+
+  useEffect(() => {
+    const editor = editorRef.current
+    if (!editor || isPromptActive) {
       return
     }
 
-    textarea.style.height = "auto"
-    const nextHeight = Math.min(
-      Math.max(textarea.scrollHeight, COMPOSER_TEXTAREA_MIN_HEIGHT),
-      COMPOSER_TEXTAREA_MAX_HEIGHT
-    )
-    textarea.style.height = `${nextHeight}px`
-    textarea.style.overflowY =
-      textarea.scrollHeight > COMPOSER_TEXTAREA_MAX_HEIGHT ? "auto" : "hidden"
-  }, [isPromptActive])
+    const commandSignatureChanged = previousCommandSignatureRef.current !== commandSignature
+    previousCommandSignatureRef.current = commandSignature
 
-  useLayoutEffect(() => {
-    resizeTextarea()
-  }, [input, resizeTextarea])
+    if (!commandSignatureChanged && input === serializedComposerValueRef.current) {
+      return
+    }
+
+    editor.update(() => {
+      populateComposerFromSerializedValue(input, commandsByReference)
+    })
+    serializedComposerValueRef.current = input
+  }, [commandSignature, commandsByReference, input, isPromptActive])
+
+  useEffect(() => {
+    editorRef.current?.setEditable(!isStreaming)
+  }, [isStreaming])
 
   // Search files when @ query changes
   useEffect(() => {
@@ -236,14 +371,14 @@ export function ChatInput({
     if (!showSlashMenu) return []
     
     const lowerQuery = slashQuery.toLowerCase()
-    if (!lowerQuery) return commands
+    if (!lowerQuery) return skillCommands
     
-    return commands.filter(
+    return skillCommands.filter(
       (cmd) =>
         cmd.name.toLowerCase().includes(lowerQuery) ||
         cmd.description.toLowerCase().includes(lowerQuery)
     )
-  }, [commands, showSlashMenu, slashQuery])
+  }, [showSlashMenu, skillCommands, slashQuery])
 
   // Filter agents based on query
   const filteredAgents = useMemo(() => {
@@ -275,46 +410,162 @@ export function ChatInput({
 
   const handleSelectCommand = useCallback(
     (command: NormalizedCommand) => {
-      if (onExecuteCommand) {
-        onExecuteCommand(command.name, "")
+      const referenceName = command.referenceName
+      const editor = editorRef.current
+
+      if (!referenceName || !editor) {
+        return
       }
+
+      editor.focus()
+      editor.update(() => {
+        let selection = $getSelection()
+
+        if (!$isRangeSelection(selection)) {
+          $getRoot().selectEnd()
+          selection = $getSelection()
+        }
+
+        if (!$isRangeSelection(selection)) {
+          return
+        }
+
+        selection.insertNodes([
+          $createSkillChipNode(referenceName, command.name),
+          $createTextNode(" "),
+        ])
+      })
       setDismissedMenuKey(null)
-      setInput("")
+      setIsSlashMenuOpen(false)
+      setSlashQuery("")
     },
-    [onExecuteCommand, setInput]
+    []
   )
 
   const handleSelectAgent = useCallback(
     (agent: NormalizedAgent) => {
-      // Insert @agent at the beginning and let user continue typing
       setDismissedMenuKey(null)
       setInput(`@${agent.name} `)
-      textareaRef.current?.focus()
+      requestAnimationFrame(() => {
+        editorRef.current?.focus()
+      })
     },
     [setInput]
   )
 
   const handleSelectFile = useCallback(
     (file: FileItem) => {
-      // Insert file path and let user continue typing
       setDismissedMenuKey(null)
       setInput(`${file.path} `)
-      textareaRef.current?.focus()
+      requestAnimationFrame(() => {
+        editorRef.current?.focus()
+      })
     },
     [setInput]
   )
 
   const closeSlashMenu = useCallback(() => {
-    if (slashMenuKey) {
-      setDismissedMenuKey(slashMenuKey)
-    }
-  }, [slashMenuKey])
+    setIsSlashMenuOpen(false)
+    setSlashQuery("")
+  }, [])
 
   const closeAtMenu = useCallback(() => {
     if (atMenuKey) {
       setDismissedMenuKey(atMenuKey)
     }
   }, [atMenuKey])
+
+  const deleteAdjacentSkillChip = useCallback(() => {
+    const editor = editorRef.current
+
+    if (!editor) {
+      return false
+    }
+
+    let handled = false
+
+    editor.update(() => {
+      const selection = $getSelection()
+
+      if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
+        return
+      }
+
+      const anchor = selection.anchor
+      let previousNode: LexicalNode | null = null
+      let leadingWhitespaceToTrim = 0
+      let whitespaceNodeToTrim: LexicalNode | null = null
+
+      if (anchor.type === "text") {
+        const anchorNode = anchor.getNode()
+        const anchorText = anchorNode.getTextContent()
+
+        if (anchor.offset === 0) {
+          previousNode = anchorNode.getPreviousSibling()
+        } else {
+          const textBeforeCaret = anchorText.slice(0, anchor.offset)
+
+          if (textBeforeCaret.trim().length > 0) {
+            return
+          }
+
+          previousNode = anchorNode.getPreviousSibling()
+          leadingWhitespaceToTrim = anchor.offset
+          whitespaceNodeToTrim = anchorNode
+        }
+      } else {
+        const anchorNode = anchor.getNode()
+        const directPreviousNode =
+          anchor.offset > 0
+            ? anchorNode.getChildAtIndex(anchor.offset - 1)
+            : anchorNode.getPreviousSibling()
+
+        if ($isTextNode(directPreviousNode)) {
+          const previousText = directPreviousNode.getTextContent()
+
+          if (previousText.trim().length > 0) {
+            return
+          }
+
+          previousNode = directPreviousNode.getPreviousSibling()
+          leadingWhitespaceToTrim = previousText.length
+          whitespaceNodeToTrim = directPreviousNode
+        } else {
+          previousNode = directPreviousNode
+        }
+      }
+
+      if (!$isSkillChipNode(previousNode)) {
+        return
+      }
+
+      if ($isTextNode(whitespaceNodeToTrim) && leadingWhitespaceToTrim > 0) {
+        const remainingText = whitespaceNodeToTrim.getTextContent().slice(leadingWhitespaceToTrim)
+
+        if (remainingText.length === 0) {
+          whitespaceNodeToTrim.remove()
+        } else {
+          whitespaceNodeToTrim.setTextContent(remainingText)
+        }
+      }
+
+      const nextSibling = previousNode.getNextSibling()
+      if ($isTextNode(nextSibling)) {
+        const nextText = nextSibling.getTextContent()
+
+        if (nextText === " ") {
+          nextSibling.remove()
+        } else if (nextText.startsWith(" ")) {
+          nextSibling.setTextContent(nextText.slice(1))
+        }
+      }
+
+      previousNode.remove()
+      handled = true
+    })
+
+    return handled
+  }, [])
 
   const handlePromptAnswerChange = useCallback(
     (questionId: string, value: string | string[]) => {
@@ -452,15 +703,6 @@ export function ChatInput({
         return
       }
 
-      // If slash menu is open and we have filtered commands, execute selected command
-      if (showSlashMenu && filteredCommands.length > 0) {
-        const selectedCommand = filteredCommands[selectedIndex]
-        if (selectedCommand) {
-          handleSelectCommand(selectedCommand)
-          return
-        }
-      }
-
       // If @ menu is open, select the item
       if (showAtMenu && atMenuTotalItems > 0) {
         if (selectedIndex < filteredAgents.length) {
@@ -472,6 +714,23 @@ export function ChatInput({
       }
 
       if (!canSubmit) return
+
+      const trimmedInput = input.trim()
+      if (trimmedInput.startsWith("/") && !trimmedInput.includes(" ")) {
+        const commandName = trimmedInput.slice(1)
+        const matchingCommand = commands.find((command) => command.name === commandName)
+
+        if (matchingCommand?.isPreview) {
+          return
+        }
+
+        if (matchingCommand && onExecuteCommand) {
+          onExecuteCommand(matchingCommand.name, "")
+          setDismissedMenuKey(null)
+          setInput("")
+          return
+        }
+      }
 
       // Check if message starts with @agent pattern
       const agentMatch = input.match(/^@(\w+)\s+(.*)$/s)
@@ -493,10 +752,9 @@ export function ChatInput({
       currentPromptQuestion,
       currentPromptQuestionAnswered,
       isLastPromptQuestion,
-      showSlashMenu,
-      filteredCommands,
-      selectedIndex,
-      handleSelectCommand,
+      commands,
+      onExecuteCommand,
+      setInput,
       showAtMenu,
       atMenuTotalItems,
       filteredAgents,
@@ -507,13 +765,37 @@ export function ChatInput({
   )
 
   const handleKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    (e: ReactKeyboardEvent<HTMLDivElement>) => {
       if (isPromptActive) {
         return
       }
 
-      // Handle slash menu navigation
-      if (showSlashMenu && filteredCommands.length > 0) {
+      if (
+        e.key === "Backspace" &&
+        !showSlashMenu &&
+        !showAtMenu &&
+        deleteAdjacentSkillChip()
+      ) {
+        e.preventDefault()
+        return
+      }
+
+      if (
+        e.key === "/" &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        !showAtMenu
+      ) {
+        e.preventDefault()
+        setDismissedMenuKey(null)
+        setIsSlashMenuOpen(true)
+        setSlashQuery("")
+        setSelectedIndex(0)
+        return
+      }
+
+      if (showSlashMenu) {
         if (e.key === "ArrowDown") {
           e.preventDefault()
           setSelectedIndex((prev) =>
@@ -533,12 +815,47 @@ export function ChatInput({
           closeSlashMenu()
           return
         }
+        if (e.key === "Backspace") {
+          e.preventDefault()
+
+          if (slashQuery.length > 0) {
+            setSlashQuery((current) => current.slice(0, -1))
+          } else {
+            closeSlashMenu()
+          }
+
+          return
+        }
         if (e.key === "Tab") {
           e.preventDefault()
           const selectedCommand = filteredCommands[selectedIndex]
           if (selectedCommand) {
-            setInput(`/${selectedCommand.name}`)
+            handleSelectCommand(selectedCommand)
           }
+          return
+        }
+        if (e.key === "Enter" && !e.shiftKey && !isImeComposing) {
+          e.preventDefault()
+          const selectedCommand = filteredCommands[selectedIndex]
+          if (selectedCommand) {
+            handleSelectCommand(selectedCommand)
+          }
+          return
+        }
+        if (e.key === " " && slashQuery.length === 0) {
+          e.preventDefault()
+          closeSlashMenu()
+          return
+        }
+        if (
+          e.key.length === 1 &&
+          !e.ctrlKey &&
+          !e.metaKey &&
+          !e.altKey
+        ) {
+          e.preventDefault()
+          setSlashQuery((current) => `${current}${e.key}`)
+          setSelectedIndex(0)
           return
         }
       }
@@ -585,27 +902,56 @@ export function ChatInput({
       isImeComposing,
       isPromptActive,
       showSlashMenu,
+      slashQuery.length,
       filteredCommands,
       selectedIndex,
       closeSlashMenu,
-      setInput,
+      handleSelectCommand,
       showAtMenu,
       atMenuTotalItems,
       filteredAgents,
       filteredFiles,
       closeAtMenu,
+      deleteAdjacentSkillChip,
     ]
+  )
+
+  const handleComposerChange = useCallback(
+    (editorState: EditorState) => {
+      const nextValue = editorState.read(() => serializeComposerState())
+      serializedComposerValueRef.current = nextValue
+
+      if (nextValue !== input) {
+        setDismissedMenuKey(null)
+        setInput(nextValue)
+      }
+    },
+    [input, setInput]
+  )
+
+  const composerInitialConfig = useMemo(
+    () => ({
+      namespace: "nucleus-chat-composer",
+      nodes: [SkillChipNode],
+      onError(error: Error) {
+        throw error
+      },
+      editorState() {
+        populateComposerFromSerializedValue(input, commandsByReference)
+      },
+    }),
+    [commandsByReference, input]
   )
 
   return (
     <form onSubmit={handleSubmit} className="bg-main-content px-10 pb-3">
-      <div className="relative overflow-hidden rounded-[22px] border border-border/80 bg-card/95 shadow-[0_14px_40px_rgba(0,0,0,0.16)] backdrop-blur-xl">
+      <div className="relative rounded-2xl border border-border bg-card shadow-sm">
         {activePlan && (
-          <div className="relative border-b border-border/70">
+          <div className="relative border-b border-border">
             {activePlan && (
               <div className="px-4 py-3">
                 <div className="flex items-start gap-3">
-                  <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full border border-border/80 bg-background/80">
+                  <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-muted">
                     <Brain className="size-4 text-muted-foreground" />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -616,7 +962,7 @@ export function ChatInput({
                           <p className="mt-0.5 text-xs text-muted-foreground">{activePlan.summary}</p>
                         )}
                       </div>
-                      <span className="rounded-full border border-border/80 bg-background/70 px-2 py-1 text-[11px] text-muted-foreground">
+                      <span className="rounded-full border border-border bg-muted px-2 py-1 text-[11px] text-muted-foreground">
                         {activePlan.steps.length} steps
                       </span>
                     </div>
@@ -649,7 +995,7 @@ export function ChatInput({
           </div>
         )}
 
-        <div className="relative px-4 pt-2.5 pb-2">
+        <div className="relative px-4 pt-3 pb-3">
           {isPromptActive && prompt ? (
             <StructuredPromptSurface
               prompt={prompt}
@@ -666,22 +1012,28 @@ export function ChatInput({
             />
           ) : (
             <>
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => {
-                  setDismissedMenuKey(null)
-                  setInput(e.target.value)
-                  resizeTextarea()
-                }}
-                onKeyDown={handleKeyDown}
-                onCompositionStart={() => setIsImeComposing(true)}
-                onCompositionEnd={() => setIsImeComposing(false)}
-                placeholder="Ask follow-up changes"
-                disabled={isStreaming}
-                className="w-full resize-none bg-transparent text-[14px] leading-5 text-foreground placeholder:text-muted-foreground/75 outline-none [scrollbar-color:var(--color-muted-foreground)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/30 [&::-webkit-scrollbar-track]:bg-transparent"
-                style={{ minHeight: COMPOSER_TEXTAREA_MIN_HEIGHT }}
-              />
+              <LexicalComposer initialConfig={composerInitialConfig}>
+                <ComposerEditorRefPlugin editorRef={editorRef} />
+                <OnChangePlugin onChange={handleComposerChange} />
+                <HistoryPlugin />
+                <PlainTextPlugin
+                  contentEditable={
+                    <ContentEditable
+                      onKeyDown={handleKeyDown}
+                      onCompositionStart={() => setIsImeComposing(true)}
+                      onCompositionEnd={() => setIsImeComposing(false)}
+                      aria-placeholder="Ask follow-up changes"
+                      className="app-scrollbar w-full min-h-9 max-h-[268px] overflow-y-auto bg-transparent text-[14px] leading-5 text-foreground outline-none"
+                    />
+                  }
+                  placeholder={
+                    <div className="pointer-events-none absolute top-2.5 left-4 text-[14px] leading-5 text-muted-foreground/75">
+                      Ask follow-up changes
+                    </div>
+                  }
+                  ErrorBoundary={LexicalErrorBoundary}
+                />
+              </LexicalComposer>
 
               {showSlashMenu && (
                 <div className="mb-3">
@@ -806,6 +1158,26 @@ export function ChatInput({
       </div>
     </form>
   )
+}
+
+function ComposerEditorRefPlugin({
+  editorRef,
+}: {
+  editorRef: MutableRefObject<LexicalEditor | null>
+}) {
+  const [editor] = useLexicalComposerContext()
+
+  useEffect(() => {
+    editorRef.current = editor
+
+    return () => {
+      if (editorRef.current === editor) {
+        editorRef.current = null
+      }
+    }
+  }, [editor, editorRef])
+
+  return null
 }
 
 interface StructuredPromptSurfaceProps {

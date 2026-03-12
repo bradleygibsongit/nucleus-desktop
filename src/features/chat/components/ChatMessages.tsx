@@ -55,7 +55,7 @@ function StaticConversation({
   return (
     <div
       ref={scrollRef}
-      className="h-full overflow-y-auto overscroll-none [scrollbar-color:var(--color-muted-foreground)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/30 [&::-webkit-scrollbar-track]:bg-transparent"
+      className="app-scrollbar h-full overflow-y-auto overscroll-none"
     >
       {children}
     </div>

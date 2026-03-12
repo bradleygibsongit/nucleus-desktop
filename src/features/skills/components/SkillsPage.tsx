@@ -248,7 +248,7 @@ const SKILLS: SkillDefinition[] = [
 function SkillGlyph() {
   return (
     <div className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-border bg-muted">
-      <BookOpen size={18} className="text-skill-accent" strokeWidth={2} />
+      <BookOpen size={18} className="text-skill-icon" strokeWidth={2} />
     </div>
   )
 }
@@ -366,7 +366,7 @@ function SkillDetailsDialog({
           </DialogHeader>
 
           <div className="rounded-xl border border-border bg-background">
-            <div className="max-h-[52vh] overflow-y-auto px-5 py-5 [scrollbar-color:var(--color-muted-foreground)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/30 [&::-webkit-scrollbar-track]:bg-transparent">
+            <div className="app-scrollbar-sm max-h-[52vh] overflow-y-auto px-5 py-5">
               <div className="space-y-6">
                 {skill.details.intro.map((paragraph) => (
                   <p key={paragraph} className="text-sm leading-7 text-muted-foreground">

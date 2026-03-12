@@ -48,7 +48,9 @@
     --input: oklch(0.965 0 0);
     --ring: oklch(0.708 0 0);
     --toggle-on: #0A84FF;
-    --skill-accent: #F59E0B;
+    --skill-accent: #7C3AED;
+    --skill-icon: #7C3AED;
+    --skill-surface: #EEE6FF;
     --chart-1: oklch(0.809 0.105 251.813);
     --chart-2: oklch(0.623 0.214 259.815);
     --chart-3: oklch(0.546 0.245 262.881);
@@ -74,6 +76,7 @@
     --terminal-cursor: oklch(0.25 0 0);
     --terminal-selection: oklch(0.9 0 0);
     --chat-file-accent: oklch(0.63 0.15 244);
+    --scrollbar-thumb: oklch(0.62 0 0 / 0.78);
 }
 
 .dark {
@@ -96,7 +99,9 @@
     --input: oklch(0.255 0 0);
     --ring: oklch(0.556 0 0);
     --toggle-on: #0A84FF;
-    --skill-accent: #F59E0B;
+    --skill-accent: #B794F6;
+    --skill-icon: #B794F6;
+    --skill-surface: #2A1F42;
     --chart-1: oklch(0.809 0.105 251.813);
     --chart-2: oklch(0.623 0.214 259.815);
     --chart-3: oklch(0.546 0.245 262.881);
@@ -121,6 +126,7 @@
     --terminal-cursor: oklch(0.708 0 0);
     --terminal-selection: oklch(0.269 0 0);
     --chat-file-accent: oklch(0.78 0.11 244);
+    --scrollbar-thumb: oklch(0.44 0 0 / 0.92);
 }
 
 @theme inline {
@@ -130,6 +136,7 @@
     --color-terminal: var(--terminal);
     --color-terminal-foreground: var(--terminal-foreground);
     --color-chat-file-accent: var(--chat-file-accent);
+    --color-scrollbar-thumb: var(--scrollbar-thumb);
     --color-main-content: var(--main-content);
     --color-main-content-foreground: var(--main-content-foreground);
     --color-sidebar-ring: var(--sidebar-ring);
@@ -147,6 +154,8 @@
     --color-chart-1: var(--chart-1);
     --color-ring: var(--ring);
     --color-skill-accent: var(--skill-accent);
+    --color-skill-icon: var(--skill-icon);
+    --color-skill-surface: var(--skill-surface);
     --color-toggle-on: var(--toggle-on);
     --color-input: var(--input);
     --color-border: var(--border);
@@ -184,6 +193,44 @@
   html {
     @apply font-sans bg-transparent overscroll-none;
     }
+}
+
+@layer components {
+  .app-scrollbar {
+    scrollbar-color: var(--color-scrollbar-thumb) transparent;
+    scrollbar-width: thin;
+  }
+
+  .app-scrollbar::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .app-scrollbar::-webkit-scrollbar-thumb {
+    background-color: var(--color-scrollbar-thumb);
+    border-radius: 9999px;
+  }
+
+  .app-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .app-scrollbar-sm {
+    scrollbar-color: var(--color-scrollbar-thumb) transparent;
+    scrollbar-width: thin;
+  }
+
+  .app-scrollbar-sm::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .app-scrollbar-sm::-webkit-scrollbar-thumb {
+    background-color: var(--color-scrollbar-thumb);
+    border-radius: 9999px;
+  }
+
+  .app-scrollbar-sm::-webkit-scrollbar-track {
+    background: transparent;
+  }
 }
 
 @keyframes dot-pulse {
