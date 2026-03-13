@@ -1,15 +1,14 @@
 import { useState, useCallback, useEffect } from "react"
 import { useProjectStore } from "@/features/workspace/store"
 import { useChatStore, type MessageWithParts } from "../store"
-import type { ChatStatus } from "../types"
-import type { Session } from "@opencode-ai/sdk/client"
+import type { ChatStatus, CollaborationModeKind, HarnessId, RuntimePromptState, Session } from "../types"
 
 /**
- * Chat hook connected to OpenCode SDK via chatStore.
+ * Chat hook connected to the harness-neutral runtime store.
  * Automatically syncs with the selected project.
  */
 export function useChat() {
-  const [input, setInput] = useState("")
+  const [draftInputsBySessionKey, setDraftInputsBySessionKey] = useState<Record<string, string>>({})
 
   // Project state
   const { projects, selectedProjectId } = useProjectStore()
@@ -18,24 +17,65 @@ export function useChat() {
   // Chat store state
   const {
     currentMessages,
+    childSessions,
     status,
     error,
     isLoading,
-    client,
+    isInitialized,
+    harnesses,
     initialize,
     getProjectChat,
+    getHarnessDefinition,
     loadSessionsForProject,
     createSession,
+    createOptimisticSession,
     selectSession,
     deleteSession,
+    selectHarness,
+    activePromptBySession,
+    answerPrompt,
+    dismissPrompt,
     sendMessage,
     abortSession,
+    executeCommand,
   } = useChatStore()
 
   // Get current project's chat state
   const projectChat = selectedProjectId ? getProjectChat(selectedProjectId) : null
   const activeSessionId = projectChat?.activeSessionId ?? null
   const sessions = projectChat?.sessions ?? []
+  const selectedHarnessId = projectChat?.selectedHarnessId ?? null
+  const selectedHarness = selectedHarnessId ? getHarnessDefinition(selectedHarnessId) : null
+  const draftSessionKey = activeSessionId ?? (selectedProjectId ? `draft:${selectedProjectId}` : "draft:no-project")
+  const input = draftInputsBySessionKey[draftSessionKey] ?? ""
+  const activePromptState: RuntimePromptState | null =
+    activeSessionId ? activePromptBySession[activeSessionId] ?? null : null
+  const activePrompt = activePromptState?.status === "active" ? activePromptState.prompt : null
+
+  const setInput = useCallback(
+    (value: string) => {
+      setDraftInputsBySessionKey((current) => ({
+        ...current,
+        [draftSessionKey]: value,
+      }))
+    },
+    [draftSessionKey]
+  )
+
+  const clearDraftInput = useCallback(
+    (sessionKey: string) => {
+      setDraftInputsBySessionKey((current) => {
+        if (!(sessionKey in current)) {
+          return current
+        }
+
+        const nextDrafts = { ...current }
+        delete nextDrafts[sessionKey]
+        return nextDrafts
+      })
+    },
+    []
+  )
 
   // Initialize chat store on mount
   useEffect(() => {
@@ -44,24 +84,33 @@ export function useChat() {
 
   // Load sessions when project changes
   useEffect(() => {
-    if (selectedProjectId && selectedProject?.path && client) {
+    if (selectedProjectId && selectedProject?.path && isInitialized) {
       loadSessionsForProject(selectedProjectId, selectedProject.path)
     }
-  }, [selectedProjectId, selectedProject?.path, client, loadSessionsForProject])
+  }, [selectedProjectId, selectedProject?.path, isInitialized, loadSessionsForProject])
 
   // Handle message submission
   const handleSubmit = useCallback(
-    async (text: string, sessionIdOverride?: string) => {
+    async (
+      text: string,
+      sessionIdOverride?: string,
+      options?: {
+        agent?: string
+        collaborationMode?: CollaborationModeKind
+        model?: string
+        reasoningEffort?: "low" | "medium" | "high" | null
+      }
+    ) => {
       const targetSessionId = sessionIdOverride ?? activeSessionId
       
       if (!text.trim() || status === "streaming" || !targetSessionId) {
         return
       }
 
-      setInput("")
-      await sendMessage(targetSessionId, text)
+      clearDraftInput(targetSessionId)
+      await sendMessage(targetSessionId, text, options)
     },
-    [status, activeSessionId, sendMessage]
+    [status, activeSessionId, clearDraftInput, sendMessage]
   )
 
   // Handle creating a new session
@@ -69,6 +118,11 @@ export function useChat() {
     if (!selectedProjectId || !selectedProject?.path) return null
     return createSession(selectedProjectId, selectedProject.path)
   }, [selectedProjectId, selectedProject?.path, createSession])
+
+  const handleCreateOptimisticSession = useCallback(() => {
+    if (!selectedProjectId || !selectedProject?.path) return null
+    return createOptimisticSession(selectedProjectId, selectedProject.path)
+  }, [selectedProjectId, selectedProject?.path, createOptimisticSession])
 
   // Handle selecting a session
   const handleSelectSession = useCallback(
@@ -88,11 +142,51 @@ export function useChat() {
     [selectedProjectId, deleteSession]
   )
 
+  const handleSelectHarness = useCallback(
+    async (harnessId: HarnessId) => {
+      if (!selectedProjectId) return
+      await selectHarness(selectedProjectId, harnessId)
+    },
+    [selectedProjectId, selectHarness]
+  )
+
   // Handle abort
   const handleAbort = useCallback(async () => {
     if (!activeSessionId) return
     await abortSession(activeSessionId)
   }, [activeSessionId, abortSession])
+
+  const handleAnswerPrompt = useCallback(
+    async (response: Parameters<typeof answerPrompt>[1]) => {
+      if (!activeSessionId) {
+        return
+      }
+
+      await answerPrompt(activeSessionId, response)
+    },
+    [activeSessionId, answerPrompt]
+  )
+
+  const handleDismissPrompt = useCallback(async () => {
+    if (!activeSessionId) {
+      return
+    }
+
+    await dismissPrompt(activeSessionId)
+  }, [activeSessionId, dismissPrompt])
+
+  // Handle command execution
+  const handleExecuteCommand = useCallback(
+    async (command: string, args?: string, sessionIdOverride?: string) => {
+      const targetSessionId = sessionIdOverride ?? activeSessionId
+      if (!targetSessionId) {
+        console.error("[useChat] No session ID for command execution")
+        return
+      }
+      await executeCommand(targetSessionId, command, args)
+    },
+    [activeSessionId, executeCommand]
+  )
 
   // Convert SDK messages to UI format
   const uiStatus: ChatStatus = status === "connecting" ? "idle" : status
@@ -100,27 +194,37 @@ export function useChat() {
   return {
     // Message state
     messages: currentMessages,
+    childSessions,
     status: uiStatus,
     input,
     setInput,
     handleSubmit,
+    activePrompt,
+    answerPrompt: handleAnswerPrompt,
+    dismissPrompt: handleDismissPrompt,
 
     // Session state
     sessions,
     activeSessionId,
     activeSession: sessions.find((s) => s.id === activeSessionId) ?? null,
+    harnesses,
+    selectedHarnessId,
+    selectedHarness,
 
     // Session actions
     createSession: handleCreateSession,
+    createOptimisticSession: handleCreateOptimisticSession,
     selectSession: handleSelectSession,
     deleteSession: handleDeleteSession,
+    selectHarness: handleSelectHarness,
     abort: handleAbort,
+    executeCommand: handleExecuteCommand,
 
     // Project context
     selectedProject,
 
     // Connection state
-    isConnected: !!client,
+    isConnected: isInitialized && !!selectedHarness,
     isConnecting: status === "connecting",
     isLoading,
     error,

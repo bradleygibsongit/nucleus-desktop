@@ -15,7 +15,7 @@ import {
   Circle,
   CircleNotch,
   type Icon,
-} from "@phosphor-icons/react";
+} from "@/components/icons";
 import type { ComponentProps, ReactNode } from "react";
 import { createContext, memo, useContext, useMemo, useState, useEffect, useRef } from "react";
 

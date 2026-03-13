@@ -21,4 +21,6 @@ export interface Project {
   name: string       // Folder name (derived from path)
   path: string       // Full filesystem path
   addedAt: number    // Timestamp when added (for ordering)
+  avatarSeed: string // Stable DiceBear Bottts Neutral seed
+  backgroundImageUrl: string
 }

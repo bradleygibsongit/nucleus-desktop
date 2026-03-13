@@ -1,4 +1,4 @@
-import type { Icon } from "@phosphor-icons/react"
+import type { Icon } from "@/components/icons"
 import {
   File,
   FileTs,
@@ -33,7 +33,7 @@ import {
   FileCsv,
   GearSix,
   GitBranch,
-} from "@phosphor-icons/react"
+} from "@/components/icons"
 
 type FileIconMap = Record<string, Icon>
 

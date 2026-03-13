@@ -1,33 +1,60 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/figtree";
+
+@font-face {
+    font-family: "Geist";
+    src: url("./assets/fonts/Geist-Variable.woff2") format("woff2");
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "Geist Mono";
+    src: url("./assets/fonts/GeistMono-Variable.woff2") format("woff2");
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "Geist Pixel";
+    src: url("../node_modules/geist/dist/fonts/geist-pixel/GeistPixel-Square.woff2") format("woff2");
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+}
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
-    --background: oklch(1 0 0);
+    --background: oklch(0.9999 0 0);
     --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
+    --card: oklch(0.992 0 0);
     --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
+    --popover: oklch(0.988 0 0);
     --popover-foreground: oklch(0.145 0 0);
     --primary: oklch(0.205 0 0);
     --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
+    --secondary: oklch(0.982 0 0);
     --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
+    --muted: oklch(0.975 0 0);
     --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
+    --accent: oklch(0.985 0 0);
     --accent-foreground: oklch(0.205 0 0);
     --destructive: oklch(0.58 0.22 27);
     --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
+    --input: oklch(0.965 0 0);
     --ring: oklch(0.708 0 0);
+    --toggle-on: #0A84FF;
+    --skill-accent: #7C3AED;
+    --skill-icon: #7C3AED;
+    --skill-surface: #EEE6FF;
     --chart-1: oklch(0.809 0.105 251.813);
     --chart-2: oklch(0.623 0.214 259.815);
     --chart-3: oklch(0.546 0.245 262.881);
-    --chart-4: oklch(0.488 0.243 264.376);
+    --chart-4: #4DA3FF;
     --chart-5: oklch(0.424 0.199 265.638);
     --radius: 0.625rem;
     --sidebar: oklch(0.985 0 0);
@@ -36,6 +63,10 @@
     --sidebar-primary-foreground: oklch(0.985 0 0);
     --sidebar-accent: oklch(0.97 0 0);
     --sidebar-accent-foreground: oklch(0.205 0 0);
+    --sidebar-glass: oklch(0.99 0 0 / 0.62);
+    --sidebar-glass-strong: oklch(0.99 0 0 / 0.75);
+    --sidebar-item-hover: oklch(0 0 0 / 0.04);
+    --sidebar-item-active: oklch(0 0 0 / 0.07);
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.708 0 0);
     --main-content: oklch(0.9999 0 0);
@@ -44,31 +75,37 @@
     --terminal-foreground: oklch(0.25 0 0);
     --terminal-cursor: oklch(0.25 0 0);
     --terminal-selection: oklch(0.9 0 0);
+    --chat-file-accent: oklch(0.63 0.15 244);
+    --scrollbar-thumb: oklch(0.62 0 0 / 0.78);
 }
 
 .dark {
-    --background: oklch(0.145 0 0);
+    --background: oklch(0.192 0 0);
     --foreground: oklch(0.985 0 0);
     --card: oklch(0.205 0 0);
     --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
+    --popover: oklch(0.222 0 0);
     --popover-foreground: oklch(0.985 0 0);
     --primary: oklch(0.87 0.00 0);
     --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
+    --secondary: oklch(0.225 0 0);
     --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
+    --muted: oklch(0.218 0 0);
     --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.371 0 0);
+    --accent: oklch(0.235 0 0);
     --accent-foreground: oklch(0.985 0 0);
     --destructive: oklch(0.704 0.191 22.216);
     --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
+    --input: oklch(0.255 0 0);
     --ring: oklch(0.556 0 0);
+    --toggle-on: #0A84FF;
+    --skill-accent: #B794F6;
+    --skill-icon: #B794F6;
+    --skill-surface: #2A1F42;
     --chart-1: oklch(0.809 0.105 251.813);
     --chart-2: oklch(0.623 0.214 259.815);
     --chart-3: oklch(0.546 0.245 262.881);
-    --chart-4: oklch(0.488 0.243 264.376);
+    --chart-4: #4DA3FF;
     --chart-5: oklch(0.424 0.199 265.638);
     --sidebar: oklch(0.205 0 0);
     --sidebar-foreground: oklch(0.985 0 0);
@@ -76,6 +113,10 @@
     --sidebar-primary-foreground: oklch(0.985 0 0);
     --sidebar-accent: oklch(0.269 0 0);
     --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-glass: oklch(0.18 0.005 250 / 0.50);
+    --sidebar-glass-strong: oklch(0.18 0.005 250 / 0.60);
+    --sidebar-item-hover: oklch(1 0 0 / 0.05);
+    --sidebar-item-active: oklch(1 0 0 / 0.10);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.556 0 0);
     --main-content: oklch(0.192 0 0);
@@ -84,12 +125,18 @@
     --terminal-foreground: oklch(0.708 0 0);
     --terminal-cursor: oklch(0.708 0 0);
     --terminal-selection: oklch(0.269 0 0);
+    --chat-file-accent: oklch(0.78 0.11 244);
+    --scrollbar-thumb: oklch(0.44 0 0 / 0.92);
 }
 
 @theme inline {
-    --font-sans: 'Figtree Variable', sans-serif;
+    --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    --font-pixel: "Geist Pixel", "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     --color-terminal: var(--terminal);
     --color-terminal-foreground: var(--terminal-foreground);
+    --color-chat-file-accent: var(--chat-file-accent);
+    --color-scrollbar-thumb: var(--scrollbar-thumb);
     --color-main-content: var(--main-content);
     --color-main-content-foreground: var(--main-content-foreground);
     --color-sidebar-ring: var(--sidebar-ring);
@@ -106,6 +153,10 @@
     --color-chart-2: var(--chart-2);
     --color-chart-1: var(--chart-1);
     --color-ring: var(--ring);
+    --color-skill-accent: var(--skill-accent);
+    --color-skill-icon: var(--skill-icon);
+    --color-skill-surface: var(--skill-surface);
+    --color-toggle-on: var(--toggle-on);
     --color-input: var(--input);
     --color-border: var(--border);
     --color-destructive: var(--destructive);
@@ -137,11 +188,49 @@
     @apply border-border outline-ring/50;
     }
   body {
-    @apply font-sans bg-background text-foreground overscroll-none;
+    @apply font-sans bg-transparent text-foreground overscroll-none;
     }
   html {
-    @apply font-sans overscroll-none;
+    @apply font-sans bg-transparent overscroll-none;
     }
+}
+
+@layer components {
+  .app-scrollbar {
+    scrollbar-color: var(--color-scrollbar-thumb) transparent;
+    scrollbar-width: thin;
+  }
+
+  .app-scrollbar::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .app-scrollbar::-webkit-scrollbar-thumb {
+    background-color: var(--color-scrollbar-thumb);
+    border-radius: 9999px;
+  }
+
+  .app-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .app-scrollbar-sm {
+    scrollbar-color: var(--color-scrollbar-thumb) transparent;
+    scrollbar-width: thin;
+  }
+
+  .app-scrollbar-sm::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .app-scrollbar-sm::-webkit-scrollbar-thumb {
+    background-color: var(--color-scrollbar-thumb);
+    border-radius: 9999px;
+  }
+
+  .app-scrollbar-sm::-webkit-scrollbar-track {
+    background: transparent;
+  }
 }
 
 @keyframes dot-pulse {
@@ -160,4 +249,90 @@
   50% {
     opacity: 1;
   }
+}
+
+/* Streamdown markdown typography */
+[data-streamdown="paragraph"] {
+  @apply leading-relaxed;
+}
+
+[data-streamdown="paragraph"] + [data-streamdown="paragraph"] {
+  @apply mt-4;
+}
+
+[data-streamdown="heading-1"] {
+  @apply text-2xl font-bold mt-6 mb-4;
+}
+
+[data-streamdown="heading-2"] {
+  @apply text-xl font-semibold mt-5 mb-3;
+}
+
+[data-streamdown="heading-3"] {
+  @apply text-lg font-semibold mt-4 mb-2;
+}
+
+[data-streamdown="heading-4"] {
+  @apply text-base font-semibold mt-3 mb-2;
+}
+
+[data-streamdown="heading-5"],
+[data-streamdown="heading-6"] {
+  @apply text-sm font-semibold mt-2 mb-1;
+}
+
+[data-streamdown="strong"] {
+  @apply font-bold;
+}
+
+[data-streamdown="link"] {
+  @apply text-primary underline underline-offset-2 hover:text-primary/80;
+}
+
+[data-streamdown="inline-code"] {
+  @apply bg-muted px-1.5 py-0.5 rounded text-sm font-mono;
+}
+
+[data-streamdown="code-block"] {
+  @apply my-4 rounded-lg overflow-hidden border border-border;
+}
+
+[data-streamdown="unordered-list"] {
+  @apply list-disc pl-6 my-4 space-y-2;
+}
+
+[data-streamdown="ordered-list"] {
+  @apply list-decimal pl-6 my-4 space-y-2;
+}
+
+[data-streamdown="list-item"] {
+  @apply leading-relaxed py-0.5;
+}
+
+[data-streamdown="blockquote"] {
+  @apply border-l-4 border-muted-foreground/30 pl-4 italic my-4 text-muted-foreground;
+}
+
+[data-streamdown="horizontal-rule"] {
+  @apply my-6 border-t border-border;
+}
+
+[data-streamdown="table-wrapper"] {
+  @apply my-4 overflow-x-auto;
+}
+
+[data-streamdown="table"] {
+  @apply w-full border-collapse text-sm;
+}
+
+[data-streamdown="table-header"] {
+  @apply bg-muted;
+}
+
+[data-streamdown="table-header-cell"] {
+  @apply px-4 py-2 text-left font-semibold border border-border;
+}
+
+[data-streamdown="table-cell"] {
+  @apply px-4 py-2 border border-border;
 }

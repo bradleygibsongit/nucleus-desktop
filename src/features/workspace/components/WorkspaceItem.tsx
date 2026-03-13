@@ -1,4 +1,4 @@
-import { Archive, GitBranch, PushPin } from "@phosphor-icons/react"
+import { Archive, GitBranch, PushPin } from "@/components/icons"
 import type { Workspace } from "../types"
 import { formatRelativeTime } from "@/lib/utils/time"
 import { cn } from "@/lib/utils"

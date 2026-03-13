@@ -1,53 +1,141 @@
-import { Sidebar } from "@phosphor-icons/react"
-import { getCurrentWindow } from "@tauri-apps/api/window"
+import { PencilSimple, Sidebar } from "@/components/icons"
 import { useSidebar } from "./useSidebar"
 import { useRightSidebar } from "./useRightSidebar"
+import { Button } from "@/features/shared/components/ui/button"
+import { cn } from "@/lib/utils"
+import { useProjectStore } from "@/features/workspace/store"
+import { useChatStore } from "@/features/chat/store"
 
-export function TitleBar() {
-  const { toggle: toggleLeft } = useSidebar()
+interface TitleBarProps {
+  activeView?: "chat" | "settings" | "skills" | "automations"
+  onOpenChat?: () => void
+}
+
+export function TitleBar({ activeView = "chat", onOpenChat }: TitleBarProps) {
+  const { isCollapsed, toggle: toggleLeft } = useSidebar()
   const { toggle: toggleRight } = useRightSidebar()
+  const { projects, selectedProjectId, selectProject } = useProjectStore()
+  const { openDraftSession, getProjectChat } = useChatStore()
+  const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null
+  const projectChat = selectedProjectId ? getProjectChat(selectedProjectId) : null
+  const activeSession =
+    projectChat?.sessions.find((session) => session.id === projectChat.activeSessionId) ?? null
 
-  const handleMouseDown = async (_e: React.MouseEvent) => {
-    await getCurrentWindow().startDragging()
+  const formatSessionTitle = () => {
+    if (!activeSession) {
+      return ""
+    }
+
+    if (activeSession.title?.trim()) {
+      return activeSession.title
+    }
+
+    return ""
   }
 
-  const handleDoubleClick = async (_e: React.MouseEvent) => {
-    await getCurrentWindow().toggleMaximize()
+  const activeSessionTitle = formatSessionTitle()
+
+  const handleCreateThread = async () => {
+    if (!selectedProject) {
+      return
+    }
+
+    onOpenChat?.()
+    await selectProject(selectedProject.id)
+    await openDraftSession(selectedProject.id, selectedProject.path)
   }
 
   return (
     <header
-      data-tauri-drag-region
-      className="h-10 flex items-center shrink-0 select-none bg-sidebar border-b border-sidebar-border"
-      onMouseDown={handleMouseDown}
-      onDoubleClick={handleDoubleClick}
+      className={cn(
+        "relative flex h-11 shrink-0 items-center gap-3 border-b border-sidebar-border/70 bg-[var(--sidebar-glass)] px-3 backdrop-blur-xl supports-[backdrop-filter]:bg-[var(--sidebar-glass-strong)]",
+        activeView === "chat" && "text-sidebar-foreground",
+      )}
     >
-      {/* Left - Space for macOS traffic lights */}
-      <div className="w-20 shrink-0 pointer-events-none" data-tauri-drag-region />
+      <div className="w-20 shrink-0" aria-hidden="true" />
 
-      {/* Center - App title */}
-      <div className="flex-1 flex items-center justify-center pointer-events-none" data-tauri-drag-region>
-        <span className="text-sm font-medium text-foreground">Nucleus</span>
-      </div>
-
-      {/* Right - Sidebar toggle buttons */}
-      <div className="w-20 shrink-0 flex items-center justify-end gap-1 pr-2">
-        <button
+      <div className="hidden shrink-0 items-center gap-1 md:flex">
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-sm"
           onClick={toggleLeft}
-          className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors"
+          className="text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
           aria-label="Toggle left sidebar"
         >
           <Sidebar size={14} />
-        </button>
-        <button
+        </Button>
+        {isCollapsed && activeView === "chat" ? (
+          <div className="flex min-w-0 items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => void handleCreateThread()}
+              disabled={!selectedProject}
+              className="shrink-0 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+              aria-label="New thread"
+            >
+              <PencilSimple size={14} />
+            </Button>
+            <div className="flex min-w-0 items-baseline gap-3">
+              {activeSessionTitle ? (
+                <span className="max-w-[240px] truncate text-sm font-medium text-foreground">
+                  {activeSessionTitle}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div data-tauri-drag-region className="min-w-0 flex-1 self-stretch" />
+
+      <div className="flex shrink-0 items-center gap-1">
+        <Button
           type="button"
-          onClick={toggleRight}
-          className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors"
-          aria-label="Toggle right sidebar"
+          onClick={toggleLeft}
+          variant="ghost"
+          size="icon-sm"
+          className="text-muted-foreground hover:bg-sidebar-accent hover:text-foreground md:hidden"
+          aria-label="Toggle left sidebar"
         >
-          <Sidebar size={14} className="scale-x-[-1]" />
-        </button>
+          <Sidebar size={14} />
+        </Button>
+        {isCollapsed && activeView === "chat" ? (
+          <div className="flex min-w-0 items-center gap-2 md:hidden">
+            <Button
+              type="button"
+              onClick={() => void handleCreateThread()}
+              variant="ghost"
+              size="icon-sm"
+              disabled={!selectedProject}
+              className="shrink-0 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+              aria-label="New thread"
+            >
+              <PencilSimple size={14} />
+            </Button>
+            <div className="flex min-w-0 items-baseline gap-2">
+              {activeSessionTitle ? (
+                <span className="max-w-[160px] truncate text-sm font-medium text-foreground">
+                  {activeSessionTitle}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+        {activeView === "chat" ? (
+          <Button
+            type="button"
+            onClick={toggleRight}
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+            aria-label="Toggle right sidebar"
+          >
+            <Sidebar size={14} className="scale-x-[-1]" />
+          </Button>
+        ) : null}
       </div>
     </header>
   )

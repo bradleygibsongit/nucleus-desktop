@@ -8,7 +8,6 @@ import {
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from "@/features/shared/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -18,7 +17,7 @@ import {
   CaretRight,
   Paperclip,
   X,
-} from "@phosphor-icons/react";
+} from "@/components/icons";
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
 import {
   createContext,
@@ -30,6 +29,17 @@ import {
 } from "react";
 import { Streamdown } from "streamdown";
 
+const MARKDOWN_COMPONENTS = {
+  p: ({ children, className, ...props }: ComponentProps<"p">) => (
+    <p
+      className={cn("leading-relaxed my-0 [&:not(:first-child)]:mt-4", className)}
+      {...props}
+    >
+      {children}
+    </p>
+  ),
+};
+
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
 };
@@ -37,7 +47,8 @@ export type MessageProps = HTMLAttributes<HTMLDivElement> & {
 export const Message = ({ className, from, ...props }: MessageProps) => (
   <div
     className={cn(
-      "group flex w-full flex-col gap-2",
+      "group flex w-full flex-col gap-4",
+      from === "user" ? "items-end" : "items-stretch",
       from === "user" ? "is-user" : "is-assistant",
       className
     )}
@@ -54,8 +65,8 @@ export const MessageContent = ({
 }: MessageContentProps) => (
   <div
     className={cn(
-      "flex w-full min-w-0 flex-col gap-2 overflow-hidden text-sm text-foreground",
-      "group-[.is-user]:bg-secondary group-[.is-user]:border-l-4 group-[.is-user]:border-l-primary group-[.is-user]:px-4 group-[.is-user]:py-3",
+      "flex w-full min-w-0 flex-col gap-4 overflow-hidden text-sm text-foreground",
+      "group-[.is-user]:w-auto group-[.is-user]:max-w-[min(42rem,78%)] group-[.is-user]:self-end group-[.is-user]:gap-0 group-[.is-user]:rounded-[18px] group-[.is-user]:bg-[#262626] group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-[15px] group-[.is-user]:leading-6 group-[.is-user]:text-white",
       className
     )}
     {...props}
@@ -98,14 +109,12 @@ export const MessageAction = ({
 
   if (tooltip) {
     return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger render={<span />}>{button}</TooltipTrigger>
-          <TooltipContent>
-            <p>{tooltip}</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger render={<span />}>{button}</TooltipTrigger>
+        <TooltipContent>
+          <p>{tooltip}</p>
+        </TooltipContent>
+      </Tooltip>
     );
   }
 
@@ -314,13 +323,38 @@ export const MessageBranchPage = ({
   );
 };
 
-export type MessageResponseProps = ComponentProps<typeof Streamdown>;
+export type MessageResponseProps = ComponentProps<typeof Streamdown> & {
+  isStreaming?: boolean;
+};
 
 export const MessageResponse = memo(
-  ({ className, ...props }: MessageResponseProps) => (
+  ({ className, isStreaming, ...props }: MessageResponseProps) => (
     <Streamdown
+      mode={isStreaming ? "streaming" : "static"}
+      components={MARKDOWN_COMPONENTS}
       className={cn(
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+        className
+      )}
+      {...props}
+    />
+  ),
+  (prevProps, nextProps) =>
+    prevProps.children === nextProps.children &&
+    prevProps.isStreaming === nextProps.isStreaming
+);
+
+MessageResponse.displayName = "MessageResponse";
+
+export type MessageUserContentProps = ComponentProps<typeof Streamdown>;
+
+export const MessageUserContent = memo(
+  ({ className, ...props }: MessageUserContentProps) => (
+    <Streamdown
+      mode="static"
+      components={MARKDOWN_COMPONENTS}
+      className={cn(
+        "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&>*]:leading-6 [&_p+p]:mt-2",
         className
       )}
       {...props}
@@ -329,7 +363,7 @@ export const MessageResponse = memo(
   (prevProps, nextProps) => prevProps.children === nextProps.children
 );
 
-MessageResponse.displayName = "MessageResponse";
+MessageUserContent.displayName = "MessageUserContent";
 
 export type MessageAttachmentProps = HTMLAttributes<HTMLDivElement> & {
   data: FileUIPart;

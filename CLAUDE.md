@@ -1,6 +1,16 @@
 # Nucleus Desktop
 
-Desktop AI agent app with Tauri + React.
+Open-source desktop AI co-worker app with Tauri + React.
+
+## Product Direction
+
+Nucleus Desktop is intended to become an open-source analogue to Claude Cowork: a desktop agent workspace for knowledge work beyond coding.
+
+- The target experience is outcome-oriented task execution, not just turn-by-turn chat.
+- Users should be able to grant scoped access to local folders, tools, connectors, and browser workflows so the agent can complete multi-step work on their behalf.
+- The app should feel supervised and transparent: show plans, progress, sub-task activity, and require explicit approval for major or destructive actions.
+- Prioritize knowledge-work use cases such as research, report and document drafting, spreadsheet/presentation prep, file organization, and recurring operational tasks.
+- Keep provider-specific runtimes behind thin adapters so OpenCode, Codex, Claude Code, and future harnesses can power the same shared co-worker UX.
 
 ## Project Overview
 

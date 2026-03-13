@@ -10,6 +10,7 @@
     "beforeBuildCommand": "bun run build"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "title": "Nucleus",
@@ -19,9 +20,20 @@
         "minHeight": 600,
         "resizable": true,
         "fullscreen": false,
+        "transparent": true,
         "decorations": true,
         "titleBarStyle": "Overlay",
-        "hiddenTitle": true
+        "trafficLightPosition": {
+          "x": 16,
+          "y": 22
+        },
+        "hiddenTitle": true,
+        "backgroundColor": "#00000000",
+        "windowEffects": {
+          "effects": ["sidebar"],
+          "state": "active",
+          "radius": 18
+        }
       }
     ],
     "security": {
@@ -38,5 +50,10 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "fs": {
+      "requireLiteralLeadingDot": false
+    }
   }
 }

@@ -1,4 +1,4 @@
-import { CaretUp } from "@phosphor-icons/react"
+import { CaretUp } from "@/components/icons"
 import { cn } from "@/lib/utils"
 import { Terminal } from "./Terminal"
 

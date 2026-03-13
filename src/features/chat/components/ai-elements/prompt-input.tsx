@@ -46,7 +46,7 @@ import {
   Plus,
   Square,
   X,
-} from "@phosphor-icons/react";
+} from "@/components/icons";
 import { nanoid } from "nanoid";
 import {
   type ChangeEvent,

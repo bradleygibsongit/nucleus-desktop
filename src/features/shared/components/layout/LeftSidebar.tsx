@@ -1,15 +1,18 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import {
-  Atom,
-  Briefcase,
+  BookOpen,
+  CaretDown,
+  CaretUp,
+  Clock,
   FolderSimple,
+  FolderSimplePlus,
+  GearSix,
+  PencilSimple,
   PlusSquare,
   X,
-  CaretRight,
-  CaretDown,
-  Chat,
   Plus,
-} from "@phosphor-icons/react"
+  Archive,
+} from "@/components/icons"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,9 +25,10 @@ import {
 } from "@/features/shared/components/ui/alert-dialog"
 import {
   DropdownMenu,
-  DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from "@/features/shared/components/ui/dropdown-menu"
 import {
   Tooltip,
@@ -33,19 +37,43 @@ import {
 } from "@/features/shared/components/ui/tooltip"
 import { QuickStartModal } from "@/features/workspace/components/modals"
 import { useProjectStore } from "@/features/workspace/store"
+import { getAgentAvatarUrl } from "@/features/workspace/utils/avatar"
 import { openFolderPicker } from "@/features/workspace/utils/folderDialog"
 import { useChatStore } from "@/features/chat/store"
 import { useSidebar } from "./useSidebar"
 import { cn } from "@/lib/utils"
-import { getTextColorFromName } from "@/lib/utils/colors"
-import type { Session } from "@opencode-ai/sdk/client"
+import type { Session } from "@/features/chat/types"
+import type { Project } from "@/features/workspace/types"
+import {
+  SETTINGS_BACK_ICON,
+  SETTINGS_SECTIONS,
+  type SettingsSectionId,
+} from "@/features/settings/config"
 
-export function LeftSidebar() {
+interface LeftSidebarProps {
+  activeView?: "chat" | "settings" | "skills" | "automations"
+  activeSettingsSection?: SettingsSectionId
+  onOpenChat?: () => void
+  onOpenAutomations?: () => void
+  onOpenSettings?: () => void
+  onOpenSkills?: () => void
+  onSelectSettingsSection?: (section: SettingsSectionId) => void
+}
+
+export function LeftSidebar({
+  activeView = "chat",
+  activeSettingsSection = "general",
+  onOpenChat,
+  onOpenAutomations,
+  onOpenSettings,
+  onOpenSkills,
+  onSelectSettingsSection,
+}: LeftSidebarProps) {
   const [quickStartOpen, setQuickStartOpen] = useState(false)
   const [projectToRemove, setProjectToRemove] = useState<{ id: string; name: string } | null>(null)
-  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
-  const restoredSessionsRef = useRef<Set<string>>(new Set())
-  const { isCollapsed } = useSidebar()
+  const [confirmArchiveSessionId, setConfirmArchiveSessionId] = useState<string | null>(null)
+  const { isCollapsed, width, setWidth } = useSidebar()
+  const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const {
     projects,
     selectedProjectId,
@@ -57,13 +85,15 @@ export function LeftSidebar() {
   } = useProjectStore()
 
   const {
-    chatByProject,
     getProjectChat,
-    createSession,
     selectSession,
+    archiveSession,
     initialize: initializeChat,
-    client,
     loadSessionsForProject,
+    openDraftSession,
+    currentSessionId,
+    status,
+    activePromptBySession,
   } = useChatStore()
 
   // Load projects on mount
@@ -72,37 +102,31 @@ export function LeftSidebar() {
     initializeChat()
   }, [loadProjects, initializeChat])
 
-  // Auto-expand selected project
+  // Sync project paths and restore the persisted active session for the selected workspace
   useEffect(() => {
-    if (selectedProjectId) {
-      setExpandedProjects((prev) => new Set([...prev, selectedProjectId]))
+    if (!selectedProjectId) {
+      return
     }
-  }, [selectedProjectId])
 
-  // Load sessions when a project is expanded and client is ready
-  useEffect(() => {
-    if (!client) return
-    
-    for (const projectId of expandedProjects) {
-      const project = projects.find((p) => p.id === projectId)
-      const projectChat = getProjectChat(projectId)
-      
-      if (project?.path) {
-        if (projectChat.sessions.length === 0) {
-          // Fetch sessions from server if not already loaded
-          loadSessionsForProject(projectId, project.path)
-        } else if (
-          projectChat.activeSessionId && 
-          projectId === selectedProjectId &&
-          !restoredSessionsRef.current.has(projectId)
-        ) {
-          // Sessions already loaded from persistence, restore the active session's messages
-          restoredSessionsRef.current.add(projectId)
-          selectSession(projectId, projectChat.activeSessionId)
-        }
-      }
+    const project = projects.find((candidate) => candidate.id === selectedProjectId)
+    if (!project?.path) {
+      return
     }
-  }, [expandedProjects, projects, client, getProjectChat, loadSessionsForProject, selectSession, selectedProjectId])
+
+    const projectChat = getProjectChat(selectedProjectId)
+    void loadSessionsForProject(selectedProjectId, project.path)
+
+    if (projectChat.activeSessionId && currentSessionId !== projectChat.activeSessionId) {
+      void selectSession(selectedProjectId, projectChat.activeSessionId)
+    }
+  }, [
+    currentSessionId,
+    getProjectChat,
+    loadSessionsForProject,
+    projects,
+    selectSession,
+    selectedProjectId,
+  ])
 
   const handleOpenProject = async () => {
     const folderPath = await openFolderPicker()
@@ -123,63 +147,269 @@ export function LeftSidebar() {
     }
   }
 
-  const toggleProjectExpanded = (projectId: string) => {
-    setExpandedProjects((prev) => {
-      const next = new Set(prev)
-      if (next.has(projectId)) {
-        next.delete(projectId)
-      } else {
-        next.add(projectId)
-      }
-      return next
-    })
-  }
-
-  const handleCreateSession = async (e: React.MouseEvent, projectId: string, projectPath: string) => {
-    e.stopPropagation()
-    console.log("Creating session for project:", projectId, "path:", projectPath, "client:", !!client)
-    const session = await createSession(projectId, projectPath)
-    console.log("Session created:", session)
-  }
-
   const handleSelectSession = async (projectId: string, sessionId: string) => {
+    setConfirmArchiveSessionId(null)
+    onOpenChat?.()
     // First select the project
     selectProject(projectId)
     // Then select the session
     await selectSession(projectId, sessionId)
   }
 
+  const handleArchiveIntent = async (
+    e: React.MouseEvent,
+    projectId: string,
+    sessionId: string,
+  ) => {
+    e.stopPropagation()
+
+    if (confirmArchiveSessionId === sessionId) {
+      setConfirmArchiveSessionId(null)
+      await archiveSession(projectId, sessionId)
+      return
+    }
+
+    setConfirmArchiveSessionId(sessionId)
+  }
+
   const formatSessionTitle = (session: Session | null | undefined): string => {
     if (!session) return "New Session"
     if (session.title) return session.title
-    // Fallback to formatted date
-    if (session.time?.created) {
-      const date = new Date(session.time.created)
-      return date.toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
+    const date = new Date(session.createdAt)
+    return date.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+  }
+
+  const BackIcon = SETTINGS_BACK_ICON
+  const sidebarWidth = isCollapsed ? 48 : width
+  const sidebarTopPadding = isCollapsed ? 12 : 16
+  const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null
+  const selectedProjectChat = selectedProject ? getProjectChat(selectedProject.id) : null
+  const archivedSessionIds = new Set(selectedProjectChat?.archivedSessionIds ?? [])
+  const selectedProjectSessions =
+    selectedProjectChat?.sessions.filter((session) => !archivedSessionIds.has(session.id)) ?? []
+  const expandedRowClass =
+    "flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-sm font-medium"
+  const expandedRowIdleClass =
+    "text-sidebar-foreground/68 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground"
+  const expandedRowActiveClass =
+    "bg-[var(--sidebar-item-active)] text-sidebar-accent-foreground"
+  const glassSidebarClass =
+    "bg-[var(--sidebar-glass)] supports-[backdrop-filter]:bg-[var(--sidebar-glass-strong)]"
+  const sectionLabelClass =
+    "text-sm font-medium uppercase tracking-[0.08em] text-sidebar-foreground/48"
+
+  const stopResizing = useCallback(() => {
+    resizeStateRef.current = null
+    document.documentElement.style.removeProperty("cursor")
+    document.documentElement.style.removeProperty("user-select")
+    document.documentElement.style.removeProperty("-webkit-user-select")
+    document.body.style.removeProperty("cursor")
+    document.body.style.removeProperty("user-select")
+    document.body.style.removeProperty("-webkit-user-select")
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      stopResizing()
     }
-    return `Session ${session.id?.slice(0, 8) ?? "new"}`
+  }, [stopResizing])
+
+  useEffect(() => {
+    const handlePointerMove = (event: PointerEvent) => {
+      const resizeState = resizeStateRef.current
+      if (!resizeState) {
+        return
+      }
+
+      const nextWidth = resizeState.startWidth + (event.clientX - resizeState.startX)
+      setWidth(nextWidth)
+    }
+
+    const handlePointerUp = () => {
+      stopResizing()
+    }
+
+    window.addEventListener("pointermove", handlePointerMove)
+    window.addEventListener("pointerup", handlePointerUp)
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove)
+      window.removeEventListener("pointerup", handlePointerUp)
+    }
+  }, [setWidth, stopResizing])
+
+  const handleResizeStart = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (isCollapsed) {
+      return
+    }
+
+    event.preventDefault()
+
+    resizeStateRef.current = {
+      startX: event.clientX,
+      startWidth: width,
+    }
+
+    window.getSelection()?.removeAllRanges()
+    document.documentElement.style.cursor = "col-resize"
+    document.documentElement.style.userSelect = "none"
+    document.documentElement.style.setProperty("-webkit-user-select", "none")
+    document.body.style.cursor = "col-resize"
+    document.body.style.userSelect = "none"
+    document.body.style.setProperty("-webkit-user-select", "none")
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  const handleCreateThreadFromSelectedProject = async () => {
+    if (!selectedProject) {
+      return
+    }
+
+    setConfirmArchiveSessionId(null)
+    onOpenChat?.()
+    await selectProject(selectedProject.id)
+    await openDraftSession(selectedProject.id, selectedProject.path)
+  }
+
+  const handleOpenAutomations = () => {
+    onOpenAutomations?.()
+  }
+
+  const handleOpenSkills = () => {
+    onOpenSkills?.()
+  }
+
+  const handleSelectWorkspace = async (project: Project) => {
+    setConfirmArchiveSessionId(null)
+    onOpenChat?.()
+    await selectProject(project.id)
+    await loadSessionsForProject(project.id, project.path)
+
+    const projectChat = getProjectChat(project.id)
+    if (projectChat.activeSessionId) {
+      await selectSession(project.id, projectChat.activeSessionId)
+      return
+    }
+
+    await openDraftSession(project.id, project.path)
+  }
+
+  if (isCollapsed) {
+    return null
+  }
+
+  if (activeView === "settings") {
+    return (
+      <aside
+        style={{ width: sidebarWidth }}
+        className={cn(
+          "relative text-sidebar-foreground border-r border-sidebar-border/70 flex flex-col overflow-hidden shrink-0",
+          glassSidebarClass,
+          isCollapsed ? "w-12" : "min-w-[240px] max-w-[420px]",
+        )}
+      >
+        <div className="flex-1 overflow-y-auto">
+          <div
+            className={cn("px-2.5 pb-3", isCollapsed ? "space-y-1.5" : "space-y-2.5")}
+            style={{ paddingTop: sidebarTopPadding }}
+          >
+            {isCollapsed ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => onOpenChat?.()}
+                    className="flex h-9 w-full items-center justify-center rounded-xl text-sidebar-foreground/68 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground"
+                    aria-label="Back to app"
+                  >
+                    <BackIcon size={16} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">Back to app</TooltipContent>
+              </Tooltip>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onOpenChat?.()}
+                className={cn(expandedRowClass, expandedRowIdleClass)}
+              >
+                <BackIcon size={16} className="shrink-0" />
+                <span className="truncate">Back to app</span>
+              </button>
+            )}
+
+            <nav aria-label="Settings navigation" className="space-y-1">
+              {SETTINGS_SECTIONS.map((section) => {
+                const Icon = section.icon
+                const isActive = activeSettingsSection === section.id
+
+                return isCollapsed ? (
+                  <Tooltip key={section.id}>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() => onSelectSettingsSection?.(section.id)}
+                        className={cn(
+                          "flex h-9 w-full items-center justify-center rounded-xl",
+                          isActive
+                            ? "bg-[var(--sidebar-item-active)] text-sidebar-accent-foreground"
+                            : "text-sidebar-foreground/62 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground",
+                        )}
+                        aria-label={section.label}
+                      >
+                        <Icon size={16} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">{section.label}</TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <button
+                    key={section.id}
+                    type="button"
+                    onClick={() => onSelectSettingsSection?.(section.id)}
+                    className={cn(
+                      expandedRowClass,
+                      isActive ? expandedRowActiveClass : expandedRowIdleClass,
+                    )}
+                  >
+                    <Icon size={16} className="shrink-0" />
+                    <span className="truncate">{section.label}</span>
+                  </button>
+                )
+              })}
+            </nav>
+          </div>
+        </div>
+        {!isCollapsed ? (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize sidebar"
+            onPointerDown={handleResizeStart}
+            className="absolute inset-y-0 right-0 z-10 w-2 translate-x-1/2 cursor-col-resize"
+          >
+            <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors hover:bg-sidebar-border/90" />
+          </div>
+        ) : null}
+      </aside>
+    )
   }
 
   if (isLoading) {
     return (
       <aside
+        style={{ width: sidebarWidth }}
         className={cn(
-          "bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col",
-          isCollapsed ? "w-12" : "w-[300px] max-w-[300px] min-w-48"
+          "relative text-sidebar-foreground border-r border-sidebar-border/70 flex flex-col shrink-0",
+          glassSidebarClass,
+          isCollapsed ? "w-12" : "min-w-[240px] max-w-[420px]"
         )}
       >
-        {/* Header */}
-        <div className="h-12 bg-sidebar border-b border-sidebar-border flex items-center px-4 shrink-0">
-          <Atom size={20} weight="duotone" className="text-sidebar-foreground" />
-          {!isCollapsed && (
-            <span className="ml-2 text-sm font-semibold">Nucleus</span>
-          )}
-        </div>
         {/* Loading state */}
         <div className="flex-1 flex items-center justify-center">
           <span className="text-sm text-muted-foreground">Loading...</span>
@@ -189,178 +419,255 @@ export function LeftSidebar() {
   }
 
   return (
-    <aside
-      className={cn(
-        "bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col overflow-hidden",
-        isCollapsed ? "w-12" : "w-[300px] max-w-[300px] min-w-48"
-      )}
-    >
-      {/* App branding header */}
-      <div className="h-12 bg-sidebar border-b border-sidebar-border flex items-center px-4 shrink-0">
-        {!isCollapsed ? (
-          <div className="inline-flex items-center gap-2 text-sidebar-foreground">
-            <Atom size={20} weight="duotone" className="shrink-0" />
-            <span className="text-sm font-semibold leading-5">Nucleus</span>
-          </div>
-        ) : (
-          <Atom size={20} weight="duotone" className="text-sidebar-foreground" />
+      <aside
+        style={{ width: sidebarWidth }}
+        className={cn(
+          "relative text-sidebar-foreground border-r border-sidebar-border/70 flex flex-col overflow-hidden shrink-0",
+          glassSidebarClass,
+          isCollapsed ? "w-12" : "min-w-[240px] max-w-[420px]"
         )}
-      </div>
-
+      >
       {/* Scrollable content area */}
       <div className="flex-1 overflow-y-auto">
-        {/* Projects section */}
-        <div className="p-2">
-          {!isCollapsed && (
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60 px-2.5 py-1.5 font-medium">
-              Projects
+        <div className="px-2.5 pb-3" style={{ paddingTop: sidebarTopPadding }}>
+          {isCollapsed ? (
+            <div className="mb-4 space-y-1.5">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => void handleCreateThreadFromSelectedProject()}
+                    disabled={!selectedProject}
+                    className={cn(
+                      "flex h-9 w-full items-center justify-center rounded-xl",
+                      selectedProject
+                        ? "text-sidebar-foreground/76 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground"
+                        : "cursor-not-allowed text-sidebar-foreground/28",
+                    )}
+                    aria-label="New thread"
+                  >
+                    <PencilSimple size={16} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">New thread</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger className="flex h-9 w-full items-center justify-center rounded-xl text-sidebar-foreground/68 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground cursor-pointer">
+                      <FolderSimplePlus size={16} />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent side="right" align="end" className="w-48">
+                      <DropdownMenuItem onClick={handleOpenProject}>
+                        <span>Open workspace</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setQuickStartOpen(true)}>
+                        <span>Quick start</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TooltipTrigger>
+                <TooltipContent side="right">Add workspace</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={handleOpenAutomations}
+                    className={cn(
+                      "flex h-9 w-full items-center justify-center rounded-xl",
+                      activeView === "automations"
+                        ? "bg-[var(--sidebar-item-active)] text-sidebar-accent-foreground"
+                        : "text-sidebar-foreground/68 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground",
+                    )}
+                    aria-label="Automations"
+                  >
+                    <Clock size={16} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">Automations</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={handleOpenSkills}
+                    className={cn(
+                      "flex h-9 w-full items-center justify-center rounded-xl",
+                      activeView === "skills"
+                        ? "bg-[var(--sidebar-item-active)] text-sidebar-accent-foreground"
+                        : "text-sidebar-foreground/68 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground",
+                    )}
+                    aria-label="Skills"
+                  >
+                    <BookOpen size={16} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">Skills</TooltipContent>
+              </Tooltip>
+            </div>
+          ) : (
+            <div className="mb-5 space-y-2">
+              {selectedProject ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    className={cn(
+                      "group flex w-full cursor-pointer items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition-colors",
+                      "text-sidebar-foreground/76",
+                    )}
+                  >
+                    <img
+                      src={getAgentAvatarUrl(selectedProject.avatarSeed)}
+                      alt=""
+                      className="size-8 shrink-0 rounded-[28%] border border-sidebar-border/55 bg-background/10 object-cover"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span
+                        className="block truncate text-[18px] leading-none tracking-[0.05em] transition-colors group-hover:text-sidebar-foreground"
+                        style={{ fontFamily: "var(--font-pixel)" }}
+                      >
+                        {selectedProject.name}
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 flex-col items-center justify-center text-sidebar-foreground/34">
+                      <CaretUp size={10} />
+                      <CaretDown size={10} className="-mt-0.5" />
+                    </span>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    side="bottom"
+                    align="start"
+                    className="w-[260px] rounded-2xl border border-border/70 bg-card/95 p-2 shadow-lg backdrop-blur-sm"
+                  >
+                    {projects.map((project) => {
+                      const isActive = project.id === selectedProjectId
+
+                      return (
+                        <DropdownMenuItem
+                          key={project.id}
+                          onClick={() => void handleSelectWorkspace(project)}
+                          className="flex items-center gap-3 px-2 py-2.5"
+                        >
+                          <img
+                            src={getAgentAvatarUrl(project.avatarSeed)}
+                            alt=""
+                            className="size-7 shrink-0 rounded-[28%] border border-border/60 bg-background/10 object-cover"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span
+                              className="block truncate text-[14px] leading-none"
+                              style={{ fontFamily: "var(--font-pixel)" }}
+                            >
+                              {project.name}
+                            </span>
+                          </span>
+                          {isActive ? (
+                            <span className="text-sm text-muted-foreground">Current</span>
+                          ) : null}
+                        </DropdownMenuItem>
+                      )
+                    })}
+                    <DropdownMenuSeparator className="my-2" />
+                    <DropdownMenuItem
+                      onClick={handleOpenProject}
+                      className="min-h-10 rounded-xl px-3 py-2 text-sm font-medium text-foreground"
+                    >
+                      <Plus size={14} className="text-muted-foreground" />
+                      <span>Add new agent</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleOpenProject}
+                  className={cn(expandedRowClass, expandedRowIdleClass)}
+                >
+                  <FolderSimplePlus size={15} className="shrink-0" />
+                  <span className="truncate">Open workspace</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => void handleCreateThreadFromSelectedProject()}
+                disabled={!selectedProject}
+                className={cn(
+                  expandedRowClass,
+                  selectedProject
+                    ? expandedRowIdleClass
+                    : "cursor-not-allowed text-sidebar-foreground/32",
+                )}
+              >
+                <PencilSimple size={15} className="shrink-0" />
+                <span className="truncate">New thread</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleOpenAutomations}
+                className={cn(
+                  expandedRowClass,
+                  activeView === "automations" ? expandedRowActiveClass : expandedRowIdleClass,
+                )}
+              >
+                <Clock size={15} className="shrink-0" />
+                <span className="truncate">Automations</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleOpenSkills}
+                className={cn(
+                  expandedRowClass,
+                  activeView === "skills" ? expandedRowActiveClass : expandedRowIdleClass,
+                )}
+              >
+                <BookOpen size={15} className="shrink-0" />
+                <span className="truncate">Skills</span>
+              </button>
             </div>
           )}
 
           {projects.length === 0 ? (
             !isCollapsed && (
-              <div className="px-2.5 py-4 text-sm text-muted-foreground text-center">
-                No projects yet.
+              <div className="rounded-xl border border-sidebar-border/55 bg-background/18 px-3 py-5 text-center text-sm text-muted-foreground">
+                No workspaces yet.
                 <br />
                 <button
                   type="button"
                   onClick={handleOpenProject}
-                  className="text-primary hover:underline mt-1"
+                  className="mt-1.5 text-primary hover:underline"
                 >
-                  Add a project
+                  Add a workspace
                 </button>
               </div>
             )
-          ) : (
+          ) : isCollapsed ? (
             <div className="space-y-0.5">
               {projects.map((project) => {
                 const isSelected = selectedProjectId === project.id
-                const isExpanded = expandedProjects.has(project.id)
-                const projectChat = getProjectChat(project.id)
-                const sessions = projectChat.sessions
-                const activeSessionId = projectChat.activeSessionId
 
-                return !isCollapsed ? (
-                  <div key={project.id}>
-                    {/* Project row */}
-                    <div
-                      className={cn(
-                        "group w-full flex items-center gap-1 px-1.5 py-1.5 rounded-lg transition-colors",
-                        isSelected
-                          ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                          : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-                      )}
-                    >
-                      {/* Expand/collapse button */}
-                      <button
-                        type="button"
-                        onClick={() => toggleProjectExpanded(project.id)}
-                        className="p-0.5 rounded hover:bg-sidebar-accent/50"
-                      >
-                        {isExpanded ? (
-                          <CaretDown size={14} className="text-muted-foreground" />
-                        ) : (
-                          <CaretRight size={14} className="text-muted-foreground" />
-                        )}
-                      </button>
-
-                      {/* Project name */}
-                      <button
-                        type="button"
-                        onClick={() => selectProject(project.id)}
-                        className="flex-1 flex items-center gap-2 text-left min-w-0"
-                      >
-                        <Briefcase
-                          size={18}
-                          weight={isSelected ? "duotone" : "regular"}
-                          className={cn("shrink-0", getTextColorFromName(project.name))}
-                        />
-                        <span className="text-sm font-medium truncate">
-                          {project.name}
-                        </span>
-                      </button>
-
-                      {/* New session button */}
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            type="button"
-                            onClick={(e) => handleCreateSession(e, project.id, project.path)}
-                            className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-sidebar-accent transition-opacity"
-                            aria-label="New session"
-                          >
-                            <Plus size={14} className="text-muted-foreground hover:text-foreground" />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent side="right">New session</TooltipContent>
-                      </Tooltip>
-
-                      {/* Remove button */}
-                      <button
-                        type="button"
-                        onClick={(e) => handleRemoveClick(e, project)}
-                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-destructive/20 transition-opacity"
-                        aria-label={`Remove ${project.name}`}
-                      >
-                        <X
-                          size={14}
-                          className="text-muted-foreground hover:text-destructive"
-                        />
-                      </button>
-                    </div>
-
-                    {/* Sessions list (collapsible) */}
-                    {isExpanded && (
-                      <div className="ml-4 mt-0.5 space-y-0.5">
-                        {sessions.length === 0 ? (
-                          <div className="px-2 py-2 text-xs text-muted-foreground">
-                            No sessions yet
-                          </div>
-                        ) : (
-                          sessions
-                            .filter((session): session is Session => session != null && typeof session.id === "string")
-                            .map((session) => {
-                              const isActiveSession = activeSessionId === session.id && isSelected
-                              return (
-                                <button
-                                  key={session.id}
-                                  type="button"
-                                  onClick={() => handleSelectSession(project.id, session.id)}
-                                  className={cn(
-                                    "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-colors",
-                                    isActiveSession
-                                      ? "bg-sidebar-accent/70 text-sidebar-foreground"
-                                      : "text-sidebar-foreground/60 hover:bg-sidebar-accent/30 hover:text-sidebar-foreground"
-                                  )}
-                                >
-                                  <Chat size={14} className="shrink-0 text-muted-foreground" />
-                                  <span className="text-xs truncate flex-1">
-                                    {formatSessionTitle(session)}
-                                  </span>
-                                </button>
-                              )
-                            })
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ) : (
+                return (
                   <Tooltip key={project.id}>
                     <TooltipTrigger asChild>
                       <button
                         type="button"
-                        onClick={() => selectProject(project.id)}
+                        onClick={() => void handleSelectWorkspace(project)}
                         className={cn(
-                          "w-full flex items-center justify-center p-1.5 rounded-lg transition-colors",
+                          "w-full flex items-center justify-center p-1.5 rounded-lg",
                           isSelected
-                            ? "bg-sidebar-accent"
-                            : "hover:bg-sidebar-accent/50"
+                            ? "bg-[var(--sidebar-item-active)]"
+                            : "hover:bg-[var(--sidebar-item-hover)]"
                         )}
                       >
-                        <Briefcase
-                          size={18}
-                          weight={isSelected ? "duotone" : "regular"}
-                          className={cn("shrink-0", getTextColorFromName(project.name))}
+                        <img
+                          src={getAgentAvatarUrl(project.avatarSeed)}
+                          alt=""
+                          className="size-6 rounded-[28%] object-cover"
                         />
                       </button>
                     </TooltipTrigger>
@@ -369,54 +676,163 @@ export function LeftSidebar() {
                 )
               })}
             </div>
+          ) : (
+            <div className="space-y-6">
+              <section className="space-y-1">
+                <div className="flex items-center justify-between px-2.5 pb-1">
+                  <span className={sectionLabelClass}>
+                    Threads
+                  </span>
+                </div>
+
+                {selectedProject ? (
+                  <div className="space-y-1">
+                    {selectedProjectSessions.length === 0 ? (
+                      <div className="rounded-xl border border-sidebar-border/45 bg-background/14 px-3 py-3 text-sm text-sidebar-foreground/50">
+                        No threads in this workspace yet.
+                      </div>
+                    ) : (
+                      selectedProjectSessions
+                        .filter(
+                          (session): session is Session =>
+                            session != null && typeof session.id === "string"
+                        )
+                        .map((session) => {
+                          const activePromptState = activePromptBySession[session.id]
+                          const isAwaitingResponse = activePromptState?.status === "active"
+                          const isActiveSession = selectedProjectChat?.activeSessionId === session.id
+                          const isRunningSession =
+                            session.id === currentSessionId &&
+                            (status === "streaming" ||
+                              status === "connecting" ||
+                              isAwaitingResponse)
+                          const isConfirmingArchive = confirmArchiveSessionId === session.id
+
+                          return (
+                            <div
+                              key={session.id}
+                              onMouseLeave={() => {
+                                if (confirmArchiveSessionId === session.id) {
+                                  setConfirmArchiveSessionId(null)
+                                }
+                              }}
+                              className={cn(
+                                "group/session relative flex h-9 items-center gap-2.5 rounded-lg pl-2.5 pr-1.5",
+                                isActiveSession
+                                  ? "bg-[var(--sidebar-item-active)] text-sidebar-foreground"
+                                  : "text-sidebar-foreground/68 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground",
+                              )}
+                            >
+                              <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                                {isRunningSession ? (
+                                  <span className="size-3 rounded-full border border-sidebar-foreground/18 border-t-sidebar-foreground/62 animate-spin" />
+                                ) : null}
+                              </span>
+
+                              <button
+                                type="button"
+                                onClick={() => handleSelectSession(selectedProject.id, session.id)}
+                                className="flex min-w-0 flex-1 items-center justify-between gap-2 pr-1 text-left"
+                              >
+                                <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-none">
+                                  {formatSessionTitle(session)}
+                                </span>
+                                {isAwaitingResponse ? (
+                                  <span className="inline-flex h-5 items-center rounded-full bg-emerald-500/14 px-2 text-sm font-medium text-emerald-400">
+                                    Awaiting response
+                                  </span>
+                                ) : null}
+                              </button>
+
+                              {isConfirmingArchive ? (
+                                <button
+                                  type="button"
+                                  onClick={(event) =>
+                                    void handleArchiveIntent(event, selectedProject.id, session.id)
+                                  }
+                                  className="absolute top-1/2 right-1.5 -translate-y-1/2 rounded-full border border-border/70 bg-muted/60 px-2 py-0.5 text-sm font-medium tracking-tight text-destructive hover:bg-muted/80"
+                                  aria-label="Confirm archive session"
+                                >
+                                  Confirm
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={(event) =>
+                                    void handleArchiveIntent(event, selectedProject.id, session.id)
+                                  }
+                                  className="absolute top-1/2 right-1.5 -translate-y-1/2 rounded p-1 opacity-0 transition-opacity hover:bg-[var(--sidebar-item-hover)] group-hover/session:opacity-100"
+                                  aria-label="Archive session"
+                                >
+                                  <Archive size={14} className="text-muted-foreground" />
+                                </button>
+                              )}
+                            </div>
+                          )
+                        })
+                    )}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-sidebar-border/45 bg-background/14 px-3 py-3 text-sm text-sidebar-foreground/50">
+                    Select a workspace to see its threads.
+                  </div>
+                )}
+              </section>
+            </div>
           )}
         </div>
       </div>
 
-      {/* Footer - Add project dropdown */}
-      <div className="p-2 border-t border-sidebar-border shrink-0">
+      <div className="shrink-0 border-t border-sidebar-border/50 px-2.5 py-3">
         {isCollapsed ? (
-          <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger className="flex items-center justify-center w-full p-2 text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent rounded-md transition-colors cursor-pointer">
-                  <PlusSquare size={18} weight="bold" />
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent side="right">Add project</TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent side="right" align="end" className="w-48">
-              <DropdownMenuItem onClick={handleOpenProject}>
-                <FolderSimple size={16} />
-                <span>Open project</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setQuickStartOpen(true)}>
-                <PlusSquare size={16} />
-                <span>Quick start</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={() => onOpenSettings?.()}
+                className={cn(
+                  "flex h-9 w-full items-center justify-center rounded-lg",
+                  activeView === "settings"
+                    ? "bg-[var(--sidebar-item-active)] text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground/62 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground"
+                )}
+                aria-label="Open settings"
+              >
+                <GearSix size={16} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">Settings</TooltipContent>
+          </Tooltip>
         ) : (
-          <DropdownMenu>
-            <DropdownMenuTrigger className="flex items-center gap-2 w-full px-2 py-1.5 text-sm text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent rounded-md transition-colors cursor-pointer">
-              <PlusSquare size={16} weight="bold" />
-              <span>Add project</span>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent side="top" align="start" className="w-48">
-              <DropdownMenuItem onClick={handleOpenProject}>
-                <FolderSimple size={16} />
-                <span>Open project</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setQuickStartOpen(true)}>
-                <PlusSquare size={16} />
-                <span>Quick start</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <button
+            type="button"
+            onClick={() => onOpenSettings?.()}
+            className={cn(
+              expandedRowClass,
+              activeView === "settings"
+                ? expandedRowActiveClass
+                : expandedRowIdleClass
+            )}
+          >
+            <GearSix size={16} className="shrink-0" />
+            <span className="truncate">Settings</span>
+          </button>
         )}
       </div>
 
       <QuickStartModal open={quickStartOpen} onOpenChange={setQuickStartOpen} />
+
+      {!isCollapsed ? (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize sidebar"
+          onPointerDown={handleResizeStart}
+          className="absolute inset-y-0 right-0 z-10 w-2 translate-x-1/2 cursor-col-resize"
+        >
+          <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors hover:bg-sidebar-border/90" />
+        </div>
+      ) : null}
 
       <AlertDialog open={!!projectToRemove} onOpenChange={(open) => !open && setProjectToRemove(null)}>
         <AlertDialogContent>
