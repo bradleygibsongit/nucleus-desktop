@@ -85,7 +85,7 @@ export function SlashCommandMenu({
       )}
     >
       <div className="app-scrollbar max-h-72 overflow-y-auto px-2 pb-3">
-        <div className="px-3 pt-4 pb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground/80">
+        <div className="px-3 pt-4 pb-2 text-sm font-medium uppercase tracking-[0.18em] text-muted-foreground/80">
           Skills
         </div>
 

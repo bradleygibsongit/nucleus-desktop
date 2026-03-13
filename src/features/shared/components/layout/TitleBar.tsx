@@ -80,7 +80,7 @@ export function TitleBar({ activeView = "chat", onOpenChat }: TitleBarProps) {
             </Button>
             <div className="flex min-w-0 items-baseline gap-3">
               {activeSessionTitle ? (
-                <span className="max-w-[240px] truncate text-[12px] font-medium text-foreground">
+                <span className="max-w-[240px] truncate text-sm font-medium text-foreground">
                   {activeSessionTitle}
                 </span>
               ) : null}
@@ -117,7 +117,7 @@ export function TitleBar({ activeView = "chat", onOpenChat }: TitleBarProps) {
             </Button>
             <div className="flex min-w-0 items-baseline gap-2">
               {activeSessionTitle ? (
-                <span className="max-w-[160px] truncate text-[12px] font-medium text-foreground">
+                <span className="max-w-[160px] truncate text-sm font-medium text-foreground">
                   {activeSessionTitle}
                 </span>
               ) : null}

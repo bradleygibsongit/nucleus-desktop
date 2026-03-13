@@ -39,7 +39,7 @@ export function TabItem({ type, title, isActive, onClick, onClose }: TabItemProp
       onClick={onClick}
       onKeyDown={(e) => e.key === "Enter" && onClick()}
       className={cn(
-        "group flex items-center gap-1.5 px-3 h-full text-xs transition-colors border-b-2 -mb-px cursor-pointer",
+        "group flex items-center gap-1.5 px-3 h-full text-sm transition-colors border-b-2 -mb-px cursor-pointer",
         isActive
           ? "text-foreground border-foreground"
           : "text-muted-foreground border-transparent hover:text-foreground"

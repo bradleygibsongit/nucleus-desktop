@@ -62,10 +62,10 @@ export function StructuredPromptSurface({
       <button
         type="button"
         onClick={onDismissPrompt}
-        className="inline-flex h-8 items-center gap-2 rounded-full px-2 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
+        className="inline-flex h-8 items-center gap-2 rounded-full px-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         <span>Dismiss</span>
-        <span className="rounded-md border border-border/70 px-1.5 py-0.5 text-[11px] leading-none text-muted-foreground">
+        <span className="rounded-md border border-border/70 px-1.5 py-0.5 text-sm leading-none text-muted-foreground">
           Esc
         </span>
       </button>
@@ -96,7 +96,7 @@ export function StructuredPromptSurface({
           >
             <CaretLeft className="size-3.5" />
           </button>
-          <span className="min-w-[2.2rem] text-center text-[12px]">{progressLabel}</span>
+          <span className="min-w-[2.2rem] text-center text-sm">{progressLabel}</span>
           <button
             type="button"
             onClick={onNextQuestion}

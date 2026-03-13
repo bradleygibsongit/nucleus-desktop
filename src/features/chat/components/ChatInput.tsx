@@ -841,10 +841,10 @@ export function ChatInput({
                       <div>
                         <p className="text-sm font-medium text-foreground">{activePlan.title}</p>
                         {activePlan.summary && (
-                          <p className="mt-0.5 text-xs text-muted-foreground">{activePlan.summary}</p>
+                          <p className="mt-0.5 text-sm text-muted-foreground">{activePlan.summary}</p>
                         )}
                       </div>
-                      <span className="rounded-full border border-border bg-muted px-2 py-1 text-[11px] text-muted-foreground">
+                      <span className="rounded-full border border-border bg-muted px-2 py-1 text-sm text-muted-foreground">
                         {activePlan.steps.length} steps
                       </span>
                     </div>
@@ -862,7 +862,7 @@ export function ChatInput({
                                   : "size-3.5 text-muted-foreground/60"
                               }
                             />
-                            <span className="text-[11px] text-muted-foreground/70">{index + 1}.</span>
+                            <span className="text-sm text-muted-foreground/70">{index + 1}.</span>
                             <span className={step.status === "completed" ? "text-foreground" : ""}>
                               {step.label}
                             </span>
@@ -943,7 +943,7 @@ export function ChatInput({
             <div className="mt-4 flex items-center gap-2">
               {selectorsRow && selectedHarness && (
               <DropdownMenu>
-                <DropdownMenuTrigger className="inline-flex h-8 items-center gap-2 px-1 text-[12.5px] text-muted-foreground transition-colors hover:text-foreground cursor-pointer">
+                <DropdownMenuTrigger className="inline-flex h-8 items-center gap-2 px-1 text-sm text-muted-foreground transition-colors hover:text-foreground cursor-pointer">
                   <span>{selectedHarness.label}</span>
                   <CaretDown className="size-3 text-muted-foreground" />
                 </DropdownMenuTrigger>
@@ -956,11 +956,11 @@ export function ChatInput({
                     >
                       <div className="flex w-full items-center justify-between gap-3">
                         <span className="font-medium">{harness.label}</span>
-                        <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                        <span className="text-sm uppercase tracking-wide text-muted-foreground">
                           {harness.adapterStatus}
                         </span>
                       </div>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-sm text-muted-foreground">
                         {harness.description}
                       </span>
                     </DropdownMenuItem>
@@ -973,7 +973,7 @@ export function ChatInput({
               <button
                 type="button"
                 onClick={() => setIsPlanModeEnabled((current) => !current)}
-                className={`inline-flex h-8 items-center gap-2 rounded-full border px-2.5 text-[12.5px] transition-colors ${
+                className={`inline-flex h-8 items-center gap-2 rounded-full border px-2.5 text-sm transition-colors ${
                   isPlanModeEnabled
                     ? "border-border bg-muted text-foreground"
                     : "border-transparent text-muted-foreground hover:text-foreground"
@@ -985,7 +985,7 @@ export function ChatInput({
               )}
 
               {selectorsRow && <DropdownMenu>
-              <DropdownMenuTrigger className="inline-flex h-8 items-center gap-2 px-1 text-[12.5px] text-muted-foreground transition-colors hover:text-foreground cursor-pointer">
+              <DropdownMenuTrigger className="inline-flex h-8 items-center gap-2 px-1 text-sm text-muted-foreground transition-colors hover:text-foreground cursor-pointer">
                 <span>{selectedModel}</span>
                 <CaretDown className="size-3 text-muted-foreground" />
               </DropdownMenuTrigger>
@@ -1004,7 +1004,7 @@ export function ChatInput({
               </DropdownMenu>}
 
               {selectorsRow && <DropdownMenu>
-              <DropdownMenuTrigger className="inline-flex h-8 items-center gap-2 px-1 text-[12.5px] text-muted-foreground transition-colors hover:text-foreground cursor-pointer">
+              <DropdownMenuTrigger className="inline-flex h-8 items-center gap-2 px-1 text-sm text-muted-foreground transition-colors hover:text-foreground cursor-pointer">
                 <span>{reasoningEffort}</span>
                 <CaretDown className="size-3 text-muted-foreground" />
               </DropdownMenuTrigger>

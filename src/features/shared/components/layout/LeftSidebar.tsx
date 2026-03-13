@@ -193,7 +193,7 @@ export function LeftSidebar({
   const selectedProjectSessions =
     selectedProjectChat?.sessions.filter((session) => !archivedSessionIds.has(session.id)) ?? []
   const expandedRowClass =
-    "flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] font-medium"
+    "flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-sm font-medium"
   const expandedRowIdleClass =
     "text-sidebar-foreground/68 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground"
   const expandedRowActiveClass =
@@ -201,7 +201,7 @@ export function LeftSidebar({
   const glassSidebarClass =
     "bg-[var(--sidebar-glass)] supports-[backdrop-filter]:bg-[var(--sidebar-glass-strong)]"
   const sectionLabelClass =
-    "text-[11px] font-medium uppercase tracking-[0.08em] text-sidebar-foreground/48"
+    "text-sm font-medium uppercase tracking-[0.08em] text-sidebar-foreground/48"
 
   const stopResizing = useCallback(() => {
     resizeStateRef.current = null
@@ -565,7 +565,7 @@ export function LeftSidebar({
                             </span>
                           </span>
                           {isActive ? (
-                            <span className="text-[11px] text-muted-foreground">Current</span>
+                            <span className="text-sm text-muted-foreground">Current</span>
                           ) : null}
                         </DropdownMenuItem>
                       )
@@ -688,7 +688,7 @@ export function LeftSidebar({
                 {selectedProject ? (
                   <div className="space-y-1">
                     {selectedProjectSessions.length === 0 ? (
-                      <div className="rounded-xl border border-sidebar-border/45 bg-background/14 px-3 py-3 text-[12px] text-sidebar-foreground/50">
+                      <div className="rounded-xl border border-sidebar-border/45 bg-background/14 px-3 py-3 text-sm text-sidebar-foreground/50">
                         No threads in this workspace yet.
                       </div>
                     ) : (
@@ -738,7 +738,7 @@ export function LeftSidebar({
                                   {formatSessionTitle(session)}
                                 </span>
                                 {isAwaitingResponse ? (
-                                  <span className="inline-flex h-5 items-center rounded-full bg-emerald-500/14 px-2 text-[11px] font-medium text-emerald-400">
+                                  <span className="inline-flex h-5 items-center rounded-full bg-emerald-500/14 px-2 text-sm font-medium text-emerald-400">
                                     Awaiting response
                                   </span>
                                 ) : null}
@@ -750,7 +750,7 @@ export function LeftSidebar({
                                   onClick={(event) =>
                                     void handleArchiveIntent(event, selectedProject.id, session.id)
                                   }
-                                  className="absolute top-1/2 right-1.5 -translate-y-1/2 rounded-full border border-border/70 bg-muted/60 px-2 py-0.5 text-[11px] font-medium tracking-tight text-destructive hover:bg-muted/80"
+                                  className="absolute top-1/2 right-1.5 -translate-y-1/2 rounded-full border border-border/70 bg-muted/60 px-2 py-0.5 text-sm font-medium tracking-tight text-destructive hover:bg-muted/80"
                                   aria-label="Confirm archive session"
                                 >
                                   Confirm
@@ -773,7 +773,7 @@ export function LeftSidebar({
                     )}
                   </div>
                 ) : (
-                  <div className="rounded-xl border border-sidebar-border/45 bg-background/14 px-3 py-3 text-[12px] text-sidebar-foreground/50">
+                  <div className="rounded-xl border border-sidebar-border/45 bg-background/14 px-3 py-3 text-sm text-sidebar-foreground/50">
                     Select a workspace to see its threads.
                   </div>
                 )}

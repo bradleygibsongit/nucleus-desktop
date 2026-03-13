@@ -188,7 +188,7 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
                   type="button"
                   onClick={() => setActiveTab(tab)}
                   className={cn(
-                    "rounded-lg px-3 py-1.5 text-xs font-medium capitalize transition-colors cursor-pointer",
+                    "rounded-lg px-3 py-1.5 text-sm font-medium capitalize transition-colors cursor-pointer",
                     isActive
                       ? "bg-card text-card-foreground shadow-sm"
                       : "text-muted-foreground hover:text-foreground"
