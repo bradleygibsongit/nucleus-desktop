@@ -7,6 +7,18 @@
 
 import { cn } from "@/lib/utils";
 import { Streamdown } from "streamdown";
+import type { ComponentProps } from "react";
+
+const MARKDOWN_COMPONENTS = {
+  p: ({ children, className, ...props }: ComponentProps<"p">) => (
+    <p
+      className={cn("leading-relaxed my-0 [&:not(:first-child)]:mt-4", className)}
+      {...props}
+    >
+      {children}
+    </p>
+  ),
+};
 
 interface AgentActivityTextProps {
   text: string;
@@ -20,6 +32,7 @@ export function AgentActivityText({ text, className, isStreaming }: AgentActivit
   return (
     <Streamdown
       mode={isStreaming ? "streaming" : "static"}
+      components={MARKDOWN_COMPONENTS}
       className={cn(
         "text-sm text-foreground leading-relaxed [&>p]:mb-4 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
         className

@@ -11,6 +11,9 @@ export function ChatContainer() {
     input,
     setInput,
     handleSubmit,
+    activePrompt,
+    answerPrompt,
+    dismissPrompt,
     abort,
     selectedProject,
     harnesses,
@@ -18,26 +21,38 @@ export function ChatContainer() {
     selectHarness,
     activeSessionId,
     createSession,
+    createOptimisticSession,
     executeCommand,
   } = useChat()
   const threadKey = `${selectedProject?.id ?? "no-project"}:${activeSessionId ?? "draft"}`
-  const [showInlineIntro, setShowInlineIntro] = useState(messages.length === 0)
+  const [showInlineIntro, setShowInlineIntro] = useState(
+    messages.length === 0 && activeSessionId === null
+  )
 
   useEffect(() => {
-    setShowInlineIntro(messages.length === 0)
-  }, [threadKey])
+    setShowInlineIntro(messages.length === 0 && activeSessionId === null)
+  }, [threadKey, messages.length, activeSessionId])
 
   // Handle submit - create session if needed
-  const handleSubmitWithSession = async (text: string, options?: { agent?: string }) => {
+  const handleSubmitWithSession = async (
+    text: string,
+    options?: {
+      agent?: string
+      collaborationMode?: "default" | "plan"
+      model?: string
+      reasoningEffort?: "low" | "medium" | "high" | null
+    }
+  ) => {
     let sessionId = activeSessionId
+    setShowInlineIntro(false)
     
     if (!sessionId) {
       setInput("")
 
-      // Create a new session first
-      const session = await createSession()
+      const session = createOptimisticSession()
       if (!session) {
-        console.error("[ChatContainer] Failed to create session")
+        console.error("[ChatContainer] Failed to create optimistic session")
+        setShowInlineIntro(true)
         setInput(text)
         return
       }
@@ -45,18 +60,20 @@ export function ChatContainer() {
     }
     
     // Pass the session ID and agent directly to avoid stale closure issue
-    await handleSubmit(text, sessionId, options?.agent)
+    await handleSubmit(text, sessionId, options)
   }
 
   // Handle command execution - create session if needed
   const handleExecuteCommand = async (command: string, args?: string) => {
     let sessionId = activeSessionId
+    setShowInlineIntro(false)
     
     if (!sessionId) {
       // Create a new session first
       const session = await createSession()
       if (!session) {
         console.error("[ChatContainer] Failed to create session for command")
+        setShowInlineIntro(true)
         return
       }
       sessionId = session.id
@@ -71,6 +88,7 @@ export function ChatContainer() {
         <ChatMessages
           messages={messages}
           status={status}
+          activePrompt={activePrompt}
           selectedProject={selectedProject}
           childSessions={childSessions}
           showInlineIntro={showInlineIntro}
@@ -82,6 +100,9 @@ export function ChatContainer() {
             input={input}
             setInput={setInput}
             onSubmit={handleSubmitWithSession}
+            prompt={activePrompt}
+            onAnswerPrompt={answerPrompt}
+            onDismissPrompt={dismissPrompt}
             onAbort={abort}
             onExecuteCommand={handleExecuteCommand}
             harnesses={harnesses}

@@ -11,6 +11,13 @@ interface JsonRpcRequest {
   params?: unknown
 }
 
+export interface JsonRpcServerRequest<T = unknown> {
+  jsonrpc?: "2.0"
+  id: number | string
+  method: string
+  params?: T
+}
+
 interface JsonRpcSuccess<T = unknown> {
   jsonrpc?: "2.0"
   id: number
@@ -39,6 +46,7 @@ type PendingRequest = {
 }
 
 type NotificationListener = (notification: JsonRpcNotification) => void
+type ServerRequestListener = (request: JsonRpcServerRequest) => void
 
 const OPTED_OUT_NOTIFICATION_METHODS = [
   "codex/event/agent_message_content_delta",
@@ -56,9 +64,9 @@ const OPTED_OUT_NOTIFICATION_METHODS = [
 ]
 
 function isJsonRpcResponse(
-  value: JsonRpcSuccess | JsonRpcError | JsonRpcNotification
+  value: JsonRpcSuccess | JsonRpcError | JsonRpcNotification | JsonRpcServerRequest
 ): value is JsonRpcSuccess | JsonRpcError {
-  return "id" in value && typeof value.id === "number"
+  return "id" in value && !("method" in value)
 }
 
 function sleep(ms: number): Promise<void> {
@@ -71,6 +79,7 @@ export class CodexRpcClient {
   private nextRequestId = 1
   private pendingRequests = new Map<number, PendingRequest>()
   private listeners = new Set<NotificationListener>()
+  private serverRequestListeners = new Set<ServerRequestListener>()
 
   async connect(): Promise<void> {
     if (this.socket?.readyState === WebSocket.OPEN) {
@@ -127,10 +136,31 @@ export class CodexRpcClient {
     )
   }
 
+  respond(id: number | string, result: unknown): void {
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+      return
+    }
+
+    this.socket.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id,
+        result,
+      })
+    )
+  }
+
   onNotification(listener: NotificationListener): () => void {
     this.listeners.add(listener)
     return () => {
       this.listeners.delete(listener)
+    }
+  }
+
+  onServerRequest(listener: ServerRequestListener): () => void {
+    this.serverRequestListeners.add(listener)
+    return () => {
+      this.serverRequestListeners.delete(listener)
     }
   }
 
@@ -235,6 +265,7 @@ export class CodexRpcClient {
         | JsonRpcSuccess
         | JsonRpcError
         | JsonRpcNotification
+        | JsonRpcServerRequest
 
       if (isJsonRpcResponse(payload)) {
         const pending = this.pendingRequests.get(payload.id)
@@ -250,6 +281,13 @@ export class CodexRpcClient {
           pending.resolve(payload.result)
         }
 
+        return
+      }
+
+      if ("id" in payload && "method" in payload) {
+        for (const listener of this.serverRequestListeners) {
+          listener(payload)
+        }
         return
       }
 

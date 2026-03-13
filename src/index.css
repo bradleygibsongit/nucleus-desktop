@@ -253,7 +253,11 @@
 
 /* Streamdown markdown typography */
 [data-streamdown="paragraph"] {
-  @apply my-4 leading-relaxed;
+  @apply leading-relaxed;
+}
+
+[data-streamdown="paragraph"] + [data-streamdown="paragraph"] {
+  @apply mt-4;
 }
 
 [data-streamdown="heading-1"] {

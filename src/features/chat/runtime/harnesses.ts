@@ -1,36 +1,16 @@
 import { nanoid } from "nanoid"
+import { createTextMessage } from "../domain/runtimeMessages"
 import type {
   HarnessAdapter,
   HarnessCommandInput,
   HarnessDefinition,
   HarnessId,
+  HarnessPromptInput,
   HarnessTurnInput,
   HarnessTurnResult,
-  MessageWithParts,
   RuntimeSession,
 } from "../types"
 import { CodexHarnessAdapter } from "./codexAdapter"
-
-function createAssistantMessage(sessionId: string, text: string): MessageWithParts {
-  const messageId = nanoid()
-
-  return {
-    info: {
-      id: messageId,
-      sessionId,
-      role: "assistant",
-      createdAt: Date.now(),
-      finishReason: "end_turn",
-    },
-    parts: [
-      {
-        id: nanoid(),
-        type: "text",
-        text,
-      },
-    ],
-  }
-}
 
 class PlaceholderHarnessAdapter implements HarnessAdapter {
   constructor(public definition: HarnessDefinition) {}
@@ -62,19 +42,29 @@ class PlaceholderHarnessAdapter implements HarnessAdapter {
   async sendMessage(input: HarnessTurnInput): Promise<HarnessTurnResult> {
     return {
       messages: [
-        createAssistantMessage(
+        createTextMessage(
           input.session.id,
+          "assistant",
           `${this.definition.label} is selected for this chat, but the runtime adapter is not wired up yet. This session is now using the shared UI layer instead of the old OpenCode integration.`
         ),
       ],
     }
   }
 
+  async answerPrompt(input: HarnessPromptInput): Promise<HarnessTurnResult> {
+    return this.sendMessage({
+      session: input.session,
+      projectPath: input.projectPath,
+      text: input.response.text,
+    })
+  }
+
   async executeCommand(input: HarnessCommandInput): Promise<HarnessTurnResult> {
     return {
       messages: [
-        createAssistantMessage(
+        createTextMessage(
           input.session.id,
+          "assistant",
           `${this.definition.label} does not have command execution wired up yet. The requested command was \`/${input.command}\`.`
         ),
       ],

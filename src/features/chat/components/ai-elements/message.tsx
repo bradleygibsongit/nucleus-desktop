@@ -8,7 +8,6 @@ import {
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from "@/features/shared/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -29,6 +28,17 @@ import {
   useState,
 } from "react";
 import { Streamdown } from "streamdown";
+
+const MARKDOWN_COMPONENTS = {
+  p: ({ children, className, ...props }: ComponentProps<"p">) => (
+    <p
+      className={cn("leading-relaxed my-0 [&:not(:first-child)]:mt-4", className)}
+      {...props}
+    >
+      {children}
+    </p>
+  ),
+};
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
@@ -99,14 +109,12 @@ export const MessageAction = ({
 
   if (tooltip) {
     return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger render={<span />}>{button}</TooltipTrigger>
-          <TooltipContent>
-            <p>{tooltip}</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger render={<span />}>{button}</TooltipTrigger>
+        <TooltipContent>
+          <p>{tooltip}</p>
+        </TooltipContent>
+      </Tooltip>
     );
   }
 
@@ -323,6 +331,7 @@ export const MessageResponse = memo(
   ({ className, isStreaming, ...props }: MessageResponseProps) => (
     <Streamdown
       mode={isStreaming ? "streaming" : "static"}
+      components={MARKDOWN_COMPONENTS}
       className={cn(
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
         className
@@ -343,6 +352,7 @@ export const MessageUserContent = memo(
   ({ className, ...props }: MessageUserContentProps) => (
     <Streamdown
       mode="static"
+      components={MARKDOWN_COMPONENTS}
       className={cn(
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&>*]:leading-6 [&_p+p]:mt-2",
         className

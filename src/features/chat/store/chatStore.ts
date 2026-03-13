@@ -1,6 +1,26 @@
 import { create } from "zustand"
-import { nanoid } from "nanoid"
 import { load, Store } from "@tauri-apps/plugin-store"
+import {
+  createTextMessage,
+  dedupeMessages,
+  emitFileChanges,
+  preserveExistingMessageMetadata,
+  shouldRecreateRemoteSession,
+} from "./messageState"
+import {
+  createAnsweredPromptState,
+  createDismissedPromptState,
+  getNormalizedPromptState,
+} from "./promptState"
+import {
+  createDefaultProjectChat,
+  createOptimisticRuntimeSession,
+  deriveSessionTitle,
+  findProjectForSession,
+  replaceSession,
+  sortSessions,
+  touchSession,
+} from "./sessionState"
 import {
   DEFAULT_HARNESS_ID,
   getHarnessAdapter,
@@ -16,32 +36,20 @@ import type {
   RuntimeAgent,
   RuntimeCommand,
   RuntimeFileSearchResult,
+  RuntimePrompt,
+  RuntimePromptResponse,
+  RuntimePromptState,
+  CollaborationModeKind,
   RuntimeSession,
 } from "../types"
+import type { FileChangeEvent, PersistedChatState, ProjectChatState } from "./storeTypes"
 
 const STORE_FILE = "chat.json"
-
-interface ProjectChatState {
-  sessions: RuntimeSession[]
-  activeSessionId: string | null
-  projectPath?: string
-  archivedSessionIds?: string[]
-  selectedHarnessId: HarnessId
-}
-
-interface PersistedChatState {
-  chatByProject: Record<string, ProjectChatState>
-  messagesBySession: Record<string, MessageWithParts[]>
-}
-
-interface FileChangeEvent {
-  file: string
-  event: "add" | "change" | "unlink"
-}
 
 interface ChatState {
   chatByProject: Record<string, ProjectChatState>
   messagesBySession: Record<string, MessageWithParts[]>
+  activePromptBySession: Record<string, RuntimePromptState>
   currentMessages: MessageWithParts[]
   currentSessionId: string | null
   childSessions: Map<string, ChildSessionState>
@@ -57,6 +65,7 @@ interface ChatState {
   loadSessionsForProject: (projectId: string, projectPath: string) => Promise<void>
   openDraftSession: (projectId: string, projectPath: string) => Promise<void>
   createSession: (projectId: string, projectPath: string) => Promise<RuntimeSession | null>
+  createOptimisticSession: (projectId: string, projectPath: string) => RuntimeSession | null
   selectSession: (projectId: string, sessionId: string) => Promise<void>
   deleteSession: (projectId: string, sessionId: string) => Promise<void>
   archiveSession: (projectId: string, sessionId: string) => Promise<void>
@@ -65,7 +74,20 @@ interface ChatState {
   listCommands: (projectId: string) => Promise<RuntimeCommand[]>
   searchFiles: (projectId: string, query: string, directory?: string) => Promise<RuntimeFileSearchResult[]>
   onFileChange: (listener: (event: FileChangeEvent) => void) => () => void
-  sendMessage: (sessionId: string, text: string, agent?: string) => Promise<void>
+  setActivePrompt: (sessionId: string, prompt: RuntimePrompt) => void
+  clearActivePrompt: (sessionId: string) => void
+  dismissPrompt: (sessionId: string) => Promise<void>
+  answerPrompt: (sessionId: string, response: RuntimePromptResponse) => Promise<void>
+  sendMessage: (
+    sessionId: string,
+    text: string,
+    options?: {
+      agent?: string
+      collaborationMode?: CollaborationModeKind
+      model?: string
+      reasoningEffort?: "low" | "medium" | "high" | null
+    }
+  ) => Promise<void>
   abortSession: (sessionId: string) => Promise<void>
   executeCommand: (sessionId: string, command: string, args?: string) => Promise<void>
   _persistState: () => Promise<void>
@@ -80,192 +102,10 @@ async function getStore(): Promise<Store> {
   return storeInstance
 }
 
-function createDefaultProjectChat(projectPath?: string): ProjectChatState {
-  return {
-    sessions: [],
-    activeSessionId: null,
-    projectPath,
-    archivedSessionIds: [],
-    selectedHarnessId: DEFAULT_HARNESS_ID,
-  }
-}
-
-function createTextMessage(
-  sessionId: string,
-  role: "user" | "assistant",
-  text: string
-): MessageWithParts {
-  const messageId = nanoid()
-
-  return {
-    info: {
-      id: messageId,
-      sessionId,
-      role,
-      createdAt: Date.now(),
-      finishReason: role === "assistant" ? "end_turn" : undefined,
-    },
-    parts: [
-      {
-        id: nanoid(),
-        type: "text",
-        text,
-      },
-    ],
-  }
-}
-
-function getSessionTitleFallback(session: RuntimeSession): string {
-  if (session.title?.trim()) {
-    return session.title
-  }
-
-  return `Session ${session.id.slice(0, 8)}`
-}
-
-function sortSessions(sessions: RuntimeSession[]): RuntimeSession[] {
-  return [...sessions].sort((a, b) => b.updatedAt - a.updatedAt)
-}
-
-function touchSession(session: RuntimeSession, title?: string): RuntimeSession {
-  return {
-    ...session,
-    title: title ?? session.title,
-    updatedAt: Date.now(),
-  }
-}
-
-function findProjectForSession(
-  chatByProject: Record<string, ProjectChatState>,
-  sessionId: string
-): { projectId: string; projectChat: ProjectChatState; session: RuntimeSession } | null {
-  for (const [projectId, projectChat] of Object.entries(chatByProject)) {
-    const session = projectChat.sessions.find((candidate) => candidate.id === sessionId)
-    if (session) {
-      return { projectId, projectChat, session }
-    }
-  }
-
-  return null
-}
-
-function replaceSession(
-  sessions: RuntimeSession[],
-  nextSession: RuntimeSession
-): RuntimeSession[] {
-  return sortSessions(
-    sessions.map((session) => (session.id === nextSession.id ? nextSession : session))
-  )
-}
-
-function remapMessagesToSession(
-  messages: MessageWithParts[],
-  sessionId: string
-): MessageWithParts[] {
-  return messages.map((message) => ({
-    ...message,
-    info: {
-      ...message.info,
-      sessionId,
-    },
-    parts: message.parts.map((part) =>
-      part.type === "tool"
-        ? {
-            ...part,
-            sessionId,
-          }
-        : part
-    ),
-  }))
-}
-
-function preserveExistingMessageMetadata(
-  previousMessages: MessageWithParts[],
-  nextMessages: MessageWithParts[]
-): MessageWithParts[] {
-  const previousMessageById = new Map(
-    previousMessages.map((message) => [message.info.id, message] as const)
-  )
-
-  return nextMessages.map((message) => {
-    const previousMessage = previousMessageById.get(message.info.id)
-    if (!previousMessage) {
-      return message
-    }
-
-    return {
-      ...message,
-      info: {
-        ...message.info,
-        createdAt: previousMessage.info.createdAt,
-      },
-    }
-  })
-}
-
-function shouldRecreateRemoteSession(session: RuntimeSession, error: unknown): boolean {
-  if (session.harnessId !== "codex") {
-    return false
-  }
-
-  const message = String(error)
-  return message.includes("no rollout found for thread id")
-}
-
-function emitFileChanges(
-  listeners: Set<(event: FileChangeEvent) => void>,
-  messages: MessageWithParts[]
-): void {
-  if (listeners.size === 0) {
-    return
-  }
-
-  for (const message of messages) {
-    for (const part of message.parts) {
-      if (part.type !== "tool" || part.tool !== "fileChange") {
-        continue
-      }
-
-      const output = part.state.output
-      const changes =
-        output && typeof output === "object" && "changes" in output
-          ? (output as { changes?: unknown[] }).changes
-          : undefined
-
-      if (!Array.isArray(changes)) {
-        continue
-      }
-
-      for (const change of changes) {
-        if (!change || typeof change !== "object") {
-          continue
-        }
-
-        const path =
-          "path" in change && typeof change.path === "string"
-            ? change.path
-            : "newPath" in change && typeof change.newPath === "string"
-              ? change.newPath
-              : null
-
-        if (!path) {
-          continue
-        }
-
-        for (const listener of listeners) {
-          listener({
-            file: path,
-            event: "change",
-          })
-        }
-      }
-    }
-  }
-}
-
 export const useChatStore = create<ChatState>((set, get) => ({
   chatByProject: {},
   messagesBySession: {},
+  activePromptBySession: {},
   currentMessages: [],
   currentSessionId: null,
   childSessions: new Map<string, ChildSessionState>(),
@@ -288,6 +128,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       set({
         chatByProject: persisted?.chatByProject ?? {},
         messagesBySession: persisted?.messagesBySession ?? {},
+        activePromptBySession: persisted?.activePromptBySession ?? {},
         isLoading: false,
         isInitialized: true,
       })
@@ -389,6 +230,32 @@ export const useChatStore = create<ChatState>((set, get) => ({
     return session
   },
 
+  createOptimisticSession: (projectId: string, projectPath: string) => {
+    const { chatByProject } = get()
+    const projectChat = chatByProject[projectId] ?? createDefaultProjectChat(projectPath)
+    const session = createOptimisticRuntimeSession(projectChat.selectedHarnessId, projectPath)
+
+    set({
+      chatByProject: {
+        ...chatByProject,
+        [projectId]: {
+          ...projectChat,
+          projectPath,
+          sessions: sortSessions([session, ...projectChat.sessions]),
+          activeSessionId: session.id,
+        },
+      },
+      currentSessionId: session.id,
+      currentMessages: [],
+      childSessions: new Map<string, ChildSessionState>(),
+      status: "idle",
+      error: null,
+    })
+
+    void get()._persistState()
+    return session
+  },
+
   selectSession: async (projectId: string, sessionId: string) => {
     const { chatByProject, messagesBySession } = get()
     const projectChat = chatByProject[projectId]
@@ -415,7 +282,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   deleteSession: async (projectId: string, sessionId: string) => {
-    const { chatByProject, messagesBySession, currentSessionId } = get()
+    const { chatByProject, messagesBySession, activePromptBySession, currentSessionId } = get()
     const projectChat = chatByProject[projectId]
     if (!projectChat) {
       return
@@ -423,7 +290,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const updatedSessions = projectChat.sessions.filter((session) => session.id !== sessionId)
     const nextMessages = { ...messagesBySession }
+    const nextPromptState = { ...activePromptBySession }
     delete nextMessages[sessionId]
+    delete nextPromptState[sessionId]
 
     const wasActive = projectChat.activeSessionId === sessionId
     const nextActiveSessionId = wasActive ? updatedSessions[0]?.id ?? null : projectChat.activeSessionId
@@ -438,6 +307,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         },
       },
       messagesBySession: nextMessages,
+      activePromptBySession: nextPromptState,
       currentSessionId: currentSessionId === sessionId ? nextActiveSessionId : currentSessionId,
       currentMessages:
         currentSessionId === sessionId && nextActiveSessionId
@@ -451,7 +321,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   archiveSession: async (projectId: string, sessionId: string) => {
-    const { chatByProject, currentSessionId } = get()
+    const { chatByProject, activePromptBySession, currentSessionId } = get()
     const projectChat = chatByProject[projectId]
     if (!projectChat) {
       return
@@ -459,6 +329,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const archivedSessionIds = new Set(projectChat.archivedSessionIds ?? [])
     archivedSessionIds.add(sessionId)
+    const nextPromptState = { ...activePromptBySession }
+    delete nextPromptState[sessionId]
 
     const remainingSessions = projectChat.sessions.filter(
       (session) => !archivedSessionIds.has(session.id)
@@ -477,6 +349,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           activeSessionId: nextActiveSessionId,
         },
       },
+      activePromptBySession: nextPromptState,
       currentSessionId: currentSessionId === sessionId ? nextActiveSessionId : currentSessionId,
       currentMessages:
         currentSessionId === sessionId && nextActiveSessionId
@@ -534,7 +407,135 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  sendMessage: async (sessionId: string, text: string, agent?: string) => {
+  setActivePrompt: (sessionId, prompt) => {
+    const normalizedPromptState = getNormalizedPromptState(prompt)
+    if (!normalizedPromptState) {
+      return
+    }
+
+    set((state) => ({
+      activePromptBySession: {
+        ...state.activePromptBySession,
+        [sessionId]: normalizedPromptState,
+      },
+    }))
+
+    void get()._persistState()
+  },
+
+  clearActivePrompt: (sessionId) => {
+    set((state) => {
+      if (!state.activePromptBySession[sessionId]) {
+        return state
+      }
+
+      const nextPromptState = { ...state.activePromptBySession }
+      delete nextPromptState[sessionId]
+
+      return {
+        activePromptBySession: nextPromptState,
+      }
+    })
+
+    void get()._persistState()
+  },
+
+  dismissPrompt: async (sessionId) => {
+    const activePrompt = get().activePromptBySession[sessionId]
+    if (!activePrompt) {
+      return
+    }
+
+    void createDismissedPromptState(activePrompt.prompt)
+    get().clearActivePrompt(sessionId)
+    await get()._persistState()
+  },
+
+  answerPrompt: async (sessionId, response) => {
+    const sessionMatch = findProjectForSession(get().chatByProject, sessionId)
+    if (!sessionMatch) {
+      return
+    }
+
+    const activePrompt = get().activePromptBySession[sessionId]
+    if (!activePrompt || activePrompt.prompt.id !== response.promptId) {
+      return
+    }
+
+    const { projectChat, session } = sessionMatch
+    const adapter = getHarnessAdapter(session.harnessId)
+    const answeredPromptState = createAnsweredPromptState(activePrompt.prompt, response)
+
+    set((state) => {
+      const nextPromptState = { ...state.activePromptBySession }
+      delete nextPromptState[sessionId]
+
+      return {
+        activePromptBySession: nextPromptState,
+        status: "streaming",
+        error: null,
+      }
+    })
+
+    try {
+      const result = await adapter.answerPrompt({
+        session,
+        projectPath: projectChat.projectPath,
+        prompt: answeredPromptState.prompt,
+        response,
+      })
+
+      const sessionMessages = dedupeMessages(
+        preserveExistingMessageMetadata(
+          get().messagesBySession[sessionId] ?? [],
+          [...(get().messagesBySession[sessionId] ?? []), ...(result.messages ?? [])]
+        )
+      )
+
+      set((state) => {
+        const nextPromptState = { ...state.activePromptBySession }
+        const normalizedPromptState = getNormalizedPromptState(result.prompt)
+        const nextStatus =
+          result.messages?.length || result.childSessions?.length || result.prompt !== undefined
+            ? "idle"
+            : state.status
+
+        if (normalizedPromptState) {
+          nextPromptState[sessionId] = normalizedPromptState
+        } else {
+          delete nextPromptState[sessionId]
+        }
+
+        return {
+          messagesBySession: {
+            ...state.messagesBySession,
+            [sessionId]: sessionMessages,
+          },
+          activePromptBySession: nextPromptState,
+          currentMessages:
+            state.currentSessionId === sessionId ? sessionMessages : state.currentMessages,
+          childSessions: new Map(
+            (result.childSessions ?? []).map((childState) => [childState.session.id, childState])
+          ),
+          status: nextStatus,
+          error: null,
+        }
+      })
+    } catch (error) {
+      set((state) => ({
+        activePromptBySession: {
+          ...state.activePromptBySession,
+          [sessionId]: activePrompt,
+        },
+        status: "error",
+        error: String(error),
+      }))
+    }
+
+    await get()._persistState()
+  },
+
+  sendMessage: async (sessionId: string, text: string, options) => {
     if (!text.trim()) {
       return
     }
@@ -547,7 +548,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const { projectId, projectChat, session } = sessionMatch
     const adapter = getHarnessAdapter(session.harnessId)
     const userMessage = createTextMessage(sessionId, "user", text.trim())
-    const nextSession = touchSession(session)
+    const nextSessionTitle = session.title?.trim() ? session.title : deriveSessionTitle(text)
+    let nextSession = touchSession(session, nextSessionTitle)
     const nextMessages = [...(get().messagesBySession[sessionId] ?? []), userMessage]
 
     set({
@@ -571,26 +573,69 @@ export const useChatStore = create<ChatState>((set, get) => ({
     })
 
     try {
+      if (!nextSession.remoteId) {
+        const remoteSession = await adapter.createSession(
+          projectChat.projectPath ?? nextSession.projectPath ?? ""
+        )
+
+        nextSession = {
+          ...nextSession,
+          remoteId: remoteSession.remoteId ?? remoteSession.id,
+          projectPath: remoteSession.projectPath ?? nextSession.projectPath,
+          title: nextSession.title ?? remoteSession.title,
+          updatedAt: Date.now(),
+        }
+
+        set((state) => ({
+          chatByProject: {
+            ...state.chatByProject,
+            [projectId]: {
+              ...state.chatByProject[projectId],
+              sessions: replaceSession(state.chatByProject[projectId]?.sessions ?? [], nextSession),
+              activeSessionId: sessionId,
+            },
+          },
+        }))
+      }
+
       const result = await adapter.sendMessage({
         session: nextSession,
         projectPath: projectChat.projectPath,
         text: text.trim(),
-        agent,
+        agent: options?.agent,
+        collaborationMode: options?.collaborationMode,
+        model: options?.model,
+        reasoningEffort: options?.reasoningEffort,
         onUpdate: (partialResult) => {
           const streamedMessages = partialResult.messages ?? []
 
           set((state) => {
             const previousMessages = state.messagesBySession[sessionId] ?? nextMessages
-            const sessionMessages = preserveExistingMessageMetadata(previousMessages, [
-              ...nextMessages,
-              ...streamedMessages,
-            ])
+            const sessionMessages = dedupeMessages(
+              preserveExistingMessageMetadata(previousMessages, [
+                ...nextMessages,
+                ...streamedMessages,
+              ])
+            )
+            const nextPromptState =
+              partialResult.prompt === undefined
+                ? state.activePromptBySession
+                : (() => {
+                    const normalizedPromptState = getNormalizedPromptState(partialResult.prompt)
+                    return {
+                      ...Object.fromEntries(
+                        Object.entries(state.activePromptBySession).filter(([key]) => key !== sessionId)
+                      ),
+                      ...(normalizedPromptState ? { [sessionId]: normalizedPromptState } : {}),
+                    }
+                  })()
 
             return {
               messagesBySession: {
                 ...state.messagesBySession,
                 [sessionId]: sessionMessages,
               },
+              activePromptBySession: nextPromptState,
               currentMessages:
                 state.currentSessionId === sessionId ? sessionMessages : state.currentMessages,
               status: "streaming",
@@ -600,15 +645,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
         },
       })
 
-      const sessionMessages = preserveExistingMessageMetadata(
-        get().messagesBySession[sessionId] ?? nextMessages,
-        [...nextMessages, ...(result.messages ?? [])]
+      const sessionMessages = dedupeMessages(
+        preserveExistingMessageMetadata(
+          get().messagesBySession[sessionId] ?? nextMessages,
+          [...nextMessages, ...(result.messages ?? [])]
+        )
       )
+      const normalizedPromptState = getNormalizedPromptState(result.prompt)
 
       set({
         messagesBySession: {
           ...get().messagesBySession,
           [sessionId]: sessionMessages,
+        },
+        activePromptBySession: {
+          ...Object.fromEntries(
+            Object.entries(get().activePromptBySession).filter(([key]) => key !== sessionId)
+          ),
+          ...(normalizedPromptState ? { [sessionId]: normalizedPromptState } : {}),
         },
         currentMessages: get().currentSessionId === sessionId ? sessionMessages : get().currentMessages,
         childSessions: new Map(
@@ -621,64 +675,72 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } catch (error) {
       if (shouldRecreateRemoteSession(session, error)) {
         try {
-          const recreatedSession = await adapter.createSession(
+          const recreatedRemoteSession = await adapter.createSession(
             projectChat.projectPath ?? session.projectPath ?? ""
           )
-          const migratedSession: RuntimeSession = {
-            ...recreatedSession,
-            title: nextSession.title ?? recreatedSession.title,
-            projectPath: projectChat.projectPath ?? recreatedSession.projectPath,
-          }
-          const migratedMessages = remapMessagesToSession(nextMessages, migratedSession.id)
-          const migratedProjectChat: ProjectChatState = {
-            ...projectChat,
-            sessions: sortSessions([
-              migratedSession,
-              ...projectChat.sessions.filter((candidate) => candidate.id !== session.id),
-            ]),
-            activeSessionId: migratedSession.id,
+          const recoveredSession: RuntimeSession = {
+            ...nextSession,
+            remoteId: recreatedRemoteSession.remoteId ?? recreatedRemoteSession.id,
+            title: nextSession.title ?? recreatedRemoteSession.title,
+            projectPath: projectChat.projectPath ?? recreatedRemoteSession.projectPath,
+            updatedAt: Date.now(),
           }
 
           set({
             chatByProject: {
               ...get().chatByProject,
-              [projectId]: migratedProjectChat,
+              [projectId]: {
+                ...projectChat,
+                sessions: replaceSession(projectChat.sessions, recoveredSession),
+                activeSessionId: sessionId,
+              },
             },
-            messagesBySession: {
-              ...Object.fromEntries(
-                Object.entries(get().messagesBySession).filter(([key]) => key !== session.id)
-              ),
-              [migratedSession.id]: migratedMessages,
-            },
-            currentSessionId: migratedSession.id,
-            currentMessages: migratedMessages,
+            currentSessionId: sessionId,
+            currentMessages: nextMessages,
             status: "streaming",
             error: null,
           })
 
           const retriedResult = await adapter.sendMessage({
-            session: migratedSession,
-            projectPath: migratedProjectChat.projectPath,
+            session: recoveredSession,
+            projectPath: projectChat.projectPath,
             text: text.trim(),
-            agent,
+            agent: options?.agent,
+            collaborationMode: options?.collaborationMode,
+            model: options?.model,
+            reasoningEffort: options?.reasoningEffort,
             onUpdate: (partialResult) => {
               const streamedMessages = partialResult.messages ?? []
 
               set((state) => {
-                const previousMessages =
-                  state.messagesBySession[migratedSession.id] ?? migratedMessages
-                const sessionMessages = preserveExistingMessageMetadata(previousMessages, [
-                  ...migratedMessages,
-                  ...streamedMessages,
-                ])
+                const previousMessages = state.messagesBySession[sessionId] ?? nextMessages
+                const sessionMessages = dedupeMessages(
+                  preserveExistingMessageMetadata(previousMessages, [
+                    ...nextMessages,
+                    ...streamedMessages,
+                  ])
+                )
+                const nextPromptState =
+                  partialResult.prompt === undefined
+                    ? state.activePromptBySession
+                    : (() => {
+                        const normalizedPromptState = getNormalizedPromptState(partialResult.prompt)
+                        return {
+                          ...Object.fromEntries(
+                            Object.entries(state.activePromptBySession).filter(([key]) => key !== sessionId)
+                          ),
+                          ...(normalizedPromptState ? { [sessionId]: normalizedPromptState } : {}),
+                        }
+                      })()
 
                 return {
                   messagesBySession: {
                     ...state.messagesBySession,
-                    [migratedSession.id]: sessionMessages,
+                    [sessionId]: sessionMessages,
                   },
+                  activePromptBySession: nextPromptState,
                   currentMessages:
-                    state.currentSessionId === migratedSession.id
+                    state.currentSessionId === sessionId
                       ? sessionMessages
                       : state.currentMessages,
                   status: "streaming",
@@ -688,18 +750,35 @@ export const useChatStore = create<ChatState>((set, get) => ({
             },
           })
 
-          const retriedMessages = preserveExistingMessageMetadata(
-            get().messagesBySession[migratedSession.id] ?? migratedMessages,
-            [...migratedMessages, ...(retriedResult.messages ?? [])]
+          const retriedMessages = dedupeMessages(
+            preserveExistingMessageMetadata(
+              get().messagesBySession[sessionId] ?? nextMessages,
+              [...nextMessages, ...(retriedResult.messages ?? [])]
+            )
           )
+          const normalizedPromptState = getNormalizedPromptState(retriedResult.prompt)
 
           set({
+            chatByProject: {
+              ...get().chatByProject,
+              [projectId]: {
+                ...projectChat,
+                sessions: replaceSession(projectChat.sessions, recoveredSession),
+                activeSessionId: sessionId,
+              },
+            },
             messagesBySession: {
               ...get().messagesBySession,
-              [migratedSession.id]: retriedMessages,
+              [sessionId]: retriedMessages,
+            },
+            activePromptBySession: {
+              ...Object.fromEntries(
+                Object.entries(get().activePromptBySession).filter(([key]) => key !== sessionId)
+              ),
+              ...(normalizedPromptState ? { [sessionId]: normalizedPromptState } : {}),
             },
             currentMessages:
-              get().currentSessionId === migratedSession.id
+              get().currentSessionId === sessionId
                 ? retriedMessages
                 : get().currentMessages,
             childSessions: new Map(
@@ -785,11 +864,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
         ...(get().messagesBySession[sessionId] ?? []),
         ...(result.messages ?? []),
       ]
+      const normalizedPromptState = getNormalizedPromptState(result.prompt)
 
       set({
         messagesBySession: {
           ...get().messagesBySession,
           [sessionId]: sessionMessages,
+        },
+        activePromptBySession: {
+          ...Object.fromEntries(
+            Object.entries(get().activePromptBySession).filter(([key]) => key !== sessionId)
+          ),
+          ...(normalizedPromptState ? { [sessionId]: normalizedPromptState } : {}),
         },
         currentMessages: get().currentSessionId === sessionId ? sessionMessages : get().currentMessages,
         status: "idle",
@@ -805,11 +891,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   _persistState: async () => {
-    const { chatByProject, messagesBySession } = get()
+    const { chatByProject, messagesBySession, activePromptBySession } = get()
     const store = await getStore()
     await store.set("chatState", {
       chatByProject,
       messagesBySession,
+      activePromptBySession,
     } satisfies PersistedChatState)
     await store.save()
   },

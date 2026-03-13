@@ -1,32 +1,27 @@
-import { ArrowMoveDownLeft, ArrowUp02, Brain, CaretDown, CaretLeft, CaretRight, CheckCircle, Circle, Stop } from "@/components/icons"
-import { useState, useRef, useCallback, useMemo, useEffect, type KeyboardEvent as ReactKeyboardEvent, type FormEvent, type MutableRefObject } from "react"
+import { ArrowUp02, Brain, CaretDown, CheckCircle, Circle, Stop } from "@/components/icons"
+import { useState, useRef, useCallback, useMemo, useEffect, type KeyboardEvent as ReactKeyboardEvent, type FormEvent } from "react"
 import { SlashCommandMenu } from "./SlashCommandMenu"
 import { AtMentionMenu, type FileItem } from "./AtMentionMenu"
 import { useCommands, type NormalizedCommand } from "../hooks/useCommands"
 import { useAgents, type NormalizedAgent } from "../hooks/useAgents"
 import { useFileSearch } from "../hooks/useFileSearch"
-import type { HarnessDefinition, HarnessId } from "../types"
+import type { HarnessDefinition, HarnessId, RuntimePromptResponse } from "../types"
+import type { ComposerPlan, ComposerPrompt } from "./composer/types"
+import { REASONING_EFFORTS, getModelsForHarness } from "./composer/types"
+import { createRuntimePromptResponse, isRuntimePromptQuestionAnswered } from "../domain/runtimePrompts"
+import { populateComposerFromSerializedValue, serializeComposerState } from "./composer/composerSerialization"
+import { ComposerEditorSurface } from "./composer/ComposerEditorSurface"
+import { StructuredPromptSurface } from "./composer/StructuredPromptSurface"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/features/shared/components/ui/dropdown-menu"
-import { LexicalComposer } from "@lexical/react/LexicalComposer"
-import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin"
-import { ContentEditable } from "@lexical/react/LexicalContentEditable"
-import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin"
-import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin"
-import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary"
-import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
 import {
-  $createLineBreakNode,
-  $createParagraphNode,
   $createTextNode,
   $getRoot,
   $getSelection,
-  $isElementNode,
-  $isLineBreakNode,
   $isRangeSelection,
   $isTextNode,
   type EditorState,
@@ -35,46 +30,31 @@ import {
 } from "lexical"
 import { $createSkillChipNode, $isSkillChipNode, SkillChipNode } from "./SkillChipNode"
 
-type ComposerPlanStepStatus = "pending" | "in_progress" | "completed"
-
-export interface ComposerPlanStep {
-  id: string
-  label: string
-  status?: ComposerPlanStepStatus
-}
-
-export interface ComposerPlan {
-  title: string
-  summary?: string
-  steps: ComposerPlanStep[]
-}
-
-export interface ComposerPromptOption {
-  id: string
-  label: string
-  description?: string
-}
-
-export interface ComposerPromptQuestion {
-  id: string
-  label: string
-  description?: string
-  kind: "single_select" | "multi_select" | "text"
-  options?: ComposerPromptOption[]
-  required?: boolean
-}
-
-export interface ComposerPrompt {
-  id: string
-  title: string
-  body?: string
-  questions: ComposerPromptQuestion[]
+function getCodexModelId(model: string): string {
+  switch (model) {
+    case "GPT-5.4":
+      return "gpt-5.4"
+    case "GPT-5":
+      return "gpt-5"
+    case "GPT-5 mini":
+      return "gpt-5-mini"
+    default:
+      return model.toLowerCase().replace(/\s+/g, "-")
+  }
 }
 
 interface ChatInputProps {
   input: string
   setInput: (value: string) => void
-  onSubmit: (text: string, options?: { agent?: string }) => void
+  onSubmit: (
+    text: string,
+    options?: {
+      agent?: string
+      collaborationMode?: "default" | "plan"
+      model?: string
+      reasoningEffort?: "low" | "medium" | "high" | null
+    }
+  ) => void
   onAbort?: () => void
   onExecuteCommand?: (command: string, args?: string) => void
   harnesses: HarnessDefinition[]
@@ -83,161 +63,9 @@ interface ChatInputProps {
   status: "idle" | "streaming" | "error"
   activePlan?: ComposerPlan | null
   prompt?: ComposerPrompt | null
+  onAnswerPrompt?: (response: RuntimePromptResponse) => void
+  onDismissPrompt?: () => void
 }
-
-function isQuestionAnswered(
-  question: ComposerPromptQuestion,
-  value: string | string[] | undefined,
-  customValue?: string
-): boolean {
-  const normalizedCustomValue = customValue?.trim() ?? ""
-  if (normalizedCustomValue.length > 0) {
-    return true
-  }
-
-  if (!question.required) {
-    return true
-  }
-
-  if (question.kind === "multi_select") {
-    return Array.isArray(value) && value.length > 0
-  }
-
-  return typeof value === "string" && value.trim().length > 0
-}
-
-function serializePromptResponse(
-  prompt: ComposerPrompt,
-  answers: Record<string, string | string[]>,
-  customAnswers: Record<string, string>
-): string {
-  const lines: string[] = []
-
-  for (const question of prompt.questions) {
-    const value = answers[question.id]
-    const customValue = customAnswers[question.id]?.trim() ?? ""
-
-    if (question.kind === "multi_select") {
-      const selected = Array.isArray(value) ? value : []
-      const parts = [...selected]
-      if (customValue) {
-        parts.push(customValue)
-      }
-      lines.push(`${question.label}: ${parts.length > 0 ? parts.join(", ") : "No response"}`)
-      continue
-    }
-
-    const text =
-      question.kind === "text"
-        ? customValue
-        : typeof value === "string" && value.trim().length > 0
-          ? value.trim()
-          : customValue
-    lines.push(`${question.label}: ${text || "No response"}`)
-  }
-
-  return lines.join("\n")
-}
-
-function getModelsForHarness(harnessId: HarnessId | null): string[] {
-  switch (harnessId) {
-    case "codex":
-      return ["GPT-5.4", "GPT-5", "GPT-5 mini"]
-    case "claude-code":
-      return ["Claude Sonnet 4.5", "Claude Opus 4.1"]
-    default:
-      return ["Default model"]
-  }
-}
-
-function appendTextNodesToParagraph(text: string, paragraph: ReturnType<typeof $createParagraphNode>) {
-  const segments = text.split("\n")
-
-  segments.forEach((segment, index) => {
-    if (segment.length > 0) {
-      paragraph.append($createTextNode(segment))
-    }
-
-    if (index < segments.length - 1) {
-      paragraph.append($createLineBreakNode())
-    }
-  })
-}
-
-function populateComposerFromSerializedValue(
-  value: string,
-  commandsByReference: Map<string, NormalizedCommand>
-) {
-  const root = $getRoot()
-  const paragraph = $createParagraphNode()
-  let lastIndex = 0
-
-  root.clear()
-
-  for (const match of value.matchAll(SKILL_REFERENCE_PATTERN)) {
-    const fullMatch = match[0]
-    const rawReference = match[1]
-    const matchIndex = match.index ?? -1
-    const referenceName = rawReference.toLowerCase()
-    const command = commandsByReference.get(referenceName)
-
-    if (matchIndex < 0) {
-      continue
-    }
-
-    const textBefore = value.slice(lastIndex, matchIndex)
-    if (textBefore.length > 0) {
-      appendTextNodesToParagraph(textBefore, paragraph)
-    }
-
-    if (command?.referenceName) {
-      paragraph.append($createSkillChipNode(command.referenceName, command.name))
-    } else {
-      appendTextNodesToParagraph(fullMatch, paragraph)
-    }
-
-    lastIndex = matchIndex + fullMatch.length
-  }
-
-  const remainingText = value.slice(lastIndex)
-  if (remainingText.length > 0) {
-    appendTextNodesToParagraph(remainingText, paragraph)
-  }
-
-  root.append(paragraph)
-  root.selectEnd()
-}
-
-function serializeComposerNode(node: LexicalNode): string {
-  if ($isSkillChipNode(node)) {
-    return `$${node.getReferenceName()}`
-  }
-
-  if ($isLineBreakNode(node)) {
-    return "\n"
-  }
-
-  if ($isTextNode(node)) {
-    return node.getTextContent()
-  }
-
-  if ($isElementNode(node)) {
-    return node.getChildren().map((child) => serializeComposerNode(child)).join("")
-  }
-
-  return ""
-}
-
-function serializeComposerState(): string {
-  return $getRoot()
-    .getChildren()
-    .map((child) => serializeComposerNode(child))
-    .join("\n")
-}
-
-const REASONING_EFFORTS = ["Low", "Medium", "High"] as const
-const PROMPT_RESPONSE_ROW_CLASS = "min-h-[46px] rounded-2xl border px-3 py-2.5"
-const SKILL_REFERENCE_PATTERN = /\$([a-z0-9][a-z0-9-]*)/gi
 
 export function ChatInput({
   input,
@@ -251,16 +79,18 @@ export function ChatInput({
   status,
   activePlan,
   prompt,
+  onAnswerPrompt,
+  onDismissPrompt,
 }: ChatInputProps) {
   const [isImeComposing, setIsImeComposing] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [dismissedMenuKey, setDismissedMenuKey] = useState<string | null>(null)
   const [slashQuery, setSlashQuery] = useState("")
   const [isSlashMenuOpen, setIsSlashMenuOpen] = useState(false)
+  const [isPlanModeEnabled, setIsPlanModeEnabled] = useState(false)
   const [promptAnswers, setPromptAnswers] = useState<Record<string, string | string[]>>({})
   const [promptCustomAnswers, setPromptCustomAnswers] = useState<Record<string, string>>({})
   const [currentPromptQuestionIndex, setCurrentPromptQuestionIndex] = useState(0)
-  const [dismissedPromptId, setDismissedPromptId] = useState<string | null>(null)
   const availableModels = useMemo(
     () => getModelsForHarness(selectedHarnessId),
     [selectedHarnessId]
@@ -275,6 +105,7 @@ export function ChatInput({
   const { agents, isLoading: isLoadingAgents } = useAgents()
   const { results: fileResults, isLoading: isLoadingFiles, search: searchFiles, clear: clearFiles } = useFileSearch()
   const selectedHarness = harnesses.find((harness) => harness.id === selectedHarnessId) ?? null
+  const isPlanModeAvailable = selectedHarnessId === "codex"
   const skillCommands = useMemo(
     () => commands.filter((command) => !!command.referenceName),
     [commands]
@@ -294,10 +125,10 @@ export function ChatInput({
   )
 
   const isStreaming = status === "streaming"
-  const isPromptActive = !!prompt && dismissedPromptId !== prompt.id
+  const isPromptActive = !!prompt
   const currentPromptQuestion = isPromptActive ? prompt?.questions[currentPromptQuestionIndex] ?? null : null
   const currentPromptQuestionAnswered = currentPromptQuestion
-    ? isQuestionAnswered(
+    ? isRuntimePromptQuestionAnswered(
         currentPromptQuestion,
         promptAnswers[currentPromptQuestion.id],
         promptCustomAnswers[currentPromptQuestion.id]
@@ -320,7 +151,6 @@ export function ChatInput({
     setPromptAnswers({})
     setPromptCustomAnswers({})
     setCurrentPromptQuestionIndex(0)
-    setDismissedPromptId(null)
   }, [prompt?.id])
 
   useEffect(() => {
@@ -328,11 +158,42 @@ export function ChatInput({
   }, [availableModels])
 
   useEffect(() => {
+    if (!isPlanModeAvailable) {
+      setIsPlanModeEnabled(false)
+    }
+  }, [isPlanModeAvailable])
+
+  useEffect(() => {
     if (isPromptActive) {
       setIsSlashMenuOpen(false)
       setSlashQuery("")
     }
   }, [isPromptActive])
+
+  useEffect(() => {
+    if (
+      !currentPromptQuestion ||
+      currentPromptQuestion.kind !== "single_select" ||
+      !currentPromptQuestion.options?.length
+    ) {
+      return
+    }
+
+    const existingAnswer = promptAnswers[currentPromptQuestion.id]
+    const existingCustomAnswer = promptCustomAnswers[currentPromptQuestion.id]?.trim()
+    if (
+      (typeof existingAnswer === "string" && existingAnswer.trim().length > 0) ||
+      (Array.isArray(existingAnswer) && existingAnswer.length > 0) ||
+      existingCustomAnswer
+    ) {
+      return
+    }
+
+    setPromptAnswers((current) => ({
+      ...current,
+      [currentPromptQuestion.id]: currentPromptQuestion.options?.[0]?.label ?? "",
+    }))
+  }, [currentPromptQuestion, promptAnswers, promptCustomAnswers])
 
   useEffect(() => {
     const editor = editorRef.current
@@ -352,10 +213,6 @@ export function ChatInput({
     })
     serializedComposerValueRef.current = input
   }, [commandSignature, commandsByReference, input, isPromptActive])
-
-  useEffect(() => {
-    editorRef.current?.setEditable(!isStreaming)
-  }, [isStreaming])
 
   // Search files when @ query changes
   useEffect(() => {
@@ -579,7 +436,8 @@ export function ChatInput({
         currentPromptQuestion &&
         currentPromptQuestion.id === questionId &&
         currentPromptQuestion.kind === "single_select" &&
-        isQuestionAnswered(
+        !currentPromptQuestion.allowOther &&
+        isRuntimePromptQuestionAnswered(
           currentPromptQuestion,
           value,
           promptCustomAnswers[currentPromptQuestion.id]
@@ -596,21 +454,51 @@ export function ChatInput({
 
   const handlePromptCustomAnswerChange = useCallback(
     (questionId: string, value: string) => {
+      const question = prompt?.questions.find((candidate) => candidate.id === questionId)
+
       setPromptCustomAnswers((current) => ({
         ...current,
         [questionId]: value,
       }))
+
+      if (question?.kind === "single_select" && question.allowOther) {
+        setPromptAnswers((current) => ({
+          ...current,
+          [questionId]: "",
+        }))
+      }
     },
-    []
+    [prompt]
+  )
+
+  const handlePromptCustomAnswerFocus = useCallback(
+    (questionId: string) => {
+      const question = prompt?.questions.find((candidate) => candidate.id === questionId)
+
+      if (!question?.allowOther) {
+        return
+      }
+
+      setPromptAnswers((current) => {
+        if (question.kind === "multi_select") {
+          return {
+            ...current,
+            [questionId]: [],
+          }
+        }
+
+        return {
+          ...current,
+          [questionId]: "",
+        }
+      })
+    },
+    [prompt]
   )
 
   const handleDismissPrompt = useCallback(() => {
-    if (!prompt) {
-      return
-    }
-
-    setDismissedPromptId(prompt.id)
-  }, [prompt])
+    onDismissPrompt?.()
+  }, [onDismissPrompt])
 
   const handleGoToPreviousPromptQuestion = useCallback(() => {
     setCurrentPromptQuestionIndex((index) => Math.max(index - 1, 0))
@@ -649,34 +537,7 @@ export function ChatInput({
   const isFirstPromptQuestion = currentPromptQuestionIndex === 0
 
   const selectorsRow = !isPromptActive
-  const showPromptDismiss = isPromptActive
-
   const promptCtaLabel = isLastPromptQuestion ? "Submit" : "Continue"
-
-  const promptRightControls = isPromptActive ? (
-    <>
-      <button
-        type="button"
-        onClick={handleDismissPrompt}
-        className="inline-flex h-8 items-center gap-2 rounded-full px-2 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <span>Dismiss</span>
-        <span className="rounded-md border border-border/70 px-1.5 py-0.5 text-[11px] leading-none text-muted-foreground">
-          Esc
-        </span>
-      </button>
-      <button
-        type="submit"
-        disabled={!canSubmit}
-        className="inline-flex h-8 items-center gap-2 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity disabled:opacity-40"
-      >
-        <span>{promptCtaLabel}</span>
-        <span className="flex size-5 items-center justify-center rounded-md border border-primary-foreground/20 text-primary-foreground/85">
-          <ArrowMoveDownLeft className="size-3" />
-        </span>
-      </button>
-    </>
-  ) : null
   
 
   const handleSubmit = useCallback(
@@ -695,8 +556,9 @@ export function ChatInput({
           return
         }
 
-        onSubmit(serializePromptResponse(prompt, promptAnswers, promptCustomAnswers))
-        setDismissedPromptId(prompt.id)
+        onAnswerPrompt?.(
+          createRuntimePromptResponse(prompt, promptAnswers, promptCustomAnswers)
+        )
         setCurrentPromptQuestionIndex(0)
         setPromptAnswers({})
         setPromptCustomAnswers({})
@@ -734,11 +596,26 @@ export function ChatInput({
 
       // Check if message starts with @agent pattern
       const agentMatch = input.match(/^@(\w+)\s+(.*)$/s)
+      const collaborationMode = isPlanModeAvailable
+        ? (isPlanModeEnabled ? "plan" : "default")
+        : undefined
+      const reasoningEffortValue =
+        reasoningEffort.toLowerCase() as "low" | "medium" | "high"
+      const selectedModelId = isPlanModeAvailable ? getCodexModelId(selectedModel) : selectedModel
       if (agentMatch) {
         const [, agentName, message] = agentMatch
-        onSubmit(message.trim(), { agent: agentName })
+        onSubmit(message.trim(), {
+          agent: agentName,
+          collaborationMode,
+          model: selectedModelId,
+          reasoningEffort: collaborationMode ? reasoningEffortValue : null,
+        })
       } else {
-        onSubmit(input.trim())
+        onSubmit(input.trim(), {
+          collaborationMode,
+          model: selectedModelId,
+          reasoningEffort: collaborationMode ? reasoningEffortValue : null,
+        })
       }
     },
     [
@@ -746,9 +623,14 @@ export function ChatInput({
       input,
       isPromptActive,
       onSubmit,
+      onAnswerPrompt,
       prompt,
       promptAnswers,
       promptCustomAnswers,
+      isPlanModeAvailable,
+      isPlanModeEnabled,
+      selectedModel,
+      reasoningEffort,
       currentPromptQuestion,
       currentPromptQuestionAnswered,
       isLastPromptQuestion,
@@ -1003,37 +885,29 @@ export function ChatInput({
               customAnswers={promptCustomAnswers}
               onAnswerChange={handlePromptAnswerChange}
               onCustomAnswerChange={handlePromptCustomAnswerChange}
+              onCustomAnswerFocus={handlePromptCustomAnswerFocus}
               currentQuestionIndex={currentPromptQuestionIndex}
               progressLabel={promptProgressLabel ?? ""}
               onPreviousQuestion={handleGoToPreviousPromptQuestion}
               onNextQuestion={handleGoToNextPromptQuestion}
               canGoPrevious={!isFirstPromptQuestion}
               canGoNext={!isLastPromptQuestion}
+              canSubmitCurrentQuestion={canSubmit}
+              submitLabel={promptCtaLabel}
+              onDismissPrompt={handleDismissPrompt}
             />
           ) : (
             <>
-              <LexicalComposer initialConfig={composerInitialConfig}>
-                <ComposerEditorRefPlugin editorRef={editorRef} />
-                <OnChangePlugin onChange={handleComposerChange} />
-                <HistoryPlugin />
-                <PlainTextPlugin
-                  contentEditable={
-                    <ContentEditable
-                      onKeyDown={handleKeyDown}
-                      onCompositionStart={() => setIsImeComposing(true)}
-                      onCompositionEnd={() => setIsImeComposing(false)}
-                      aria-placeholder="Ask follow-up changes"
-                      className="app-scrollbar w-full min-h-9 max-h-[268px] overflow-y-auto bg-transparent text-[14px] leading-5 text-foreground outline-none"
-                    />
-                  }
-                  placeholder={
-                    <div className="pointer-events-none absolute top-2.5 left-4 text-[14px] leading-5 text-muted-foreground/75">
-                      Ask follow-up changes
-                    </div>
-                  }
-                  ErrorBoundary={LexicalErrorBoundary}
-                />
-              </LexicalComposer>
+              <ComposerEditorSurface
+                editorRef={editorRef}
+                initialConfig={composerInitialConfig}
+                isStreaming={isStreaming}
+                onChange={handleComposerChange}
+                onKeyDown={handleKeyDown}
+                onCompositionStart={() => setIsImeComposing(true)}
+                onCompositionEnd={() => setIsImeComposing(false)}
+                placeholder="Ask anything"
+              />
 
               {showSlashMenu && (
                 <div className="mb-3">
@@ -1065,8 +939,9 @@ export function ChatInput({
             </>
           )}
 
-          <div className="mt-4 flex items-center gap-2">
-            {selectorsRow && selectedHarness && (
+          {!isPromptActive && (
+            <div className="mt-4 flex items-center gap-2">
+              {selectorsRow && selectedHarness && (
               <DropdownMenu>
                 <DropdownMenuTrigger className="inline-flex h-8 items-center gap-2 px-1 text-[12.5px] text-muted-foreground transition-colors hover:text-foreground cursor-pointer">
                   <span>{selectedHarness.label}</span>
@@ -1092,9 +967,24 @@ export function ChatInput({
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
-            )}
+              )}
 
-            {selectorsRow && <DropdownMenu>
+              {selectorsRow && isPlanModeAvailable && (
+              <button
+                type="button"
+                onClick={() => setIsPlanModeEnabled((current) => !current)}
+                className={`inline-flex h-8 items-center gap-2 rounded-full border px-2.5 text-[12.5px] transition-colors ${
+                  isPlanModeEnabled
+                    ? "border-border bg-muted text-foreground"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Brain className="size-3.5" />
+                <span>Plan mode</span>
+              </button>
+              )}
+
+              {selectorsRow && <DropdownMenu>
               <DropdownMenuTrigger className="inline-flex h-8 items-center gap-2 px-1 text-[12.5px] text-muted-foreground transition-colors hover:text-foreground cursor-pointer">
                 <span>{selectedModel}</span>
                 <CaretDown className="size-3 text-muted-foreground" />
@@ -1111,9 +1001,9 @@ export function ChatInput({
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
-            </DropdownMenu>}
+              </DropdownMenu>}
 
-            {selectorsRow && <DropdownMenu>
+              {selectorsRow && <DropdownMenu>
               <DropdownMenuTrigger className="inline-flex h-8 items-center gap-2 px-1 text-[12.5px] text-muted-foreground transition-colors hover:text-foreground cursor-pointer">
                 <span>{reasoningEffort}</span>
                 <CaretDown className="size-3 text-muted-foreground" />
@@ -1130,10 +1020,10 @@ export function ChatInput({
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
-            </DropdownMenu>}
+              </DropdownMenu>}
 
-            <div className="ml-auto flex items-center gap-2">
-              {isStreaming ? (
+              <div className="ml-auto flex items-center gap-2">
+                {isStreaming ? (
                 <button
                   type="button"
                   onClick={onAbort}
@@ -1141,9 +1031,7 @@ export function ChatInput({
                 >
                   <Stop weight="fill" className="size-4" />
                 </button>
-              ) : showPromptDismiss ? (
-                promptRightControls
-              ) : (
+                ) : (
                 <button
                   type="submit"
                   disabled={!canSubmit && !showSlashMenu && !showAtMenu}
@@ -1151,188 +1039,12 @@ export function ChatInput({
                 >
                   <ArrowUp02 weight="bold" className="size-4" />
                 </button>
-              )}
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </form>
-  )
-}
-
-function ComposerEditorRefPlugin({
-  editorRef,
-}: {
-  editorRef: MutableRefObject<LexicalEditor | null>
-}) {
-  const [editor] = useLexicalComposerContext()
-
-  useEffect(() => {
-    editorRef.current = editor
-
-    return () => {
-      if (editorRef.current === editor) {
-        editorRef.current = null
-      }
-    }
-  }, [editor, editorRef])
-
-  return null
-}
-
-interface StructuredPromptSurfaceProps {
-  prompt: ComposerPrompt
-  answers: Record<string, string | string[]>
-  customAnswers: Record<string, string>
-  onAnswerChange: (questionId: string, value: string | string[]) => void
-  onCustomAnswerChange: (questionId: string, value: string) => void
-  currentQuestionIndex: number
-  progressLabel: string
-  onPreviousQuestion: () => void
-  onNextQuestion: () => void
-  canGoPrevious: boolean
-  canGoNext: boolean
-}
-
-function StructuredPromptSurface({
-  prompt,
-  answers,
-  customAnswers,
-  onAnswerChange,
-  onCustomAnswerChange,
-  currentQuestionIndex,
-  progressLabel,
-  onPreviousQuestion,
-  onNextQuestion,
-  canGoPrevious,
-  canGoNext,
-}: StructuredPromptSurfaceProps) {
-  const question = prompt.questions[currentQuestionIndex]
-
-  if (!question) {
-    return null
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <p className="text-sm font-medium text-foreground">{question.label}</p>
-        <div className="flex items-center gap-0 text-muted-foreground">
-          <button
-            type="button"
-            onClick={onPreviousQuestion}
-            disabled={!canGoPrevious}
-            className="flex size-6 items-center justify-center rounded-full transition-colors hover:text-foreground disabled:opacity-35"
-            aria-label="Previous question"
-          >
-            <CaretLeft className="size-3.5" />
-          </button>
-          <span className="min-w-[2.2rem] text-center text-[12px]">{progressLabel}</span>
-          <button
-            type="button"
-            onClick={onNextQuestion}
-            disabled={!canGoNext}
-            className="flex size-6 items-center justify-center rounded-full transition-colors hover:text-foreground disabled:opacity-35"
-            aria-label="Next question"
-          >
-            <CaretRight className="size-3.5" />
-          </button>
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        {question.kind === "single_select" && (
-          <div className="flex flex-col gap-2">
-            {(question.options ?? []).map((option) => {
-              const selectedValue = typeof answers[question.id] === "string" ? answers[question.id] : ""
-              const isSelected = selectedValue === option.label
-
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => onAnswerChange(question.id, option.label)}
-                  className={`flex ${PROMPT_RESPONSE_ROW_CLASS} items-center gap-3 text-left transition-colors ${
-                    isSelected
-                      ? "border-foreground/20 bg-background text-foreground"
-                      : "border-border/70 bg-background/50 text-muted-foreground hover:bg-background"
-                  }`}
-                >
-                  <span
-                    className={`block size-3 shrink-0 rounded-full border ${
-                      isSelected ? "border-foreground bg-foreground" : "border-muted-foreground/40"
-                    }`}
-                  />
-                  <span className="min-w-0">
-                    <span className="block text-sm">{option.label}</span>
-                    {option.description && (
-                      <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
-                        {option.description}
-                      </span>
-                    )}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        )}
-
-        {question.kind === "multi_select" && (
-          <div className="flex flex-col gap-2">
-            {(question.options ?? []).map((option) => {
-              const selectedValues = Array.isArray(answers[question.id]) ? answers[question.id] : []
-              const isSelected = selectedValues.includes(option.label)
-
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() =>
-                    onAnswerChange(
-                      question.id,
-                      isSelected
-                        ? selectedValues.filter((value) => value !== option.label)
-                        : selectedValues.concat(option.label)
-                    )
-                  }
-                  className={`flex ${PROMPT_RESPONSE_ROW_CLASS} items-center gap-3 text-left transition-colors ${
-                    isSelected
-                      ? "border-foreground/20 bg-background text-foreground"
-                      : "border-border/70 bg-background/50 text-muted-foreground hover:bg-background"
-                  }`}
-                >
-                  <span
-                    className={`flex size-3 shrink-0 items-center justify-center rounded-[4px] border ${
-                      isSelected ? "border-foreground bg-foreground" : "border-muted-foreground/40"
-                    }`}
-                  >
-                    {isSelected && <span className="block size-1.5 rounded-sm bg-background" />}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-sm">{option.label}</span>
-                    {option.description && (
-                      <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
-                        {option.description}
-                      </span>
-                    )}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        )}
-
-        <div
-          className={`flex ${PROMPT_RESPONSE_ROW_CLASS} items-center border-border/70 bg-background/50 transition-colors focus-within:border-foreground/20 focus-within:bg-background`}
-        >
-          <input
-            value={customAnswers[question.id] ?? ""}
-            onChange={(event) => onCustomAnswerChange(question.id, event.target.value)}
-            placeholder="No and tell the ai what to do differently"
-            className="w-full bg-transparent text-sm leading-5 text-foreground outline-none placeholder:text-muted-foreground"
-          />
-        </div>
-      </div>
-    </div>
   )
 }

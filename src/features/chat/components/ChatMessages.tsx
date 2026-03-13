@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useChatStore, type MessageWithParts, type ChildSessionState } from "../store"
 import type { Project } from "@/features/workspace/types"
+import type { RuntimePrompt } from "../types"
 import {
   Conversation,
   ConversationContent,
@@ -32,6 +33,7 @@ import { ChatTimelineItem, InlineSubagentActivity } from "./ChatTimelineItem"
 interface ChatMessagesProps {
   messages: MessageWithParts[]
   status: "idle" | "streaming" | "error"
+  activePrompt?: RuntimePrompt | null
   selectedProject?: Project | null
   childSessions?: Map<string, ChildSessionState>
   showInlineIntro?: boolean
@@ -169,6 +171,7 @@ function ChatEmptyState({ selectedProject }: ChatEmptyStateProps) {
 export function ChatMessages({
   messages,
   status,
+  activePrompt = null,
   selectedProject: _selectedProject,
   childSessions,
   showInlineIntro = false,
@@ -204,6 +207,14 @@ export function ChatMessages({
   }, [childSessionData, hasCollabTimelineItem])
 
   if (!hasContent) {
+    if (!showInlineIntro) {
+      return (
+        <StaticConversation resetKey={_selectedProject?.id ?? "empty-chat"}>
+          <div className="min-h-full" />
+        </StaticConversation>
+      )
+    }
+
     return (
       <StaticConversation resetKey={_selectedProject?.id ?? "empty-chat"}>
         <div className="mx-auto flex min-h-full w-full items-center justify-center px-10 py-10">
@@ -234,7 +245,9 @@ export function ChatMessages({
               ))}
             </div>
           ) : null}
-          {shouldRenderStreamingPlaceholder ? <StreamingAssistantPlaceholder /> : null}
+          {shouldRenderStreamingPlaceholder ? (
+            <StreamingAssistantPlaceholder isAskingQuestion={!!activePrompt} />
+          ) : null}
         </>
       </ConversationContent>
       <ConversationScrollButton />
@@ -276,13 +289,17 @@ function ChatAutoScroll({
   return null
 }
 
-function StreamingAssistantPlaceholder() {
+function StreamingAssistantPlaceholder({
+  isAskingQuestion,
+}: {
+  isAskingQuestion: boolean
+}) {
   return (
     <MessageComponent from="assistant">
       <MessageContent>
         <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
           <LoadingDots />
-          <span>Thinking</span>
+          <span>{isAskingQuestion ? "Asking a question" : "Thinking"}</span>
         </div>
       </MessageContent>
     </MessageComponent>

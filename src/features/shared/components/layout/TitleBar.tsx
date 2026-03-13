@@ -84,11 +84,6 @@ export function TitleBar({ activeView = "chat", onOpenChat }: TitleBarProps) {
                   {activeSessionTitle}
                 </span>
               ) : null}
-              {selectedProject?.name && (
-                <span className="truncate text-[12px] text-muted-foreground">
-                  {selectedProject.name}
-                </span>
-              )}
             </div>
           </div>
         ) : null}
@@ -126,11 +121,6 @@ export function TitleBar({ activeView = "chat", onOpenChat }: TitleBarProps) {
                   {activeSessionTitle}
                 </span>
               ) : null}
-              {selectedProject?.name && (
-                <span className="truncate text-[12px] text-muted-foreground">
-                  {selectedProject.name}
-                </span>
-              )}
             </div>
           </div>
         ) : null}

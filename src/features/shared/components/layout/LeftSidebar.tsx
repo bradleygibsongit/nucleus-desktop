@@ -93,6 +93,7 @@ export function LeftSidebar({
     openDraftSession,
     currentSessionId,
     status,
+    activePromptBySession,
   } = useChatStore()
 
   // Load projects on mount
@@ -697,10 +698,14 @@ export function LeftSidebar({
                             session != null && typeof session.id === "string"
                         )
                         .map((session) => {
+                          const activePromptState = activePromptBySession[session.id]
+                          const isAwaitingResponse = activePromptState?.status === "active"
                           const isActiveSession = selectedProjectChat?.activeSessionId === session.id
                           const isRunningSession =
                             session.id === currentSessionId &&
-                            (status === "streaming" || status === "connecting")
+                            (status === "streaming" ||
+                              status === "connecting" ||
+                              isAwaitingResponse)
                           const isConfirmingArchive = confirmArchiveSessionId === session.id
 
                           return (
@@ -712,26 +717,31 @@ export function LeftSidebar({
                                 }
                               }}
                               className={cn(
-                                "group/session flex h-9 items-center gap-2.5 rounded-lg px-2.5",
+                                "group/session relative flex h-9 items-center gap-2.5 rounded-lg pl-2.5 pr-1.5",
                                 isActiveSession
                                   ? "bg-[var(--sidebar-item-active)] text-sidebar-foreground"
                                   : "text-sidebar-foreground/68 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground",
                               )}
                             >
-                              {isRunningSession ? (
-                                <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                              <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                                {isRunningSession ? (
                                   <span className="size-3 rounded-full border border-sidebar-foreground/18 border-t-sidebar-foreground/62 animate-spin" />
-                                </span>
-                              ) : null}
+                                ) : null}
+                              </span>
 
                               <button
                                 type="button"
                                 onClick={() => handleSelectSession(selectedProject.id, session.id)}
-                                className="min-w-0 flex-1 text-left"
+                                className="flex min-w-0 flex-1 items-center justify-between gap-2 pr-1 text-left"
                               >
-                                <span className="block truncate text-[13px] font-medium leading-none">
+                                <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-none">
                                   {formatSessionTitle(session)}
                                 </span>
+                                {isAwaitingResponse ? (
+                                  <span className="inline-flex h-5 items-center rounded-full bg-emerald-500/14 px-2 text-[11px] font-medium text-emerald-400">
+                                    Awaiting response
+                                  </span>
+                                ) : null}
                               </button>
 
                               {isConfirmingArchive ? (
@@ -740,7 +750,7 @@ export function LeftSidebar({
                                   onClick={(event) =>
                                     void handleArchiveIntent(event, selectedProject.id, session.id)
                                   }
-                                  className="rounded-full border border-border/70 bg-muted/60 px-2 py-0.5 text-[11px] font-medium tracking-tight text-destructive hover:bg-muted/80"
+                                  className="absolute top-1/2 right-1.5 -translate-y-1/2 rounded-full border border-border/70 bg-muted/60 px-2 py-0.5 text-[11px] font-medium tracking-tight text-destructive hover:bg-muted/80"
                                   aria-label="Confirm archive session"
                                 >
                                   Confirm
@@ -751,7 +761,7 @@ export function LeftSidebar({
                                   onClick={(event) =>
                                     void handleArchiveIntent(event, selectedProject.id, session.id)
                                   }
-                                  className="rounded p-1 opacity-0 transition-opacity hover:bg-[var(--sidebar-item-hover)] group-hover/session:opacity-100"
+                                  className="absolute top-1/2 right-1.5 -translate-y-1/2 rounded p-1 opacity-0 transition-opacity hover:bg-[var(--sidebar-item-hover)] group-hover/session:opacity-100"
                                   aria-label="Archive session"
                                 >
                                   <Archive size={14} className="text-muted-foreground" />

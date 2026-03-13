@@ -2,15 +2,20 @@ import type {
   HarnessAdapter,
   HarnessCommandInput,
   HarnessDefinition,
+  HarnessPromptInput,
   HarnessTurnInput,
   HarnessTurnResult,
   MessageWithParts,
   RuntimeMessage,
   RuntimeMessagePart,
+  RuntimePrompt,
+  RuntimePromptQuestion,
+  RuntimePromptResponse,
   RuntimeSession,
   RuntimeToolPart,
   RuntimeToolState,
 } from "../types"
+import { getRemoteSessionId } from "../domain/runtimeSessions"
 import { getCodexRpcClient } from "./codexRpcClient"
 
 const TURN_COMPLETION_TIMEOUT_MS = 120_000
@@ -175,6 +180,11 @@ interface CodexOutputDeltaNotification {
   delta: string
 }
 
+interface CodexServerRequestResolvedNotification {
+  threadId: string
+  requestId: string | number
+}
+
 interface CodexReasoningTextDeltaNotification extends CodexTextDeltaNotification {
   contentIndex: number
 }
@@ -183,8 +193,43 @@ interface CodexReasoningSummaryTextDeltaNotification extends CodexTextDeltaNotif
   summaryIndex: number
 }
 
+interface CodexToolRequestUserInputOption {
+  label: string
+  description: string
+}
+
+interface CodexToolRequestUserInputQuestion {
+  id: string
+  header: string
+  question: string
+  isOther: boolean
+  isSecret: boolean
+  options: CodexToolRequestUserInputOption[] | null
+}
+
+interface CodexToolRequestUserInputParams {
+  threadId: string
+  turnId: string
+  itemId: string
+  questions: CodexToolRequestUserInputQuestion[]
+}
+
+interface CodexPendingUserInputRequest {
+  requestId: string | number
+  threadId: string
+  turnId: string
+  itemId: string
+  prompt: RuntimePrompt
+}
+
 function toMilliseconds(seconds: number): number {
   return seconds * 1000
+}
+
+function mapReasoningEffort(
+  effort: HarnessTurnInput["reasoningEffort"]
+): "low" | "medium" | "high" | null {
+  return effort ?? null
 }
 
 function isTransientTurnReadError(error: unknown): boolean {
@@ -200,11 +245,85 @@ function mapThreadToSession(thread: CodexThread): RuntimeSession {
 
   return {
     id: thread.id,
+    remoteId: thread.id,
     harnessId: "codex",
     title,
     projectPath: thread.cwd,
     createdAt: toMilliseconds(thread.createdAt),
     updatedAt: toMilliseconds(thread.updatedAt),
+  }
+}
+
+function mapCodexUserInputQuestionToRuntimeQuestion(
+  question: CodexToolRequestUserInputQuestion,
+  promptTitle: string
+): RuntimePromptQuestion {
+  const options = question.options?.map((option) => ({
+    id: `${question.id}:${option.label}`,
+    label: option.label,
+    description: option.description,
+  }))
+
+  return {
+    id: question.id,
+    label: question.question,
+    description: question.header !== promptTitle ? question.header : undefined,
+    kind: options && options.length > 0 ? "single_select" : "text",
+    options,
+    allowOther: question.isOther || undefined,
+    isSecret: question.isSecret || undefined,
+    required: true,
+  }
+}
+
+function mapCodexUserInputRequestToPrompt(
+  requestId: string | number,
+  params: CodexToolRequestUserInputParams
+): RuntimePrompt | null {
+  if (params.questions.length === 0) {
+    return null
+  }
+
+  const promptTitle = params.questions[0]?.header?.trim() || "Agent question"
+
+  return {
+    id: `codex-request-user-input:${String(requestId)}`,
+    title: promptTitle,
+    body: params.questions.length > 1 ? "Answer the questions below to continue." : undefined,
+    questions: params.questions.map((question) =>
+      mapCodexUserInputQuestionToRuntimeQuestion(question, promptTitle)
+    ),
+  }
+}
+
+function mapRuntimePromptResponseToCodexResponse(
+  prompt: RuntimePrompt,
+  response: RuntimePromptResponse
+): { answers: Record<string, { answers: string[] }> } {
+  return {
+    answers: Object.fromEntries(
+      prompt.questions.map((question) => {
+        const rawAnswer = response.answers[question.id]
+        const customValue = response.customAnswers[question.id]?.trim() ?? ""
+        const selectedAnswers = Array.isArray(rawAnswer)
+          ? rawAnswer.filter((answer) => answer.trim().length > 0)
+          : typeof rawAnswer === "string" && rawAnswer.trim().length > 0
+            ? [rawAnswer.trim()]
+            : []
+        const answers = [...selectedAnswers]
+
+        if (customValue.length > 0) {
+          answers.push(question.kind === "text" ? customValue : `user_note: ${customValue}`)
+        }
+
+        return [
+          question.id,
+          {
+            answers,
+          },
+        ] as const
+      })
+    ),
   }
 }
 
@@ -698,6 +817,7 @@ function mapTurnItemsToMessages(turn: CodexTurn, sessionId: string): MessageWith
 export class CodexHarnessAdapter implements HarnessAdapter {
   private rpc = getCodexRpcClient()
   private activeTurns = new Map<string, string>()
+  private pendingUserInputRequests = new Map<string, CodexPendingUserInputRequest>()
 
   constructor(public definition: HarnessDefinition) {}
 
@@ -734,9 +854,20 @@ export class CodexHarnessAdapter implements HarnessAdapter {
   }
 
   async sendMessage(input: HarnessTurnInput): Promise<HarnessTurnResult> {
+    const threadId = getRemoteSessionId(input.session)
     const response = await this.rpc.request<CodexTurnStartResponse>("turn/start", {
-      threadId: input.session.id,
+      threadId,
       cwd: input.projectPath ?? input.session.projectPath ?? null,
+      collaborationMode: input.collaborationMode
+        ? {
+            mode: input.collaborationMode,
+            settings: {
+              model: input.model ?? "gpt-5.4",
+              reasoning_effort: mapReasoningEffort(input.reasoningEffort),
+              developer_instructions: null,
+            },
+          }
+        : null,
       input: [
         {
           type: "text",
@@ -750,6 +881,7 @@ export class CodexHarnessAdapter implements HarnessAdapter {
     this.activeTurns.set(input.session.id, turnId)
 
     const completedTurn = await this.waitForTurnCompletion(
+      threadId,
       input.session.id,
       turnId,
       input.onUpdate
@@ -763,7 +895,7 @@ export class CodexHarnessAdapter implements HarnessAdapter {
     const turn =
       completedTurn && completedTurn.items.length > 0
         ? completedTurn
-        : (await this.readTurn(input.session.id, turnId)) ?? completedTurn
+        : (await this.readTurn(threadId, turnId)) ?? completedTurn
 
     if (!turn) {
       return { messages: [] }
@@ -772,6 +904,37 @@ export class CodexHarnessAdapter implements HarnessAdapter {
     return {
       messages: mapTurnItemsToMessages(turn, input.session.id),
     }
+  }
+
+  async answerPrompt(input: HarnessPromptInput): Promise<HarnessTurnResult> {
+    const pendingRequest = this.pendingUserInputRequests.get(input.session.id)
+    if (pendingRequest && pendingRequest.prompt.id === input.prompt.id) {
+      this.rpc.respond(
+        pendingRequest.requestId,
+        mapRuntimePromptResponseToCodexResponse(input.prompt, input.response)
+      )
+
+      try {
+        await this.rpc.waitForNotification<CodexServerRequestResolvedNotification>(
+          (notification) =>
+            notification.method === "serverRequest/resolved" &&
+            notification.params?.threadId === pendingRequest.threadId &&
+            notification.params?.requestId === pendingRequest.requestId,
+          TURN_SYNC_INTERVAL_MS * 8
+        )
+      } catch {
+        // Ignore races where the request resolves before the listener attaches.
+      }
+
+      this.pendingUserInputRequests.delete(input.session.id)
+      return {}
+    }
+
+    return this.sendMessage({
+      session: input.session,
+      projectPath: input.projectPath,
+      text: input.response.text,
+    })
   }
 
   async executeCommand(input: HarnessCommandInput): Promise<HarnessTurnResult> {
@@ -802,7 +965,7 @@ export class CodexHarnessAdapter implements HarnessAdapter {
     }
 
     await this.rpc.request("turn/interrupt", {
-      threadId: session.id,
+      threadId: getRemoteSessionId(session),
       turnId,
     })
     this.activeTurns.delete(session.id)
@@ -810,6 +973,7 @@ export class CodexHarnessAdapter implements HarnessAdapter {
 
   private async waitForTurnCompletion(
     threadId: string,
+    sessionId: string,
     turnId: string,
     onUpdate?: HarnessTurnInput["onUpdate"]
   ): Promise<CodexTurn | undefined> {
@@ -819,6 +983,7 @@ export class CodexHarnessAdapter implements HarnessAdapter {
       let settled = false
       let emitQueued = false
       let lastEmittedSnapshot = ""
+      let activePromptId: string | null = null
 
       const emitUpdate = () => {
         if (!onUpdate || emitQueued || settled) {
@@ -848,7 +1013,7 @@ export class CodexHarnessAdapter implements HarnessAdapter {
                 status: "inProgress",
                 error: null,
               },
-              threadId
+              sessionId
             ),
           })
         })
@@ -886,6 +1051,8 @@ export class CodexHarnessAdapter implements HarnessAdapter {
         window.clearTimeout(timeoutId)
         window.clearInterval(syncIntervalId)
         unsubscribe()
+        unsubscribeServerRequest()
+        this.pendingUserInputRequests.delete(sessionId)
         resolve(turn)
       }
 
@@ -898,6 +1065,7 @@ export class CodexHarnessAdapter implements HarnessAdapter {
         window.clearTimeout(timeoutId)
         window.clearInterval(syncIntervalId)
         unsubscribe()
+        unsubscribeServerRequest()
         reject(error instanceof Error ? error : new Error(String(error)))
       }
 
@@ -1052,9 +1220,57 @@ export class CodexHarnessAdapter implements HarnessAdapter {
               return
             }
 
+            case "serverRequest/resolved": {
+              const params =
+                notification.params as CodexServerRequestResolvedNotification | undefined
+              if (!params || params.threadId !== threadId) {
+                return
+              }
+
+              const pendingRequest = this.pendingUserInputRequests.get(sessionId)
+              if (!pendingRequest || pendingRequest.requestId !== params.requestId) {
+                return
+              }
+
+              this.pendingUserInputRequests.delete(sessionId)
+              activePromptId = null
+              onUpdate?.({ prompt: null })
+              return
+            }
+
             default:
               return
           }
+        } catch (error) {
+          fail(error)
+        }
+      })
+
+      const unsubscribeServerRequest = this.rpc.onServerRequest((request) => {
+        try {
+          if (request.method !== "item/tool/requestUserInput") {
+            return
+          }
+
+          const params = request.params as CodexToolRequestUserInputParams | undefined
+          if (!params || params.threadId !== threadId || params.turnId !== turnId) {
+            return
+          }
+
+          const prompt = mapCodexUserInputRequestToPrompt(request.id, params)
+          if (!prompt || activePromptId === prompt.id) {
+            return
+          }
+
+          activePromptId = prompt.id
+          this.pendingUserInputRequests.set(sessionId, {
+            requestId: request.id,
+            threadId: params.threadId,
+            turnId: params.turnId,
+            itemId: params.itemId,
+            prompt,
+          })
+          onUpdate?.({ prompt })
         } catch (error) {
           fail(error)
         }

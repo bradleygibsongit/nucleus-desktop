@@ -94,6 +94,30 @@ function createIcon(name: string, icon: IconSvgElement): Icon {
   return Component
 }
 
+export const InformationCircle = forwardRef(function InformationCircleIcon(
+  { strokeWidth = 1.8, ...props }: IconProps,
+  ref: Ref<SVGSVGElement>
+) {
+  return (
+    <svg
+      ref={ref}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 10v5" />
+      <path d="M12 7.5h.01" />
+    </svg>
+  )
+}) as Icon
+InformationCircle.displayName = "InformationCircle"
+
 export const Archive = createIcon("Archive", Archive03Icon)
 export const ArrowDown = createIcon("ArrowDown", ArrowDown01Icon)
 export const ArrowElbowDownLeft = createIcon("ArrowElbowDownLeft", ArrowDownLeft01Icon)

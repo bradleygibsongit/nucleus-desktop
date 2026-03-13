@@ -35,6 +35,7 @@ export interface HarnessDefinition {
 
 export interface RuntimeSession {
   id: string;
+  remoteId?: string;
   harnessId: HarnessId;
   title?: string;
   projectPath?: string;
@@ -128,11 +129,55 @@ export interface RuntimeFileSearchResult {
   type: "file" | "directory";
 }
 
+export interface RuntimePromptOption {
+  id: string;
+  label: string;
+  description?: string;
+}
+
+export interface RuntimePromptQuestion {
+  id: string;
+  label: string;
+  description?: string;
+  kind: "single_select" | "multi_select" | "text";
+  options?: RuntimePromptOption[];
+  allowOther?: boolean;
+  isSecret?: boolean;
+  required?: boolean;
+}
+
+export interface RuntimePrompt {
+  id: string;
+  title: string;
+  body?: string;
+  questions: RuntimePromptQuestion[];
+}
+
+export interface RuntimePromptResponse {
+  promptId: string;
+  answers: Record<string, string | string[]>;
+  customAnswers: Record<string, string>;
+  text: string;
+}
+
+export interface RuntimePromptState {
+  prompt: RuntimePrompt;
+  status: "active" | "dismissed" | "answered";
+  createdAt: number;
+  response?: RuntimePromptResponse;
+  updatedAt?: number;
+}
+
+export type CollaborationModeKind = "default" | "plan";
+
 export interface HarnessTurnInput {
   session: RuntimeSession;
   projectPath?: string;
   text: string;
   agent?: string;
+  collaborationMode?: CollaborationModeKind;
+  model?: string;
+  reasoningEffort?: "low" | "medium" | "high" | null;
   onUpdate?: (result: HarnessTurnResult) => void;
 }
 
@@ -143,9 +188,17 @@ export interface HarnessCommandInput {
   args?: string;
 }
 
+export interface HarnessPromptInput {
+  session: RuntimeSession;
+  projectPath?: string;
+  prompt: RuntimePrompt;
+  response: RuntimePromptResponse;
+}
+
 export interface HarnessTurnResult {
   messages?: MessageWithParts[];
   childSessions?: ChildSessionState[];
+  prompt?: RuntimePrompt | null;
 }
 
 export interface HarnessAdapter {
@@ -156,6 +209,7 @@ export interface HarnessAdapter {
   listCommands: () => Promise<RuntimeCommand[]>;
   searchFiles: (query: string, directory?: string) => Promise<RuntimeFileSearchResult[]>;
   sendMessage: (input: HarnessTurnInput) => Promise<HarnessTurnResult>;
+  answerPrompt: (input: HarnessPromptInput) => Promise<HarnessTurnResult>;
   executeCommand: (input: HarnessCommandInput) => Promise<HarnessTurnResult>;
   abortSession: (session: RuntimeSession) => Promise<void>;
 }
