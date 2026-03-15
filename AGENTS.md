@@ -2,11 +2,17 @@
 
 Open-source desktop AI co-worker app with Tauri + React.
 
+## First Design Principles
+
+- Design the application to be local-first wherever practical: data, permissions, agent context, and core workflows should prefer running on the user's machine.
+- Limit reliance on third-party services and hosted infrastructure. Favor local capabilities or thin, optional integrations so the system stays understandable, portable, and easy for the person installing it to manage themselves.
+
 ## Product Direction
 
 Nucleus Desktop is intended to become an open-source analogue to Claude Cowork: a desktop agent workspace for knowledge work beyond coding.
 
 - The primary unit in the product is a custom agent backed by a local folder. In product copy, navigation, and UX discussions, refer to these folder-backed units as agents rather than projects.
+- Local-first operation is a core product principle. When choosing architecture, dependencies, or UX flows, prefer approaches that keep the app self-managed on the user's machine and avoid unnecessary external services.
 - Chats, plans, tools, files, and approvals all live inside an agent context. Switching the selected agent should switch the active chat/thread context with it.
 - The target experience is outcome-oriented task execution, not just turn-by-turn chat.
 - Users should be able to grant scoped access to local folders, tools, connectors, and browser workflows so the agent can complete multi-step work on their behalf.
@@ -98,6 +104,8 @@ These components have already been decoupled from the old ACP implementation and
 - Codex is not a drop-in replacement for the OpenCode client. The closest fit is Codex App Server, which uses JSON-RPC `thread/*` and `turn/*` events instead of OpenCode's REST/SSE shape; prefer generating version-matched bindings with `codex app-server generate-ts` rather than hand-rolling protocol types.
 - Claude Cowork is a useful product reference: Anthropic positions it as Claude Code's agentic architecture packaged into Desktop for knowledge work beyond coding, with scoped file/tool access, visible planning, parallel sub-agents, plugins/skills, and explicit approval gates.
 - For app UI controls, prefer the shared `shared/components/ui` primitives and standard sizing over one-off button/input overrides; search fields should use the shared `InputGroup` pattern unless a custom design is explicitly requested.
+- Sidebar chrome should use the standard sidebar tokens (`bg-sidebar`, `--sidebar-item-hover`, `--sidebar-item-active`) rather than the older translucent/glass backgrounds so both sidebars read as the same surface.
+- When a sidebar header opens a `DropdownMenu`, drive the trigger's visual active state with local `onOpenChange` state and use the shared radius tokens (`--radius-*`) instead of arbitrary extra-round corners.
 - Treat chat performance as a core architectural requirement: keep the composer isolated from timeline re-renders, normalize timeline rows before rendering, and prefer virtualization/batched streaming updates over ad hoc memoization once threads get large.
 - Codex assistant turns can surface the same content twice with different ids during streaming/final reconciliation (for example provisional `item-*` ids and canonical `msg_*` ids), so chat message merges should dedupe semantically instead of assuming ids alone are stable.
 - If assistant paragraph spacing looks broken in chat, check persisted `chat.json` before changing the adapter: in this app the `\n\n` paragraph breaks survived storage, and the bug was in markdown paragraph rendering/styling rather than model output.

@@ -356,7 +356,7 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
   return (
     <aside className="w-[400px] max-w-[400px] min-w-48 shrink bg-sidebar text-sidebar-foreground border-l border-sidebar-border flex flex-col">
       {/* Header */}
-      <div className="border-b border-sidebar-border px-4 py-3 shrink-0">
+      <div className="border-b border-sidebar-border px-3 py-2 shrink-0">
         <div className="flex items-center gap-2">
           <div className="inline-flex rounded-xl bg-sidebar-accent p-1">
             {RIGHT_SIDEBAR_TABS.map(({ key, label, icon: Icon }) => {
@@ -368,7 +368,7 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
                   type="button"
                   onClick={() => setActiveTab(key)}
                   className={cn(
-                    "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors cursor-pointer",
+                    "inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-sm font-medium transition-colors cursor-pointer",
                     isActive
                       ? "bg-card text-card-foreground shadow-sm"
                       : "text-muted-foreground hover:text-foreground"
@@ -387,7 +387,7 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
       <div
         className={cn(
           "flex-1",
-          activeTab === "skills" ? "min-h-0" : "overflow-y-auto px-2 py-2"
+          activeTab === "skills" ? "min-h-0" : "overflow-y-auto px-1.5 py-1.5"
         )}
       >
         {activeTab === "files" ? (
@@ -413,14 +413,14 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
         ) : activeTab === "skills" ? (
           <SkillsSidebarPanel />
         ) : (
-          <div className="space-y-3 px-1 py-1">
+          <div className="space-y-2 px-1.5 py-1">
             {!selectedProject ? (
               <div className="flex items-center justify-center py-8">
                 <span className="text-sm text-muted-foreground">Select an agent to manage secrets</span>
               </div>
             ) : (
               <>
-                <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-card px-3 py-2.5">
+                <div className="flex items-center justify-between gap-2 rounded-xl border border-border/70 bg-card px-2.5 py-2">
                   <p className="text-xs leading-5 text-muted-foreground">
                     Pulls secret-like keys from repo env files and saves edits into local overrides.
                   </p>
@@ -438,7 +438,7 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
                 </div>
 
                 {secretsError ? (
-                  <div className="rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-xs leading-5 text-destructive">
+                  <div className="rounded-xl border border-destructive/20 bg-destructive/5 px-2.5 py-2 text-xs leading-5 text-destructive">
                     {secretsError}
                   </div>
                 ) : null}
@@ -450,15 +450,15 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
                 ) : null}
 
                 {selectedProjectDraftSecret ? (
-                  <div className="rounded-xl border border-border bg-card px-3 py-3">
-                    <div className="flex items-start justify-between gap-3">
+                  <div className="rounded-xl border border-border bg-card px-2.5 py-2">
+                    <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-foreground">New secret</p>
                         <p className="mt-1 text-xs text-muted-foreground">Saves to .env.local</p>
                       </div>
                     </div>
 
-                    <div className="mt-3 space-y-2">
+                    <div className="mt-2 space-y-2">
                       <Input
                         value={selectedProjectDraftSecret.key}
                         placeholder="SECRET_KEY"
@@ -489,7 +489,7 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
                               isVisible: !current.isVisible,
                             }))
                           }
-                          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                           aria-label={selectedProjectDraftSecret.isVisible ? "Hide secret" : "Show secret"}
                         >
                           <Eye className="size-4" />
@@ -521,7 +521,7 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
                 {!isSecretsLoading &&
                 selectedProjectSecrets.length === 0 &&
                 selectedProjectDraftSecret == null ? (
-                  <div className="rounded-xl border border-dashed border-border bg-card px-3 py-6 text-center">
+                  <div className="rounded-xl border border-dashed border-border bg-card px-2.5 py-4 text-center">
                     <p className="text-sm font-medium text-foreground">No secrets found yet</p>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">
                       Add the first secret and it will be written to `.env.local`.
@@ -544,9 +544,9 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
                   return (
                     <div
                       key={state.key}
-                      className="rounded-xl border border-border bg-card px-3 py-3"
+                      className="rounded-xl border border-border bg-card px-2.5 py-2"
                     >
-                      <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-foreground">{state.label}</p>
                           <p className="mt-1 text-xs text-muted-foreground">{syncHint}</p>
@@ -568,7 +568,7 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
                         ) : null}
                       </div>
 
-                      <div className="mt-3 flex items-center gap-2">
+                      <div className="mt-2 flex items-center gap-2">
                         <Input
                           type={hasSavedValue && !state.isVisible ? "password" : "text"}
                           value={state.value}

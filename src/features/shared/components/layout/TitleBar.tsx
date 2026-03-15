@@ -48,7 +48,7 @@ export function TitleBar({ activeView = "chat", onOpenChat }: TitleBarProps) {
   return (
     <header
       className={cn(
-        "relative flex h-11 shrink-0 items-center gap-3 border-b border-sidebar-border/70 bg-[var(--sidebar-glass)] px-3 backdrop-blur-xl supports-[backdrop-filter]:bg-[var(--sidebar-glass-strong)]",
+        "relative flex h-11 shrink-0 items-center gap-3 border-b border-sidebar-border/70 bg-sidebar px-3",
         activeView === "chat" && "text-sidebar-foreground",
       )}
     >

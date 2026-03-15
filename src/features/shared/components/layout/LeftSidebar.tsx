@@ -190,13 +190,13 @@ export function LeftSidebar({
   const selectedProjectSessions =
     selectedProjectChat?.sessions.filter((session) => !archivedSessionIds.has(session.id)) ?? []
   const expandedRowClass =
-    "flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-sm font-medium"
+    "flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-sm font-medium"
   const expandedRowIdleClass =
     "text-sidebar-foreground/68 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground"
   const expandedRowActiveClass =
     "bg-[var(--sidebar-item-active)] text-sidebar-accent-foreground"
-  const glassSidebarClass =
-    "bg-[var(--sidebar-glass)] supports-[backdrop-filter]:bg-[var(--sidebar-glass-strong)]"
+  const [isProjectSelectorOpen, setIsProjectSelectorOpen] = useState(false)
+  const sidebarSurfaceClass = "bg-sidebar"
   const sectionLabelClass =
     "text-sm font-medium uppercase tracking-[0.08em] text-sidebar-foreground/48"
 
@@ -302,13 +302,13 @@ export function LeftSidebar({
         style={{ width: sidebarWidth }}
         className={cn(
           "relative text-sidebar-foreground border-r border-sidebar-border/70 flex flex-col overflow-hidden shrink-0",
-          glassSidebarClass,
+          sidebarSurfaceClass,
           isCollapsed ? "w-12" : "min-w-[240px] max-w-[420px]",
         )}
       >
         <div className="flex-1 overflow-y-auto">
           <div
-            className={cn("px-2.5 pb-3", isCollapsed ? "space-y-1.5" : "space-y-2.5")}
+            className={cn("px-2 pb-2", isCollapsed ? "space-y-1.5" : "space-y-2")}
             style={{ paddingTop: sidebarTopPadding }}
           >
             {isCollapsed ? (
@@ -317,7 +317,7 @@ export function LeftSidebar({
                   <button
                     type="button"
                     onClick={() => onOpenChat?.()}
-                    className="flex h-9 w-full items-center justify-center rounded-xl text-sidebar-foreground/68 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground"
+                    className="flex h-8 w-full items-center justify-center rounded-lg text-sidebar-foreground/68 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground"
                     aria-label="Back to app"
                   >
                     <BackIcon size={16} />
@@ -348,7 +348,7 @@ export function LeftSidebar({
                         type="button"
                         onClick={() => onSelectSettingsSection?.(section.id)}
                         className={cn(
-                          "flex h-9 w-full items-center justify-center rounded-xl",
+                          "flex h-8 w-full items-center justify-center rounded-lg",
                           isActive
                             ? "bg-[var(--sidebar-item-active)] text-sidebar-accent-foreground"
                             : "text-sidebar-foreground/62 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground",
@@ -399,7 +399,7 @@ export function LeftSidebar({
         style={{ width: sidebarWidth }}
         className={cn(
           "relative text-sidebar-foreground border-r border-sidebar-border/70 flex flex-col shrink-0",
-          glassSidebarClass,
+          sidebarSurfaceClass,
           isCollapsed ? "w-12" : "min-w-[240px] max-w-[420px]"
         )}
       >
@@ -416,13 +416,13 @@ export function LeftSidebar({
         style={{ width: sidebarWidth }}
         className={cn(
           "relative text-sidebar-foreground border-r border-sidebar-border/70 flex flex-col overflow-hidden shrink-0",
-          glassSidebarClass,
+          sidebarSurfaceClass,
           isCollapsed ? "w-12" : "min-w-[240px] max-w-[420px]"
         )}
       >
       {/* Scrollable content area */}
       <div className="flex-1 overflow-y-auto">
-        <div className="px-2.5 pb-3" style={{ paddingTop: sidebarTopPadding }}>
+        <div className="px-2 pb-2" style={{ paddingTop: sidebarTopPadding }}>
           {isCollapsed ? (
             <div className="mb-4 space-y-1.5">
               <Tooltip>
@@ -432,7 +432,7 @@ export function LeftSidebar({
                     onClick={() => void handleCreateThreadFromSelectedProject()}
                     disabled={!selectedProject}
                     className={cn(
-                      "flex h-9 w-full items-center justify-center rounded-xl",
+                      "flex h-8 w-full items-center justify-center rounded-lg",
                       selectedProject
                         ? "text-sidebar-foreground/76 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground"
                         : "cursor-not-allowed text-sidebar-foreground/28",
@@ -448,7 +448,7 @@ export function LeftSidebar({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <DropdownMenu>
-                    <DropdownMenuTrigger className="flex h-9 w-full items-center justify-center rounded-xl text-sidebar-foreground/68 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground cursor-pointer">
+                  <DropdownMenuTrigger className="flex h-8 w-full items-center justify-center rounded-lg text-sidebar-foreground/68 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground cursor-pointer">
                       <FolderSimplePlus size={16} />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent side="right" align="end" className="w-48">
@@ -470,7 +470,7 @@ export function LeftSidebar({
                     type="button"
                     onClick={handleOpenAutomations}
                     className={cn(
-                      "flex h-9 w-full items-center justify-center rounded-xl",
+                      "flex h-8 w-full items-center justify-center rounded-lg",
                       activeView === "automations"
                         ? "bg-[var(--sidebar-item-active)] text-sidebar-accent-foreground"
                         : "text-sidebar-foreground/68 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground",
@@ -486,22 +486,23 @@ export function LeftSidebar({
           ) : (
             <div className="mb-5 space-y-2">
               {selectedProject ? (
-                <DropdownMenu>
+                <DropdownMenu onOpenChange={setIsProjectSelectorOpen}>
                   <DropdownMenuTrigger
                     className={cn(
-                      "group flex w-full cursor-pointer items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition-colors",
-                      "text-sidebar-foreground/76",
+                      "group flex w-full cursor-pointer items-center gap-2 rounded-[var(--radius-lg)] px-2 py-2 text-left transition-colors",
+                      isProjectSelectorOpen
+                        ? "bg-[var(--sidebar-item-active)] text-sidebar-accent-foreground ring-1 ring-sidebar-border"
+                        : "text-sidebar-foreground/76",
                     )}
                   >
                     <img
                       src={getAgentAvatarUrl(selectedProject.avatarSeed)}
                       alt=""
-                      className="size-8 shrink-0 rounded-[28%] border border-sidebar-border/55 bg-background/10 object-cover"
+                      className="size-6 shrink-0 rounded-[28%] border border-sidebar-border/55 bg-background/10 object-cover"
                     />
                     <span className="min-w-0 flex-1">
                       <span
-                        className="block truncate text-[18px] leading-none tracking-[0.05em] transition-colors group-hover:text-sidebar-foreground"
-                        style={{ fontFamily: "var(--font-pixel)" }}
+                        className="font-sans block truncate text-[15px] leading-tight font-bold tracking-normal text-sidebar-foreground transition-colors group-hover:text-foreground"
                       >
                         {selectedProject.name}
                       </span>
@@ -514,7 +515,7 @@ export function LeftSidebar({
                   <DropdownMenuContent
                     side="bottom"
                     align="start"
-                    className="w-[260px] rounded-2xl border border-border/70 bg-card/95 p-2 shadow-lg backdrop-blur-sm"
+                    className="w-[260px] rounded-2xl border border-border/70 bg-card p-2 shadow-lg"
                   >
                     {projects.map((project) => {
                       const isActive = project.id === selectedProjectId
@@ -523,17 +524,16 @@ export function LeftSidebar({
                         <DropdownMenuItem
                           key={project.id}
                           onClick={() => void handleSelectWorkspace(project)}
-                          className="flex items-center gap-3 px-2 py-2.5"
+                          className="flex items-center gap-2 px-2 py-2"
                         >
                           <img
                             src={getAgentAvatarUrl(project.avatarSeed)}
                             alt=""
-                            className="size-7 shrink-0 rounded-[28%] border border-border/60 bg-background/10 object-cover"
+                            className="size-6 shrink-0 rounded-[28%] border border-border/60 bg-background/10 object-cover"
                           />
                           <span className="min-w-0 flex-1">
                             <span
-                              className="block truncate text-[14px] leading-none"
-                              style={{ fontFamily: "var(--font-pixel)" }}
+                              className="font-sans block truncate text-sm leading-tight font-bold text-sidebar-foreground"
                             >
                               {project.name}
                             </span>
@@ -547,7 +547,7 @@ export function LeftSidebar({
                     <DropdownMenuSeparator className="my-2" />
                     <DropdownMenuItem
                       onClick={handleOpenProject}
-                      className="min-h-10 rounded-xl px-3 py-2 text-sm font-medium text-foreground"
+                      className="min-h-8 rounded-xl px-2 py-1 text-sm font-medium text-foreground"
                     >
                       <Plus size={14} className="text-muted-foreground" />
                       <span>Add new agent</span>
@@ -596,7 +596,7 @@ export function LeftSidebar({
 
           {projects.length === 0 ? (
             !isCollapsed && (
-              <div className="rounded-xl border border-sidebar-border/55 bg-background/18 px-3 py-5 text-center text-sm text-muted-foreground">
+              <div className="rounded-xl border border-sidebar-border/55 bg-background px-2 py-2 text-center text-sm text-muted-foreground">
                 No workspaces yet.
                 <br />
                 <button
@@ -620,7 +620,7 @@ export function LeftSidebar({
                         type="button"
                         onClick={() => void handleSelectWorkspace(project)}
                         className={cn(
-                          "w-full flex items-center justify-center p-1.5 rounded-lg",
+                          "w-full flex items-center justify-center p-1 rounded-lg",
                           isSelected
                             ? "bg-[var(--sidebar-item-active)]"
                             : "hover:bg-[var(--sidebar-item-hover)]"
@@ -629,7 +629,7 @@ export function LeftSidebar({
                         <img
                           src={getAgentAvatarUrl(project.avatarSeed)}
                           alt=""
-                          className="size-6 rounded-[28%] object-cover"
+                          className="size-5 rounded-[28%] object-cover"
                         />
                       </button>
                     </TooltipTrigger>
@@ -639,9 +639,9 @@ export function LeftSidebar({
               })}
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-4">
               <section className="space-y-1">
-                <div className="flex items-center justify-between px-2.5 pb-1">
+                <div className="flex items-center justify-between px-2 pb-1">
                   <span className={sectionLabelClass}>
                     Threads
                   </span>
@@ -650,7 +650,7 @@ export function LeftSidebar({
                 {selectedProject ? (
                   <div className="space-y-1">
                     {selectedProjectSessions.length === 0 ? (
-                      <div className="px-2.5 py-2 text-sm text-muted-foreground">
+                      <div className="px-2 py-2 text-sm text-muted-foreground">
                         No threads yet.
                       </div>
                     ) : (
@@ -679,14 +679,14 @@ export function LeftSidebar({
                                 }
                               }}
                               className={cn(
-                                "group/session flex h-9 items-center rounded-lg pl-2.5 pr-1.5",
+                                "group/session flex h-8 items-center gap-2 rounded-lg px-2",
                                 isActiveSession
                                   ? "bg-[var(--sidebar-item-active)] text-sidebar-foreground"
                                   : "text-sidebar-foreground/68 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground",
                               )}
                             >
                               {isRunningSession ? (
-                                <span className="mr-2.5 flex h-4 w-4 shrink-0 items-center justify-center">
+                                <span className="flex h-4 w-4 shrink-0 items-center justify-center">
                                   <span className="size-3 rounded-full border border-sidebar-foreground/18 border-t-sidebar-foreground/62 animate-spin" />
                                 </span>
                               ) : null}
@@ -708,7 +708,7 @@ export function LeftSidebar({
 
                               <div
                                 className={cn(
-                                  "ml-1 flex shrink-0 items-center justify-end",
+                                  "flex shrink-0 items-center justify-end",
                                   isConfirmingArchive ? "min-w-[4.75rem]" : "w-7"
                                 )}
                               >
@@ -742,7 +742,7 @@ export function LeftSidebar({
                     )}
                   </div>
                 ) : (
-                  <div className="rounded-xl border border-sidebar-border/45 bg-background/14 px-3 py-3 text-sm text-sidebar-foreground/50">
+                  <div className="rounded-xl border border-sidebar-border/45 bg-background px-2 py-2 text-sm text-sidebar-foreground/50">
                     Select a workspace to see its threads.
                   </div>
                 )}
@@ -752,7 +752,7 @@ export function LeftSidebar({
         </div>
       </div>
 
-      <div className="shrink-0 border-t border-sidebar-border/50 px-2.5 py-3">
+      <div className="shrink-0 border-t border-sidebar-border/50 px-2 py-2">
         {isCollapsed ? (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -760,7 +760,7 @@ export function LeftSidebar({
                 type="button"
                 onClick={() => onOpenSettings?.()}
                 className={cn(
-                  "flex h-9 w-full items-center justify-center rounded-lg",
+                  "flex h-8 w-full items-center justify-center rounded-lg",
                   activeView === "settings"
                     ? "bg-[var(--sidebar-item-active)] text-sidebar-accent-foreground"
                     : "text-sidebar-foreground/62 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground"

@@ -20,7 +20,7 @@
         "minHeight": 600,
         "resizable": true,
         "fullscreen": false,
-        "transparent": true,
+        "transparent": false,
         "decorations": true,
         "titleBarStyle": "Overlay",
         "trafficLightPosition": {
@@ -28,12 +28,7 @@
           "y": 22
         },
         "hiddenTitle": true,
-        "backgroundColor": "#00000000",
-        "windowEffects": {
-          "effects": ["sidebar"],
-          "state": "active",
-          "radius": 18
-        }
+        "backgroundColor": "#1e1e1e"
       }
     ],
     "security": {

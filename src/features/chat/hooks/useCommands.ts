@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react"
+import { invoke } from "@tauri-apps/api/core"
 import { useProjectStore } from "@/features/workspace/store"
 import { useChatStore } from "../store/chatStore"
+import type { SkillsSyncResponse } from "@/features/skills/types"
 
 export interface NormalizedCommand {
   name: string
@@ -12,42 +14,7 @@ export interface NormalizedCommand {
   referenceName?: string
 }
 
-const MOCK_SKILL_COMMANDS: NormalizedCommand[] = [
-  {
-    name: "Agent Client Protocol (acp)",
-    description: 'This skill should be used when the user asks to "implement ACP", "create an ACP agent", or integrate ACP.',
-    kind: "custom",
-    isPreview: true,
-    referenceName: "acp",
-  },
-  {
-    name: "Find Skills",
-    description: 'Helps users discover and install agent skills when they ask questions like "how do I do X".',
-    kind: "custom",
-    isPreview: true,
-    referenceName: "find-skills",
-  },
-  {
-    name: "Image Gen",
-    description: "Generate and edit images using OpenAI.",
-    kind: "custom",
-    isPreview: true,
-    referenceName: "imagegen",
-  },
-  {
-    name: "Learn",
-    description: "Capture session learnings into AGENTS.md files.",
-    kind: "custom",
-    isPreview: true,
-    referenceName: "learn",
-  },
-  {
-    name: "Linear",
-    description: "Manage Linear issues in Codex.",
-    kind: "custom",
-    isPreview: true,
-    referenceName: "linear",
-  },
+const BUILTIN_PREVIEW_COMMANDS: NormalizedCommand[] = [
   {
     name: "OpenAI Docs",
     description: "Reference official OpenAI docs, including upgrade guidance.",
@@ -81,9 +48,20 @@ export function useCommands() {
     setError(null)
 
     try {
-      const rawCommands = await listCommands(selectedProjectId)
+      const [rawCommands, installedSkillsResponse] = await Promise.all([
+        listCommands(selectedProjectId),
+        invoke<SkillsSyncResponse>("list_skills").catch(() => null),
+      ])
+      const installedSkillCommands: NormalizedCommand[] =
+        installedSkillsResponse?.skills.map((skill) => ({
+          name: skill.name,
+          description: skill.description ?? "",
+          kind: "custom",
+          isPreview: true,
+          referenceName: skill.id,
+        })) ?? []
       const previewByName = new Map(
-        MOCK_SKILL_COMMANDS.map((command) => [command.name.toLowerCase(), command])
+        installedSkillCommands.map((command) => [command.name.toLowerCase(), command])
       )
 
       const normalized: NormalizedCommand[] = rawCommands.map((cmd) => ({
@@ -97,9 +75,18 @@ export function useCommands() {
 
       const merged = [
         ...normalized,
-        ...MOCK_SKILL_COMMANDS.filter(
+        ...installedSkillCommands.filter(
           (mockCommand) =>
             !normalized.some(
+              (command) => command.name.toLowerCase() === mockCommand.name.toLowerCase()
+            )
+        ),
+        ...BUILTIN_PREVIEW_COMMANDS.filter(
+          (mockCommand) =>
+            !normalized.some(
+              (command) => command.name.toLowerCase() === mockCommand.name.toLowerCase()
+            ) &&
+            !installedSkillCommands.some(
               (command) => command.name.toLowerCase() === mockCommand.name.toLowerCase()
             )
         ),
@@ -116,7 +103,7 @@ export function useCommands() {
     } catch (err) {
       console.error("[useCommands] Failed to fetch commands:", err)
       setError(String(err))
-      setCommands(MOCK_SKILL_COMMANDS)
+      setCommands(BUILTIN_PREVIEW_COMMANDS)
     } finally {
       setIsLoading(false)
     }

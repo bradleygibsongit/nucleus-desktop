@@ -14,7 +14,7 @@ export function AppLayout() {
   return (
     <SidebarProvider>
       <RightSidebarProvider>
-        <div className="flex h-screen flex-col overflow-hidden bg-transparent">
+        <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
           <TitleBar
             activeView={activeView}
             onOpenChat={() => setActiveView("chat")}

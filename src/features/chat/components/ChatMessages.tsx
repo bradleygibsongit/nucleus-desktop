@@ -127,7 +127,7 @@ function ChatEmptyState({ selectedProject }: ChatEmptyStateProps) {
           </DropdownMenuTrigger>
           <DropdownMenuContent
             sideOffset={12}
-            className="w-72 rounded-2xl border border-border/70 bg-card/95 p-2 shadow-lg backdrop-blur-sm"
+            className="w-72 rounded-2xl border border-border/70 bg-card p-2 shadow-lg"
           >
             <DropdownMenuGroup>
               <DropdownMenuLabel className="px-2 py-2 text-sm font-medium text-muted-foreground">

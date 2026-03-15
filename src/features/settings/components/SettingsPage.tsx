@@ -82,7 +82,7 @@ const SETTINGS_CONTENT: Record<
           {
             title: "Use opaque window background",
             description: "Use a solid background rather than system translucency.",
-            control: { type: "toggle", enabled: false },
+            control: { type: "toggle", enabled: true },
           },
           {
             title: "Use pointer cursors",

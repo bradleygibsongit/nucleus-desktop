@@ -205,11 +205,19 @@
   * {
     @apply border-border outline-ring/50;
     }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
   body {
-    @apply font-sans bg-transparent text-foreground overscroll-none;
+    @apply font-sans bg-background text-foreground overscroll-none;
     }
   html {
-    @apply font-sans bg-transparent overscroll-none;
+    @apply font-sans bg-background overscroll-none;
+    }
+  #root {
+    @apply bg-background text-foreground;
     }
 }
 
