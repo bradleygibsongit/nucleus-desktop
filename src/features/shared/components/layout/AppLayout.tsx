@@ -6,6 +6,7 @@ import { SidebarProvider } from "./SidebarContext"
 import { RightSidebarProvider } from "./RightSidebarContext"
 import { TitleBar } from "./TitleBar"
 import type { SettingsSectionId } from "@/features/settings/config"
+import { AppUpdateBootstrap } from "@/features/updates/components/AppUpdateBootstrap"
 
 export function AppLayout() {
   const [activeView, setActiveView] = useState<"chat" | "settings" | "automations">("chat")
@@ -14,6 +15,7 @@ export function AppLayout() {
   return (
     <SidebarProvider>
       <RightSidebarProvider>
+        <AppUpdateBootstrap />
         <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
           <TitleBar
             activeView={activeView}

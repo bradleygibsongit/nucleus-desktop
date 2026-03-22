@@ -6,6 +6,7 @@ import { SettingsPage } from "@/features/settings/components/SettingsPage"
 import { useTabStore } from "@/features/editor/store"
 import type { Tab } from "@/features/chat/types"
 import type { SettingsSectionId } from "@/features/settings/config"
+import { UpdateBanner } from "@/features/updates/components/UpdateBanner"
 
 interface DiffTabContentProps {
   tab: Tab
@@ -56,6 +57,7 @@ export function MainContent({ activeView, activeSettingsSection }: MainContentPr
   if (activeView === "settings") {
     return (
       <main className="flex-1 min-w-80 bg-main-content text-main-content-foreground overflow-hidden flex flex-col">
+        <UpdateBanner />
         <SettingsPage activeSection={activeSettingsSection} />
       </main>
     )
@@ -64,6 +66,7 @@ export function MainContent({ activeView, activeSettingsSection }: MainContentPr
   if (activeView === "automations") {
     return (
       <main className="flex-1 min-w-80 bg-main-content text-main-content-foreground overflow-hidden flex flex-col">
+        <UpdateBanner />
         <AutomationsPage />
       </main>
     )
@@ -75,6 +78,7 @@ export function MainContent({ activeView, activeSettingsSection }: MainContentPr
 
   return (
     <main className="flex-1 min-w-80 bg-main-content text-main-content-foreground overflow-hidden flex flex-col">
+      <UpdateBanner />
       {!isChatTab && (
         <TabBar
           tabs={tabsWithChat}

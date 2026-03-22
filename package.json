@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "tauri:build:release": "tauri build --config src-tauri/tauri.release.conf.json"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.9.6",

@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion"
 import { SETTINGS_SECTIONS, type SettingsSectionId } from "@/features/settings/config"
 import { Switch } from "@/features/shared/components/ui/switch"
+import { UpdatesSection } from "@/features/updates/components/UpdatesSection"
 import { cn } from "@/lib/utils"
 
 type SettingControl =
@@ -162,6 +163,11 @@ const SETTINGS_CONTENT: Record<
         ],
       },
     ],
+  },
+  updates: {
+    title: "Updates",
+    description: "Release publishing, in-app installs, and the current update channel.",
+    groups: [],
   },
   git: {
     title: "Git",
@@ -377,6 +383,8 @@ export function SettingsPage({ activeSection }: SettingsPageProps) {
             {section.groups.map((group, index) => (
               <SettingsGroup key={`${section.title}-${index}`} title={group.title} rows={group.rows} />
             ))}
+
+            {activeSection === "updates" ? <UpdatesSection /> : null}
           </motion.div>
         </AnimatePresence>
       </div>

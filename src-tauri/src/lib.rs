@@ -6,9 +6,14 @@ use std::path::PathBuf;
 use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_updater::{Update, UpdaterExt};
 
 const CODEX_RPC_MESSAGE_EVENT: &str = "codex-rpc:message";
 const CODEX_RPC_STATUS_EVENT: &str = "codex-rpc:status";
+const APP_UPDATE_EVENT: &str = "app-update:event";
+const APP_UPDATE_ENDPOINT: &str =
+    "https://github.com/bradleygibsongit/nucleus-desktop/releases/latest/download/latest.json";
+const APP_UPDATE_PUBLIC_KEY: &str = include_str!("../updater-public-key.txt");
 
 struct CodexServer {
     state: Mutex<CodexServerState>,
@@ -18,6 +23,8 @@ struct CodexServerState {
     process: Option<Child>,
     stdin: Option<ChildStdin>,
 }
+
+struct PendingUpdate(Mutex<Option<Update>>);
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -45,8 +52,30 @@ struct ParsedSkillDocument {
     has_frontmatter: bool,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppUpdateMetadata {
+    version: String,
+    current_version: String,
+    notes: Option<String>,
+    pub_date: Option<String>,
+    target: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppUpdateDownloadEvent {
+    event: &'static str,
+    chunk_length: Option<usize>,
+    downloaded: Option<usize>,
+    content_length: Option<u64>,
+}
+
 #[tauri::command]
-async fn ensure_codex_server(app: AppHandle, state: State<'_, CodexServer>) -> Result<String, String> {
+async fn ensure_codex_server(
+    app: AppHandle,
+    state: State<'_, CodexServer>,
+) -> Result<String, String> {
     let mut server_state = state.state.lock().map_err(|e| e.to_string())?;
 
     if let Some(ref mut child) = server_state.process {
@@ -257,26 +286,134 @@ async fn list_skills() -> Result<SkillsSyncResponse, String> {
     })
 }
 
+#[tauri::command]
+async fn check_for_app_update(
+    app: AppHandle,
+    pending_update: State<'_, PendingUpdate>,
+) -> Result<Option<AppUpdateMetadata>, String> {
+    let update_endpoint = APP_UPDATE_ENDPOINT
+        .parse()
+        .map_err(|error| format!("Failed to parse app update endpoint: {}", error))?;
+
+    let update = app
+        .updater_builder()
+        .pubkey(APP_UPDATE_PUBLIC_KEY.trim())
+        .endpoints(vec![update_endpoint])
+        .map_err(|error| format!("Failed to configure updater endpoints: {}", error))?
+        .build()
+        .map_err(|error| format!("Failed to build updater client: {}", error))?
+        .check()
+        .await
+        .map_err(|error| format!("Failed to check for updates: {}", error))?;
+
+    let metadata = update.as_ref().map(|update| AppUpdateMetadata {
+        version: update.version.clone(),
+        current_version: update.current_version.clone(),
+        notes: update.body.clone(),
+        pub_date: update.date.map(|date| date.to_string()),
+        target: update.target.clone(),
+    });
+
+    *pending_update
+        .0
+        .lock()
+        .map_err(|error| format!("Failed to lock pending update state: {}", error))? = update;
+
+    Ok(metadata)
+}
+
+#[tauri::command]
+async fn install_app_update(
+    app: AppHandle,
+    pending_update: State<'_, PendingUpdate>,
+) -> Result<(), String> {
+    let update = pending_update
+        .0
+        .lock()
+        .map_err(|error| format!("Failed to lock pending update state: {}", error))?
+        .take()
+        .ok_or_else(|| "There is no pending app update to install.".to_string())?;
+
+    let mut has_started = false;
+    let mut downloaded = 0usize;
+    let app_handle = app.clone();
+
+    update
+        .download_and_install(
+            move |chunk_length, content_length| {
+                if !has_started {
+                    let _ = app_handle.emit(
+                        APP_UPDATE_EVENT,
+                        AppUpdateDownloadEvent {
+                            event: "started",
+                            chunk_length: None,
+                            downloaded: Some(0),
+                            content_length,
+                        },
+                    );
+                    has_started = true;
+                }
+
+                downloaded += chunk_length;
+                let _ = app_handle.emit(
+                    APP_UPDATE_EVENT,
+                    AppUpdateDownloadEvent {
+                        event: "progress",
+                        chunk_length: Some(chunk_length),
+                        downloaded: Some(downloaded),
+                        content_length,
+                    },
+                );
+            },
+            {
+                let app_handle = app.clone();
+                move || {
+                    let _ = app_handle.emit(
+                        APP_UPDATE_EVENT,
+                        AppUpdateDownloadEvent {
+                            event: "finished",
+                            chunk_length: None,
+                            downloaded: None,
+                            content_length: None,
+                        },
+                    );
+                }
+            },
+        )
+        .await
+        .map_err(|error| format!("Failed to install app update: {}", error))?;
+
+    #[cfg(target_os = "windows")]
+    {
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    app.restart()
+}
+
 fn resolve_managed_skills_root() -> Result<PathBuf, String> {
     resolve_home_directory()
         .map(|home| home.join(".agents").join("skills"))
-        .ok_or_else(|| "Unable to resolve the user's home directory for managed skills.".to_string())
+        .ok_or_else(|| {
+            "Unable to resolve the user's home directory for managed skills.".to_string()
+        })
 }
 
 fn resolve_home_directory() -> Option<PathBuf> {
     env::var_os("HOME")
         .map(PathBuf::from)
         .or_else(|| env::var_os("USERPROFILE").map(PathBuf::from))
-        .or_else(|| {
-            match (env::var_os("HOMEDRIVE"), env::var_os("HOMEPATH")) {
+        .or_else(
+            || match (env::var_os("HOMEDRIVE"), env::var_os("HOMEPATH")) {
                 (Some(drive), Some(path)) => {
                     let mut combined = PathBuf::from(drive);
                     combined.push(path);
                     Some(combined)
                 }
                 _ => None,
-            }
-        })
+            },
+        )
 }
 
 fn parse_skill_document(content: &str) -> ParsedSkillDocument {
@@ -399,17 +536,25 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_http::init())
+        .plugin(
+            tauri_plugin_updater::Builder::new()
+                .pubkey(APP_UPDATE_PUBLIC_KEY.trim())
+                .build(),
+        )
         .manage(CodexServer {
             state: Mutex::new(CodexServerState {
                 process: None,
                 stdin: None,
             }),
         })
+        .manage(PendingUpdate(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             ensure_codex_server,
             codex_rpc_send,
             stop_codex_server,
             list_skills,
+            check_for_app_update,
+            install_app_update,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
