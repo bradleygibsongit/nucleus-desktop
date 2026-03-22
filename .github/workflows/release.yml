@@ -56,4 +56,4 @@ jobs:
           args: >-
             --config src-tauri/tauri.release.conf.json
             ${{ matrix.args }}
-          uploadUpdaterJson: true
+          includeUpdaterJson: true

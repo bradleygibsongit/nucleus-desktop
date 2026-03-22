@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Nucleus",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "io.nucleus.desktop",
   "build": {
     "frontendDist": "../dist",

@@ -7,7 +7,7 @@
    - Public key: `src-tauri/updater-public-key.txt`
 2. Add these GitHub repository secrets:
    - `TAURI_SIGNING_PRIVATE_KEY`: contents of `~/.tauri/nucleus-desktop.key`
-   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: leave empty unless you generated the key with a password
+   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: the password used when generating `~/.tauri/nucleus-desktop.key`
 
 ## Optional code signing
 

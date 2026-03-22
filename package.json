@@ -1,12 +1,13 @@
 {
   "name": "nucleus-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Desktop AI agent app",
   "type": "module",
   "private": true,
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:web": "vite build",
     "preview": "vite preview",
     "cli": "bun run index.ts",
     "typecheck": "tsc --noEmit",
