@@ -1,6 +1,6 @@
 import type { ReactNode } from "react"
 import type { Project } from "@/features/workspace/types"
-import { Plus } from "@/components/icons"
+import { Folder, Plus } from "@/components/icons"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,7 +8,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/features/shared/components/ui/dropdown-menu"
-import { ProjectAvatar } from "@/features/workspace/components/ProjectAvatar"
 import { useProjectStore } from "@/features/workspace/store"
 import { openFolderPicker } from "@/features/workspace/utils/folderDialog"
 import { cn } from "@/lib/utils"
@@ -81,7 +80,7 @@ export function ProjectSelectorDropdown({
             )
           })
         ) : (
-          <div className="px-2 py-2 text-sm text-muted-foreground">No agents yet</div>
+          <div className="px-2 py-2 text-sm text-muted-foreground">No projects yet</div>
         )}
         <DropdownMenuSeparator className="my-2" />
         <DropdownMenuItem
@@ -89,7 +88,7 @@ export function ProjectSelectorDropdown({
           className="min-h-8 px-2 py-1 text-sm font-medium text-foreground"
         >
           <Plus size={14} className="text-muted-foreground" />
-          <span>Add new agent</span>
+          <span>Add new project</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -98,9 +97,8 @@ export function ProjectSelectorDropdown({
 
 function ProjectDropdownAvatar({ project }: { project: Project }) {
   return (
-    <ProjectAvatar
-      project={project}
-      className="size-6 border border-border/60"
-    />
+    <span className="flex size-6 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/20">
+      <Folder size={14} className="text-muted-foreground" />
+    </span>
   )
 }

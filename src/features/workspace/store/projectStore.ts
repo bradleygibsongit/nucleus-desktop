@@ -2,8 +2,6 @@ import { create } from "zustand"
 import { load, Store } from "@tauri-apps/plugin-store"
 import { homeDir } from "@tauri-apps/api/path"
 import type { Project } from "../types"
-import { createAgentAvatarSeed } from "../utils/avatar"
-import { getDefaultAgentBackgroundUrl } from "../utils/backgrounds"
 
 const STORE_FILE = "projects.json"
 const STORE_KEY = "projects"
@@ -22,11 +20,7 @@ interface ProjectState {
   removeProject: (id: string) => Promise<void>
   setProjectOrder: (projects: Project[]) => Promise<void>
   selectProject: (id: string) => Promise<void>
-  updateProject: (
-    id: string,
-    updates: Partial<Pick<Project, "name" | "avatarImageUrl" | "backgroundImageUrl">>
-  ) => Promise<void>
-  updateProjectBackground: (id: string, backgroundImageUrl: string) => Promise<void>
+  updateProject: (id: string, updates: Partial<Pick<Project, "name">>) => Promise<void>
   setDefaultLocation: (path: string) => Promise<void>
 }
 
@@ -37,20 +31,6 @@ async function getStore(): Promise<Store> {
     storeInstance = await load(STORE_FILE)
   }
   return storeInstance
-}
-
-function ensureProjectAvatar(project: Project): Project {
-  const avatarSeed = project.avatarSeed?.trim() ? project.avatarSeed : createAgentAvatarSeed()
-  const backgroundImageUrl =
-    project.backgroundImageUrl?.trim() || getDefaultAgentBackgroundUrl(avatarSeed)
-  const avatarImageUrl = project.avatarImageUrl?.trim() || undefined
-
-  return {
-    ...project,
-    avatarSeed,
-    avatarImageUrl,
-    backgroundImageUrl,
-  }
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -77,13 +57,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       }
 
       if (persisted && Array.isArray(persisted)) {
-        const projects = persisted.map(ensureProjectAvatar)
-        const needsBackfill = projects.some((project, index) => project !== persisted[index])
-
-        if (needsBackfill) {
-          await store.set(STORE_KEY, projects)
-          await store.save()
-        }
+        const projects = persisted
 
         // Restore saved selection if valid, otherwise select first project
         const validSelectedId = savedSelectedId && projects.some(p => p.id === savedSelectedId)
@@ -122,12 +96,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       name: projectName,
       path,
       addedAt: Date.now(),
-      avatarSeed: createAgentAvatarSeed(),
-      backgroundImageUrl: "",
     }
-    const projectWithAppearance = ensureProjectAvatar(newProject)
 
-    const updatedProjects = [projectWithAppearance, ...projects]
+    const updatedProjects = [newProject, ...projects]
 
     // Persist to Tauri store
     const store = await getStore()
@@ -136,7 +107,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
     set({
       projects: updatedProjects,
-      selectedProjectId: projectWithAppearance.id, // Auto-select new project
+      selectedProjectId: newProject.id, // Auto-select new project
     })
   },
 
@@ -184,12 +155,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const { projects } = get()
     const updatedProjects = projects.map((project) =>
       project.id === id
-        ? ensureProjectAvatar({
+        ? {
             ...project,
             ...updates,
             name: updates.name?.trim() ? updates.name.trim() : project.name,
-            avatarImageUrl: updates.avatarImageUrl?.trim() || undefined,
-          })
+          }
         : project
     )
 
@@ -198,10 +168,6 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     await store.save()
 
     set({ projects: updatedProjects })
-  },
-
-  updateProjectBackground: async (id: string, backgroundImageUrl: string) => {
-    await get().updateProject(id, { backgroundImageUrl })
   },
 
   setDefaultLocation: async (path: string) => {

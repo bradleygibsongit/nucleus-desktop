@@ -23,8 +23,6 @@ import {
 } from "@/features/shared/components/ui/tooltip"
 import { ProjectSettingsModal, QuickStartModal } from "@/features/workspace/components/modals"
 import { useProjectStore } from "@/features/workspace/store"
-import { ProjectAvatar } from "@/features/workspace/components/ProjectAvatar"
-import { useProjectAvatar } from "@/features/workspace/hooks/useProjectAvatar"
 import { openFolderPicker } from "@/features/workspace/utils/folderDialog"
 import { useChatStore } from "@/features/chat/store"
 import { hasProjectChatSession } from "@/features/chat/store/sessionState"
@@ -559,12 +557,11 @@ export function LeftSidebar({
                         aria-expanded={isExpanded}
                       >
                         <span className="relative flex size-5 shrink-0 items-center justify-center">
-                          <span className="flex size-5 items-center justify-center rounded-md border border-sidebar-border/45 bg-background/10 p-0.5 group-hover/project:opacity-0">
-                            <ProjectAvatarImage project={project} isExpanded={isExpanded} />
-                          </span>
-                          <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/project:opacity-100">
-                            {isExpanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
-                          </span>
+                          {isExpanded ? (
+                            <FolderOpen size={16} className="text-sidebar-foreground/50" />
+                          ) : (
+                            <Folder size={16} className="text-sidebar-foreground/50" />
+                          )}
                         </span>
                         <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
                           <span className="truncate text-sm font-medium">{project.name}</span>
@@ -770,15 +767,4 @@ export function LeftSidebar({
 
     </aside>
   )
-}
-
-function ProjectAvatarImage({ project, isExpanded }: { project: Project; isExpanded: boolean }) {
-  const { src } = useProjectAvatar(project)
-
-  if (src) {
-    return <ProjectAvatar project={project} className="size-full" />
-  }
-
-  const FolderIcon = isExpanded ? FolderOpen : Folder
-  return <FolderIcon size={16} className="text-sidebar-foreground/50" />
 }
