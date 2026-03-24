@@ -4,7 +4,7 @@ import { MainContent } from "./MainContent"
 import { RightSidebar } from "./RightSidebar"
 import { SidebarProvider } from "./SidebarContext"
 import { RightSidebarProvider } from "./RightSidebarContext"
-import { TitleBar } from "./TitleBar"
+import { CenterToolbar } from "./CenterToolbar"
 import type { SettingsSectionId } from "@/features/settings/config"
 import { AppUpdateBootstrap } from "@/features/updates/components/AppUpdateBootstrap"
 
@@ -16,26 +16,26 @@ export function AppLayout() {
     <SidebarProvider>
       <RightSidebarProvider>
         <AppUpdateBootstrap />
-        <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
-          <TitleBar
+        <div className="flex h-screen overflow-hidden bg-background text-foreground">
+          <LeftSidebar
             activeView={activeView}
+            activeSettingsSection={activeSettingsSection}
             onOpenChat={() => setActiveView("chat")}
+            onOpenAutomations={() => setActiveView("automations")}
+            onOpenSettings={() => setActiveView("settings")}
+            onSelectSettingsSection={setActiveSettingsSection}
           />
-          <div className="flex min-h-0 flex-1 overflow-hidden">
-            <LeftSidebar
+          <div className="flex min-w-0 flex-1 flex-col">
+            <CenterToolbar
               activeView={activeView}
-              activeSettingsSection={activeSettingsSection}
               onOpenChat={() => setActiveView("chat")}
-              onOpenAutomations={() => setActiveView("automations")}
-              onOpenSettings={() => setActiveView("settings")}
-              onSelectSettingsSection={setActiveSettingsSection}
             />
             <MainContent
               activeView={activeView}
               activeSettingsSection={activeSettingsSection}
             />
-            <RightSidebar activeView={activeView} />
           </div>
+          <RightSidebar activeView={activeView} />
         </div>
       </RightSidebarProvider>
     </SidebarProvider>

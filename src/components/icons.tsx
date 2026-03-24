@@ -177,6 +177,58 @@ export const DotsThree = forwardRef(function DotsThreeIcon(
 }) as Icon
 DotsThree.displayName = "DotsThree"
 
+export const CloudUpload = forwardRef(function CloudUploadIcon(
+  { size = 24, strokeWidth = 1.8, ...props }: IconProps,
+  ref: Ref<SVGSVGElement>
+) {
+  return (
+    <svg
+      ref={ref}
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M7.5 18.25h8.75a4.25 4.25 0 0 0 .62-8.45 5.75 5.75 0 0 0-11.21 1.44A3.75 3.75 0 0 0 7.5 18.25Z" />
+      <path d="M12 15.25v-5.5" />
+      <path d="m9.75 12 2.25-2.25L14.25 12" />
+    </svg>
+  )
+}) as Icon
+CloudUpload.displayName = "CloudUpload"
+
+export const GitCommit = forwardRef(function GitCommitIcon(
+  { size = 24, strokeWidth = 1.8, ...props }: IconProps,
+  ref: Ref<SVGSVGElement>
+) {
+  return (
+    <svg
+      ref={ref}
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M4 12h4" />
+      <path d="M16 12h4" />
+      <circle cx="12" cy="12" r="3.25" />
+    </svg>
+  )
+}) as Icon
+GitCommit.displayName = "GitCommit"
+
 export const Archive = createIcon("Archive", Archive03Icon)
 export const ArrowDown = createIcon("ArrowDown", ArrowDown01Icon)
 export const ArrowElbowDownLeft = createIcon("ArrowElbowDownLeft", ArrowDownLeft01Icon)
@@ -200,6 +252,8 @@ export const Clock = createIcon("Clock", Clock01Icon)
 export const CircleNotch = createIcon("CircleNotch", Loading03Icon)
 export const Command = createIcon("Command", CommandLineIcon)
 export const Compass = createIcon("Compass", Compass01Icon)
+export const Commit = GitCommit
+export const Cloud = CloudUpload
 export const Eye = createIcon("Eye", EyeIcon)
 export const File = createIcon("File", File01Icon)
 export const FileAudio = createIcon("FileAudio", FileAudioIcon)

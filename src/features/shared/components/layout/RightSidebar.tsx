@@ -11,6 +11,8 @@ import {
 } from "@/features/workspace/utils/envFiles"
 import { readProjectFiles } from "@/features/workspace/utils/fileSystem"
 import { useRightSidebar } from "./useRightSidebar"
+import { SidebarShell } from "./SidebarShell"
+import { SourceControlActionGroup } from "./AppHeader"
 import type { FileTreeItem } from "@/features/version-control/types"
 import { Button, Input } from "@/features/shared/components/ui"
 import { cn } from "@/lib/utils"
@@ -69,7 +71,6 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
   const { projects, selectedProjectId } = useProjectStore()
   const { openFile, switchProject } = useTabStore()
   const { onFileChange } = useChatStore()
-  const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null)
 
   // Get the selected project
   const selectedProject = projects.find((p) => p.id === selectedProjectId)
@@ -87,11 +88,10 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
 
     return draftSecretByProject[selectedProjectId] ?? null
   }, [draftSecretByProject, selectedProjectId])
-  
+
   // Track refresh timeout for debouncing
   const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const secretsRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const sidebarWidth = isCollapsed ? 0 : width
 
   // Load files function (showLoading only for initial load)
   const loadFiles = useCallback(async (isInitial = false) => {
@@ -170,46 +170,6 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
     void loadSecrets()
   }, [selectedProjectId, switchProject, loadFiles, loadSecrets])
 
-  const stopResizing = useCallback(() => {
-    resizeStateRef.current = null
-    document.documentElement.style.removeProperty("cursor")
-    document.documentElement.style.removeProperty("user-select")
-    document.documentElement.style.removeProperty("-webkit-user-select")
-    document.body.style.removeProperty("cursor")
-    document.body.style.removeProperty("user-select")
-    document.body.style.removeProperty("-webkit-user-select")
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      stopResizing()
-    }
-  }, [stopResizing])
-
-  useEffect(() => {
-    const handlePointerMove = (event: PointerEvent) => {
-      const resizeState = resizeStateRef.current
-      if (!resizeState) {
-        return
-      }
-
-      const nextWidth = resizeState.startWidth - (event.clientX - resizeState.startX)
-      setWidth(nextWidth)
-    }
-
-    const handlePointerUp = () => {
-      stopResizing()
-    }
-
-    window.addEventListener("pointermove", handlePointerMove)
-    window.addEventListener("pointerup", handlePointerUp)
-
-    return () => {
-      window.removeEventListener("pointermove", handlePointerMove)
-      window.removeEventListener("pointerup", handlePointerUp)
-    }
-  }, [setWidth, stopResizing])
-
   // Subscribe to file change events from the active harness
   useEffect(() => {
     if (!selectedProject?.path) return
@@ -219,7 +179,7 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
       // Handle both absolute paths and relative paths
       const isAbsoluteMatch = event.file.startsWith(selectedProject.path)
       const isRelativePath = !event.file.startsWith("/")
-      
+
       if (isAbsoluteMatch || isRelativePath) {
         scheduleRefresh()
       }
@@ -240,28 +200,6 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
       }
     }
   }, [selectedProject?.path, onFileChange, scheduleRefresh, scheduleSecretsRefresh])
-
-  const handleResizeStart = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (isCollapsed) {
-      return
-    }
-
-    event.preventDefault()
-
-    resizeStateRef.current = {
-      startX: event.clientX,
-      startWidth: width,
-    }
-
-    window.getSelection()?.removeAllRanges()
-    document.documentElement.style.cursor = "col-resize"
-    document.documentElement.style.userSelect = "none"
-    document.documentElement.style.setProperty("-webkit-user-select", "none")
-    document.body.style.cursor = "col-resize"
-    document.body.style.userSelect = "none"
-    document.body.style.setProperty("-webkit-user-select", "none")
-    event.currentTarget.setPointerCapture(event.pointerId)
-  }
 
   const updateSecretField = useCallback((
     fieldKey: string,
@@ -417,12 +355,21 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
   }
 
   return (
-    <aside
-      style={{ width: sidebarWidth }}
-      className="relative min-w-[300px] max-w-[560px] shrink-0 border-l border-sidebar-border bg-sidebar text-sidebar-foreground flex flex-col"
+    <SidebarShell
+      width={width}
+      setWidth={setWidth}
+      isCollapsed={isCollapsed}
+      side="right"
+      sizeConstraintClass="min-w-[300px] max-w-[560px]"
     >
-      {/* Header */}
-      <div className="border-b border-sidebar-border px-3 py-2 shrink-0">
+      {/* Toolbar header */}
+      <div className="flex h-11 shrink-0 items-center justify-end border-b border-sidebar-border/70 px-3">
+        <div data-tauri-drag-region className="min-w-0 flex-1 self-stretch" />
+        <SourceControlActionGroup projectPath={selectedProject?.path ?? null} />
+      </div>
+
+      {/* Tab header */}
+      <div className="shrink-0 border-b border-sidebar-border px-3 py-2">
         <div className="flex items-center gap-2">
           <div className="inline-flex rounded-xl bg-sidebar-accent p-1">
             {RIGHT_SIDEBAR_TABS.map(({ key, label, icon: Icon }) => {
@@ -449,9 +396,7 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
         </div>
       </div>
 
-      <div
-        className="flex min-h-0 flex-1 flex-col"
-      >
+      <div className="flex min-h-0 flex-1 flex-col">
         <div
           className={cn(
             "min-h-0 flex-1",
@@ -667,15 +612,6 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
           projectPath={selectedProject?.path ?? null}
         />
       </div>
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize right sidebar"
-        onPointerDown={handleResizeStart}
-        className="absolute inset-y-0 left-0 z-10 w-2 -translate-x-1/2 cursor-col-resize"
-      >
-        <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent hover:bg-sidebar-border/90" />
-      </div>
-    </aside>
+    </SidebarShell>
   )
 }

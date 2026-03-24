@@ -47,6 +47,8 @@
     --border: oklch(0.922 0 0);
     --input: oklch(0.965 0 0);
     --ring: oklch(0.708 0 0);
+    --cta: oklch(0.588 0.198 259);
+    --cta-foreground: oklch(0.995 0 0);
     --toggle-on: #0A84FF;
     --skill-accent: #7C3AED;
     --skill-icon: #7C3AED;
@@ -89,7 +91,7 @@
     --chat-approval-emphasis: oklch(0.72 0.14 78);
     --chat-approval-emphasis-foreground: oklch(0.26 0.035 70);
     --scrollbar-thumb: oklch(0.62 0 0 / 0.78);
-    --app-text-size: 14px;
+    --app-text-size: 13px;
 }
 
 .dark {
@@ -111,6 +113,8 @@
     --border: oklch(1 0 0 / 10%);
     --input: oklch(0.255 0 0);
     --ring: oklch(0.556 0 0);
+    --cta: oklch(0.588 0.198 259);
+    --cta-foreground: oklch(0.995 0 0);
     --toggle-on: #0A84FF;
     --skill-accent: #B794F6;
     --skill-icon: #B794F6;
@@ -152,7 +156,7 @@
     --chat-approval-emphasis: oklch(0.77 0.125 80);
     --chat-approval-emphasis-foreground: oklch(0.23 0.03 72);
     --scrollbar-thumb: oklch(0.44 0 0 / 0.92);
-    --app-text-size: 14px;
+    --app-text-size: 13px;
 }
 
 @theme inline {
@@ -193,6 +197,8 @@
     --color-skill-accent: var(--skill-accent);
     --color-skill-icon: var(--skill-icon);
     --color-skill-surface: var(--skill-surface);
+    --color-cta: var(--cta);
+    --color-cta-foreground: var(--cta-foreground);
     --color-toggle-on: var(--toggle-on);
     --color-input: var(--input);
     --color-border: var(--border);
@@ -211,6 +217,8 @@
     --color-card: var(--card);
     --color-foreground: var(--foreground);
     --color-background: var(--background);
+    --text-base: var(--app-text-size);
+    --text-base--line-height: 1.25rem;
     --text-sm: var(--app-text-size);
     --text-sm--line-height: 1.25rem;
     --radius-sm: calc(var(--radius) - 4px);

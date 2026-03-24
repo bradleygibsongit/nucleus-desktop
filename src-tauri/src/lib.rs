@@ -115,6 +115,14 @@ struct AppUpdateDownloadEvent {
     content_length: Option<u64>,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GitBranchesResponse {
+    current_branch: String,
+    upstream_branch: Option<String>,
+    branches: Vec<String>,
+}
+
 impl TerminalSession {
     fn new(
         writer: Box<dyn Write + Send>,
@@ -770,6 +778,100 @@ async fn terminal_close_session(
     Ok(())
 }
 
+fn run_git_command(project_path: &str, args: &[&str]) -> Result<String, String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(project_path)
+        .args(args)
+        .output()
+        .map_err(|error| format!("Failed to run git {}: {}", args.join(" "), error))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let message = if stderr.is_empty() {
+            format!(
+                "git {} failed with status {}",
+                args.join(" "),
+                output.status
+            )
+        } else {
+            stderr
+        };
+
+        return Err(message);
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+#[tauri::command]
+async fn get_git_branches(project_path: String) -> Result<GitBranchesResponse, String> {
+    let trimmed_path = project_path.trim();
+    if trimmed_path.is_empty() {
+        return Err("Project path is required".to_string());
+    }
+
+    let path = PathBuf::from(trimmed_path);
+    if !path.exists() {
+        return Err(format!("Project path does not exist: {}", path.display()));
+    }
+
+    if !path.is_dir() {
+        return Err(format!("Project path is not a folder: {}", path.display()));
+    }
+
+    run_git_command(trimmed_path, &["rev-parse", "--show-toplevel"])?;
+
+    let current_branch = {
+        let branch = run_git_command(trimmed_path, &["branch", "--show-current"])?;
+        if branch.is_empty() {
+            let commit = run_git_command(trimmed_path, &["rev-parse", "--short", "HEAD"])?;
+            format!("detached@{}", commit)
+        } else {
+            branch
+        }
+    };
+
+    let upstream_branch = run_git_command(
+        trimmed_path,
+        &[
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            "@{upstream}",
+        ],
+    )
+    .ok()
+    .filter(|value| !value.is_empty());
+
+    let branches_output = run_git_command(
+        trimmed_path,
+        &[
+            "for-each-ref",
+            "--sort=refname",
+            "--format=%(refname:short)",
+            "refs/heads",
+            "refs/remotes",
+        ],
+    )?;
+
+    let mut branches: Vec<String> = branches_output
+        .lines()
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "origin/HEAD")
+        .map(ToOwned::to_owned)
+        .collect();
+
+    branches.sort();
+    branches.dedup();
+
+    Ok(GitBranchesResponse {
+        current_branch,
+        upstream_branch,
+        branches,
+    })
+}
+
 fn resolve_managed_skills_root() -> Result<PathBuf, String> {
     resolve_home_directory()
         .map(|home| home.join(".agents").join("skills"))
@@ -961,6 +1063,7 @@ pub fn run() {
             list_skills,
             check_for_app_update,
             install_app_update,
+            get_git_branches,
             terminal_create_session,
             terminal_write,
             terminal_resize,
