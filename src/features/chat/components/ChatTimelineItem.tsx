@@ -1,10 +1,21 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useStickToBottomContext } from "use-stick-to-bottom"
 import {
+  Bash,
   CaretDown,
   CaretRight,
   CheckCircle,
+  Compass,
   Copy,
+  Eye,
   File,
+  Globe,
+  Image,
+  MagnifyingGlass,
+  PencilSimple,
+  Robot,
+  Zap,
+  type Icon,
 } from "@/components/icons"
 import { getFileIcon } from "@/features/editor/utils/fileIcons"
 import { cn } from "@/lib/utils"
@@ -222,7 +233,7 @@ function getCommandLabel(command: unknown): string {
 
 function renderInlineCode(value: string) {
   return (
-    <code className="rounded-[0.75rem] bg-muted/80 px-2 py-0.5 font-mono text-[0.95em] text-foreground/92">
+    <code className="inline-flex items-center rounded-[0.75rem] bg-muted/80 px-2 py-0.5 align-middle font-mono text-[0.95em] leading-tight text-foreground/92">
       {value}
     </code>
   )
@@ -230,6 +241,42 @@ function renderInlineCode(value: string) {
 
 function renderInlinePath(value: string) {
   return <span className="font-mono text-[var(--color-chat-file-accent)]">{value}</span>
+}
+
+function countDiffLinesFromPatch(diff: string | undefined): { added: number; removed: number } {
+  if (!diff) {
+    return { added: 0, removed: 0 }
+  }
+
+  return diff.split("\n").reduce(
+    (totals, line) => {
+      if (line.startsWith("+++ ") || line.startsWith("--- ")) {
+        return totals
+      }
+      if (line.startsWith("+")) {
+        return { ...totals, added: totals.added + 1 }
+      }
+      if (line.startsWith("-")) {
+        return { ...totals, removed: totals.removed + 1 }
+      }
+      return totals
+    },
+    { added: 0, removed: 0 },
+  )
+}
+
+function renderDiffStats({ added, removed }: { added: number; removed: number }) {
+  if (added === 0 && removed === 0) {
+    return null
+  }
+
+  return (
+    <span className="ml-1.5 text-[0.9em]">
+      {added > 0 ? <span className="font-medium text-emerald-500">+{added}</span> : null}
+      {added > 0 && removed > 0 ? " " : null}
+      {removed > 0 ? <span className="font-medium text-red-500">-{removed}</span> : null}
+    </span>
+  )
 }
 
 function ChangedFileChip({
@@ -305,73 +352,11 @@ function prettyValue(value: unknown): string {
 
 function renderCommandSummary(toolPart: RuntimeToolPart) {
   const input = toolPart.state.input
-  const actions = Array.isArray(input.commandActions) ? input.commandActions : []
-  const action = actions[0]
   const commandLabel = getCommandLabel(input.command ?? toolPart.state.title)
-
-  if (action && typeof action === "object" && "type" in action && typeof action.type === "string") {
-    if (action.type === "listFiles") {
-      return <span>Explored 1 list</span>
-    }
-
-    if (action.type === "read") {
-      const target =
-        "name" in action && typeof action.name === "string"
-          ? action.name
-          : "path" in action && typeof action.path === "string"
-            ? getBaseName(action.path)
-            : commandLabel
-
-      return (
-        <span>
-          Read {renderInlineCode(target)}
-        </span>
-      )
-    }
-
-    if (action.type === "search") {
-      const target =
-        "pattern" in action && typeof action.pattern === "string"
-          ? action.pattern
-          : "query" in action && typeof action.query === "string"
-            ? action.query
-            : commandLabel
-
-      return (
-        <span>
-          Searched for {renderInlineCode(target)}
-        </span>
-      )
-    }
-  }
-
-  if (toolPart.state.status === "pending") {
-    return (
-      <span>
-        Waiting for approval to run {renderInlineCode(commandLabel)}
-      </span>
-    )
-  }
-
-  if (toolPart.state.status === "running") {
-    return (
-      <span>
-        Background terminal running {renderInlineCode(commandLabel)}
-      </span>
-    )
-  }
-
-  if (toolPart.state.status === "error") {
-    return (
-      <span>
-        Background terminal failed with {renderInlineCode(commandLabel)}
-      </span>
-    )
-  }
 
   return (
     <span>
-      Background terminal finished with {renderInlineCode(commandLabel)}
+      Bash {renderInlineCode(commandLabel)}
     </span>
   )
 }
@@ -394,7 +379,37 @@ function renderFileChangeSummary(toolPart: RuntimeToolPart) {
     return <span>Prepared workspace edits</span>
   }
 
-  return <span>{fileChanges.length === 1 ? "Updated 1 file" : `Updated ${fileChanges.length} files`}</span>
+  if (fileChanges.length === 1) {
+    const change = fileChanges[0]
+    const fileName = change.path.split(/[\\/]/).filter(Boolean).at(-1) ?? change.path
+    const diff = countDiffLinesFromPatch(change.diff)
+    return <span>Edited {renderInlinePath(fileName)}{renderDiffStats(diff)}</span>
+  }
+
+  return <span>Edited {fileChanges.map((change, i) => {
+    const fileName = change.path.split(/[\\/]/).filter(Boolean).at(-1) ?? change.path
+    const diff = countDiffLinesFromPatch(change.diff)
+    return <span key={change.path}>{i > 0 ? ", " : ""}{renderInlinePath(fileName)}{renderDiffStats(diff)}</span>
+  })}</span>
+}
+
+function getGenericToolIcon(itemType?: string): Icon {
+  switch (itemType) {
+    case "webSearch":
+      return Globe
+    case "imageGeneration":
+    case "imageView":
+      return Image
+    case "collabAgentToolCall":
+      return Robot
+    case "contextCompaction":
+      return Zap
+    case "mcpToolCall":
+    case "dynamicToolCall":
+      return Compass
+    default:
+      return Zap
+  }
 }
 
 function renderGenericToolSummary(message: MessageWithParts, toolPart: RuntimeToolPart) {
@@ -465,17 +480,14 @@ function renderToolDetails(
       output && typeof output === "object" && "aggregatedOutput" in output
         ? (output as { aggregatedOutput?: unknown }).aggregatedOutput
         : null
-    const cwd =
-      input && typeof input === "object" && "cwd" in input ? (input as { cwd?: unknown }).cwd : null
 
-    if (!input.command && !cwd && !commandOutput && !error) {
+    if (!input.command && !commandOutput && !error) {
       return null
     }
 
     return (
       <div className="space-y-3">
-        <DetailBlock label="Command" value={input.command} />
-        <DetailBlock label="Directory" value={cwd} />
+        <DetailBlock label="Input" value={input.command} />
         <DetailBlock label="Output" value={commandOutput} />
         <DetailBlock label="Error" value={error} />
       </div>
@@ -573,26 +585,96 @@ function renderToolDetails(
 }
 
 function InlineActivityRow({
+  icon: IconComponent,
   summary,
   details,
   withinGroup = false,
 }: {
+  icon?: Icon
   summary: ReactNode
   details?: ReactNode
   withinGroup?: boolean
 }) {
   const canExpand = Boolean(details)
   const [isOpen, setIsOpen] = useState(false)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const releaseAnchorTimeoutRef = useRef<number | null>(null)
+  const stickToBottom = useStickToBottomContext()
+
+  const releaseAnchorLock = useCallback(() => {
+    if (releaseAnchorTimeoutRef.current != null) {
+      window.clearTimeout(releaseAnchorTimeoutRef.current)
+      releaseAnchorTimeoutRef.current = null
+    }
+
+    stickToBottom.targetScrollTop = null
+  }, [stickToBottom])
+
+  useEffect(
+    () => () => {
+      releaseAnchorLock()
+    },
+    [releaseAnchorLock]
+  )
+
+  const handleToggle = useCallback(() => {
+    const button = buttonRef.current
+    const scrollElement = stickToBottom.scrollRef.current
+
+    if (!button || !scrollElement) {
+      setIsOpen((v) => !v)
+      return
+    }
+
+    releaseAnchorLock()
+
+    const topBefore = button.getBoundingClientRect().top
+
+    // For this toggle only, override the bottom target so the clicked button
+    // stays anchored in the same viewport position while the content resizes.
+    stickToBottom.targetScrollTop = (_targetScrollTop, { scrollElement }) => {
+      const drift = button.getBoundingClientRect().top - topBefore
+      return scrollElement.scrollTop + drift
+    }
+
+    setIsOpen((v) => !v)
+
+    // Let the resize observer and any instant scroll settle, then make one
+    // final correction with the real scroll container before releasing the
+    // temporary anchor override.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const drift = button.getBoundingClientRect().top - topBefore
+
+        if (Math.abs(drift) > 1) {
+          const maxScrollTop = scrollElement.scrollHeight - scrollElement.clientHeight
+          const nextScrollTop = Math.max(0, Math.min(scrollElement.scrollTop + drift, maxScrollTop))
+
+          scrollElement.scrollTop = nextScrollTop
+          stickToBottom.state.lastScrollTop = nextScrollTop
+          stickToBottom.state.ignoreScrollToTop = nextScrollTop
+        }
+
+        releaseAnchorTimeoutRef.current = window.setTimeout(() => {
+          releaseAnchorTimeoutRef.current = null
+          releaseAnchorLock()
+        }, 0)
+      })
+    })
+
+  }, [releaseAnchorLock, stickToBottom])
 
   const content = (
-    <div className="group w-full py-0 text-sm leading-5 text-muted-foreground">
+    <div className="group relative w-full py-0 text-sm leading-5 text-muted-foreground">
       {canExpand ? (
         <button
+          ref={buttonRef}
           type="button"
-          onClick={() => setIsOpen((value) => !value)}
-          className="inline-flex max-w-full items-center gap-1.5 align-top text-left"
+          onClick={handleToggle}
+          className="relative z-10 inline-flex max-w-full items-center gap-1.5 align-top text-left"
         >
-          <div className="min-w-0">{summary}</div>
+          {IconComponent ? <IconComponent size={14} className="shrink-0 text-muted-foreground/70" /> : null}
+          <span className="min-w-0">{summary}</span>
           <span
             className={cn(
               "shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100",
@@ -603,10 +685,13 @@ function InlineActivityRow({
           </span>
         </button>
       ) : (
-        <div className="min-w-0">{summary}</div>
+        <span className="inline-flex max-w-full items-center gap-1.5">
+          {IconComponent ? <IconComponent size={14} className="shrink-0 text-muted-foreground/70" /> : null}
+          <span className="min-w-0">{summary}</span>
+        </span>
       )}
       {canExpand && isOpen ? (
-        <div className="mt-2 border-l border-border/60 pl-4">
+        <div className="mt-2 w-full border-l border-border/60 pl-4">
           {details}
         </div>
       ) : null}
@@ -643,6 +728,7 @@ export function ToolTimelineRow({
   if (message.info.itemType === "commandExecution") {
     return (
       <InlineActivityRow
+        icon={Bash}
         summary={renderCommandSummary(toolPart)}
         details={details}
         withinGroup={withinGroup}
@@ -653,6 +739,7 @@ export function ToolTimelineRow({
   if (message.info.itemType === "fileChange") {
     return (
       <InlineActivityRow
+        icon={PencilSimple}
         summary={renderFileChangeSummary(toolPart)}
         withinGroup={withinGroup}
       />
@@ -661,6 +748,7 @@ export function ToolTimelineRow({
 
   return (
     <InlineActivityRow
+      icon={getGenericToolIcon(message.info.itemType)}
       summary={renderGenericToolSummary(message, toolPart)}
       details={details}
       withinGroup={withinGroup}
@@ -676,7 +764,7 @@ export function InlineSubagentActivity({
   const description = childSession.session.title?.trim() || "Subagent work"
 
   return (
-    <InlineActivityRow summary={<span>Subagent {description}</span>} />
+    <InlineActivityRow icon={Robot} summary={<span>Subagent {description}</span>} />
   )
 }
 

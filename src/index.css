@@ -87,7 +87,7 @@
     --chat-approval-emphasis: oklch(0.72 0.14 78);
     --chat-approval-emphasis-foreground: oklch(0.26 0.035 70);
     --scrollbar-thumb: oklch(0.62 0 0 / 0.78);
-    --app-text-size: 13px;
+    --app-text-size: 14px;
 }
 
 .dark {
@@ -148,7 +148,7 @@
     --chat-approval-emphasis: oklch(0.77 0.125 80);
     --chat-approval-emphasis-foreground: oklch(0.23 0.03 72);
     --scrollbar-thumb: oklch(0.44 0 0 / 0.92);
-    --app-text-size: 13px;
+    --app-text-size: 14px;
 }
 
 @theme inline {

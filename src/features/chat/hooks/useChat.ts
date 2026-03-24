@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react"
 import { useProjectStore } from "@/features/workspace/store"
 import { useChatStore, type MessageWithParts } from "../store"
+import { hasProjectChatSession } from "../store/sessionState"
 import type { ChatStatus, CollaborationModeKind, HarnessId, RuntimePromptState, Session } from "../types"
 
 /**
@@ -17,6 +18,7 @@ export function useChat() {
   // Chat store state
   const {
     currentMessages,
+    currentSessionId,
     childSessions,
     status,
     error,
@@ -42,7 +44,10 @@ export function useChat() {
 
   // Get current project's chat state
   const projectChat = selectedProjectId ? getProjectChat(selectedProjectId) : null
-  const activeSessionId = projectChat?.activeSessionId ?? null
+  const activeSessionId =
+    projectChat && hasProjectChatSession(projectChat, projectChat.activeSessionId)
+      ? projectChat.activeSessionId
+      : null
   const sessions = projectChat?.sessions ?? []
   const selectedHarnessId = projectChat?.selectedHarnessId ?? null
   const selectedHarness = selectedHarnessId ? getHarnessDefinition(selectedHarnessId) : null
@@ -189,13 +194,14 @@ export function useChat() {
   )
 
   // Convert SDK messages to UI format
+  const isResolvedActiveSession = activeSessionId != null && currentSessionId === activeSessionId
   const uiStatus: ChatStatus = status === "connecting" ? "idle" : status
 
   return {
     // Message state
-    messages: currentMessages,
-    childSessions,
-    status: uiStatus,
+    messages: isResolvedActiveSession ? currentMessages : [],
+    childSessions: isResolvedActiveSession ? childSessions : new Map(),
+    status: isResolvedActiveSession ? uiStatus : "idle",
     input,
     setInput,
     handleSubmit,

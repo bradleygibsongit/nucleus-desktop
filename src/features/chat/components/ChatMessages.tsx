@@ -11,21 +11,16 @@ import {
   MessageContent,
 } from "./ai-elements/message"
 import type { ChildSessionData } from "./agent-activity/AgentActivitySubagent"
-import { CaretDown, CaretRight, Plus } from "@/components/icons"
+import { Shaka } from "@/components/icons"
 import { LoadingDots } from "@/features/shared/components/ui/loading-dots"
-import { ProjectSelectorDropdown } from "@/features/workspace/components/ProjectSelectorDropdown"
-import { getAgentAvatarUrl } from "@/features/workspace/utils/avatar"
 import { useStickToBottomContext } from "use-stick-to-bottom"
 import { isRuntimeApprovalPrompt } from "../domain/runtimePrompts"
-import { ChatTimelineItem, InlineSubagentActivity, ToolTimelineRow } from "./ChatTimelineItem"
+import { ChatTimelineItem, InlineSubagentActivity } from "./ChatTimelineItem"
 import { formatElapsedDuration, useElapsedDuration } from "./workDuration"
 import {
   buildTimelineBlocks,
   getFileChangeEntries,
-  getActivityGroupSummary,
   getToolPartFromMessage,
-  isActivityGroupActive,
-  type TimelineActivityGroupBlock,
 } from "./timelineActivity"
 
 interface ChatMessagesProps {
@@ -90,52 +85,34 @@ function countDiffLines(diff: string | undefined): { added: number; removed: num
 }
 
 function ChatEmptyState({ selectedProject }: ChatEmptyStateProps) {
-  const [isOpen, setIsOpen] = useState(false)
-
   return (
-    <div className="flex w-full items-center justify-center px-4 py-8">
-      <div className="flex w-full max-w-[520px] flex-col items-center text-center">
-        {selectedProject ? (
-          <img
-            src={getAgentAvatarUrl(selectedProject.avatarSeed)}
-            alt=""
-            className="h-16 w-16 shrink-0 rounded-[28%] border border-border/70 object-cover shadow-sm sm:h-20 sm:w-20"
-          />
-        ) : (
-          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[28%] border border-border/70 bg-card text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground sm:h-20 sm:w-20">
-            Agent
-          </div>
-        )}
+    <div className="flex h-full w-full flex-col items-center justify-center">
+      <div className="flex flex-col items-center gap-6">
+        <Shaka size={48} className="text-primary" />
 
         <h2
-          className="mt-5 text-3xl font-medium tracking-[0.08em] text-foreground sm:text-4xl"
-          style={{ fontFamily: "var(--font-pixel)" }}
+          className="bg-gradient-to-b from-foreground to-muted-foreground bg-clip-text text-2xl font-extrabold tracking-tight text-transparent"
         >
-          Let&apos;s get to work
+          Build cool sh*t
         </h2>
 
-        <ProjectSelectorDropdown
-          selectedProject={selectedProject}
-          open={isOpen}
-          onOpenChange={setIsOpen}
-          sideOffset={12}
-          contentClassName="w-72"
-          trigger={
-            <div className="mt-4 inline-flex max-w-full cursor-pointer items-center gap-1.5 text-left text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground">
-              <span className="max-w-[320px] truncate text-[1.35rem] font-medium leading-none tracking-tight sm:text-[1.6rem]">
-                {selectedProject?.name ?? "Select your agent"}
+        {selectedProject ? (
+          <div className="flex flex-col items-center gap-1 text-center">
+            <span className="max-w-[320px] truncate text-[13px] font-medium leading-snug text-muted-foreground">
+              {selectedProject.name}
+            </span>
+            {selectedProject.path ? (
+              <span className="max-w-[360px] truncate text-[12px] leading-snug text-muted-foreground/40">
+                {selectedProject.path}
               </span>
-              <CaretDown
-                size={16}
-                className={isOpen ? "shrink-0 rotate-180 transition-transform" : "shrink-0 transition-transform"}
-              />
-            </div>
-          }
-        />
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   )
 }
+
 
 export function ChatMessages({
   threadKey,
@@ -210,12 +187,6 @@ export function ChatMessages({
     () => buildTimelineBlocks(renderedMessages),
     [renderedMessages]
   )
-  const activityGroups = useMemo(
-    () => timelineBlocks.filter((block): block is TimelineActivityGroupBlock => block.type === "activityGroup"),
-    [timelineBlocks]
-  )
-  const [groupOpenByKey, setGroupOpenByKey] = useState<Record<string, boolean>>({})
-  const autoCollapsedGroupKeysRef = useRef<Set<string>>(new Set())
   const hasContent = renderedMessages.length > 0
   const lastMessage = renderedMessages[renderedMessages.length - 1]
   const shouldRenderStreamingPlaceholder =
@@ -243,64 +214,69 @@ export function ChatMessages({
       { fileCount: number; label: string; added: number; removed: number }
     >()
 
-    for (const message of renderedMessages) {
-      if (message.info.role !== "assistant") {
-        continue
-      }
-
-      const hasText = message.parts.some((part) => part.type === "text" && part.text.trim())
-      if (!hasText || !message.info.turnId) {
-        continue
-      }
-
-      const changeTotals = new Map<string, { added: number; removed: number }>()
-
-      for (const candidate of renderedMessages) {
-        if (candidate.info.turnId !== message.info.turnId || candidate.info.itemType !== "fileChange") {
-          continue
-        }
-
-        const toolPart = getToolPartFromMessage(candidate)
-        const output = toolPart?.state.output
-        const source =
-          output && typeof output === "object" && "changes" in output
-            ? (output as { changes?: unknown[] }).changes
-            : undefined
-        const fileChanges = getFileChangeEntries(source)
-
-        for (const change of fileChanges) {
-          const current = changeTotals.get(change.path) ?? { added: 0, removed: 0 }
-          const diffTotals = countDiffLines(change.diff)
-
-          changeTotals.set(change.path, {
-            added: current.added + diffTotals.added,
-            removed: current.removed + diffTotals.removed,
-          })
-        }
-      }
-
-      if (changeTotals.size === 0) {
-        continue
-      }
-
-      const entries = Array.from(changeTotals.entries())
-      const [firstPath] = entries[0]
-      const totalAdded = entries.reduce((sum, [, totals]) => sum + totals.added, 0)
-      const totalRemoved = entries.reduce((sum, [, totals]) => sum + totals.removed, 0)
-
-      summaryByMessageId.set(message.info.id, {
-        fileCount: entries.length,
-        label:
-          entries.length === 1
-            ? firstPath.split(/[\\/]/).filter(Boolean).at(-1) ?? firstPath
-            : `${entries.length} files`,
-        added: totalAdded,
-        removed: totalRemoved,
-      })
+    if (!lastAssistantTextMessageId) {
+      return summaryByMessageId
     }
 
+    // Find the last user message to scope changes to the latest turn
+    let lastUserIndex = -1
+    for (let i = renderedMessages.length - 1; i >= 0; i--) {
+      if (renderedMessages[i].info.role === "user") {
+        lastUserIndex = i
+        break
+      }
+    }
+
+    // Collect file changes between the last user message and end of thread
+    const changeTotals = new Map<string, { added: number; removed: number }>()
+    const startIndex = lastUserIndex + 1
+
+    for (let i = startIndex; i < renderedMessages.length; i++) {
+      const candidate = renderedMessages[i]
+      if (candidate.info.itemType !== "fileChange") {
+        continue
+      }
+
+      const toolPart = getToolPartFromMessage(candidate)
+      const output = toolPart?.state.output
+      const source =
+        output && typeof output === "object" && "changes" in output
+          ? (output as { changes?: unknown[] }).changes
+          : undefined
+      const fileChanges = getFileChangeEntries(source)
+
+      for (const change of fileChanges) {
+        const current = changeTotals.get(change.path) ?? { added: 0, removed: 0 }
+        const diffTotals = countDiffLines(change.diff)
+
+        changeTotals.set(change.path, {
+          added: current.added + diffTotals.added,
+          removed: current.removed + diffTotals.removed,
+        })
+      }
+    }
+
+    if (changeTotals.size === 0) {
+      return summaryByMessageId
+    }
+
+    const entries = Array.from(changeTotals.entries())
+    const [firstPath] = entries[0]
+    const totalAdded = entries.reduce((sum, [, totals]) => sum + totals.added, 0)
+    const totalRemoved = entries.reduce((sum, [, totals]) => sum + totals.removed, 0)
+
+    summaryByMessageId.set(lastAssistantTextMessageId, {
+      fileCount: entries.length,
+      label:
+        entries.length === 1
+          ? firstPath.split(/[\\/]/).filter(Boolean).at(-1) ?? firstPath
+          : `${entries.length} files`,
+      added: totalAdded,
+      removed: totalRemoved,
+    })
+
     return summaryByMessageId
-  }, [renderedMessages])
+  }, [lastAssistantTextMessageId, renderedMessages])
   const completedWorkDurationByMessageId = useMemo(() => {
     const earliestTimestampByTurnId = new Map<string, number>()
     const durationByMessageId = new Map<string, number>()
@@ -344,62 +320,6 @@ export function ChatMessages({
 
     return durationByMessageId
   }, [renderedMessages])
-
-  useEffect(() => {
-    const activeGroupKeys = activityGroups
-      .filter((group) => isActivityGroupActive(group))
-      .map((group) => group.key)
-
-    if (activeGroupKeys.length === 0) {
-      return
-    }
-
-    for (const key of activeGroupKeys) {
-      autoCollapsedGroupKeysRef.current.delete(key)
-    }
-
-    setGroupOpenByKey((previous) => {
-      let nextState = previous
-
-      for (const key of activeGroupKeys) {
-        if (previous[key] === true) {
-          continue
-        }
-
-        if (nextState === previous) {
-          nextState = { ...previous }
-        }
-        nextState[key] = true
-      }
-
-      return nextState
-    })
-  }, [activityGroups])
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return
-    }
-
-    const timeoutIds = activityGroups.flatMap((group) => {
-      if (isActivityGroupActive(group) || autoCollapsedGroupKeysRef.current.has(group.key)) {
-        return []
-      }
-
-      return [
-        window.setTimeout(() => {
-          autoCollapsedGroupKeysRef.current.add(group.key)
-          setGroupOpenByKey((previous) =>
-            previous[group.key] === false ? previous : { ...previous, [group.key]: false }
-          )
-        }, 300),
-      ]
-    })
-
-    return () => {
-      timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId))
-    }
-  }, [activityGroups])
 
   useEffect(() => {
     const previousStatus = previousStatusRef.current
@@ -469,7 +389,7 @@ export function ChatMessages({
 
     return (
       <StaticConversation resetKey={_selectedProject?.id ?? "empty-chat"}>
-        <div className="mx-auto flex min-h-full w-full items-center justify-center px-10 py-10">
+        <div className="flex min-h-full w-full items-center justify-center">
           <ChatEmptyState key={_selectedProject?.id ?? "empty-chat"} selectedProject={_selectedProject} />
         </div>
       </StaticConversation>
@@ -490,42 +410,35 @@ export function ChatMessages({
       <ConversationContent className="mx-auto w-full max-w-[803px] px-10 pb-10">
         <>
           {showInlineIntro ? <ChatEmptyState selectedProject={_selectedProject} /> : null}
-          {timelineBlocks.map((block) =>
-            block.type === "message" ? (
+          {timelineBlocks.map((block) => {
+            if (block.type !== "message") {
+              return null
+            }
+
+            const isLast = block.message.info.id === lastAssistantTextMessageId
+            return (
               <ChatTimelineItem
                 key={block.key}
                 message={block.message}
                 isStreaming={status === "streaming" && block.message.info.id === lastMessage?.info.id}
-                showCopyAction={block.message.info.id === lastAssistantTextMessageId}
-                changedFilesSummary={changedFilesSummaryByMessageId.get(block.message.info.id)}
+                showCopyAction={isLast}
+                changedFilesSummary={isLast ? changedFilesSummaryByMessageId.get(block.message.info.id) : undefined}
                 childSessions={childSessionData}
                 workStartTime={
-                  status === "streaming" && block.message.info.id === lastMessage?.info.id
+                  isLast && status === "streaming"
                     ? activeWorkStartTime ?? undefined
                     : undefined
                 }
                 completedWorkDurationMs={
-                  block.message.info.id === lastCompletedWork?.messageId
-                    ? lastCompletedWork.durationMs
-                    : completedWorkDurationByMessageId.get(block.message.info.id)
-                }
-              />
-            ) : (
-              <TimelineActivityGroup
-                key={block.key}
-                group={block}
-                childSessions={childSessionData}
-                isOpen={isActivityGroupActive(block) ? true : groupOpenByKey[block.key] ?? true}
-                activeWorkStartTime={activeWorkStartTime ?? undefined}
-                onToggle={() =>
-                  setGroupOpenByKey((previous) => ({
-                    ...previous,
-                    [block.key]: !(previous[block.key] ?? true),
-                  }))
+                  isLast
+                    ? block.message.info.id === lastCompletedWork?.messageId
+                      ? lastCompletedWork.durationMs
+                      : completedWorkDurationByMessageId.get(block.message.info.id)
+                    : undefined
                 }
               />
             )
-          )}
+          })}
           {orphanChildSessions.length > 0 ? (
             <div className="space-y-3">
               {orphanChildSessions.map((childSession) => (
@@ -590,71 +503,6 @@ function ChatAutoScroll({
   return null
 }
 
-function TimelineActivityGroup({
-  group,
-  childSessions,
-  isOpen,
-  activeWorkStartTime,
-  onToggle,
-}: {
-  group: TimelineActivityGroupBlock
-  childSessions?: Map<string, ChildSessionData>
-  isOpen: boolean
-  activeWorkStartTime?: number
-  onToggle: () => void
-}) {
-  const isActive = isActivityGroupActive(group)
-  const summary = getActivityGroupSummary(group)
-  const activeDuration = useElapsedDuration(activeWorkStartTime, isActive)
-
-  return (
-    <MessageComponent from="assistant">
-      <MessageContent>
-        <div className="w-full text-sm leading-5 text-muted-foreground">
-          {isActive ? (
-            <div className="inline-flex max-w-full items-center gap-1.5 text-left">
-              <span className="min-w-0">{summary}</span>
-              {activeDuration ? (
-                <span className="shrink-0 text-muted-foreground/80">· {activeDuration}</span>
-              ) : null}
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={onToggle}
-              className="inline-flex max-w-full items-center gap-1.5 text-left"
-            >
-              <span className="min-w-0">{summary}</span>
-              <span className="shrink-0 text-muted-foreground">
-                {isOpen ? <CaretDown className="size-4" /> : <CaretRight className="size-4" />}
-              </span>
-            </button>
-          )}
-          {isOpen ? (
-            <div className="mt-2 space-y-2 border-l border-border/60 pl-4">
-              {group.messages.map((message) => {
-                const toolPart = getToolPartFromMessage(message)
-                if (!toolPart) {
-                  return null
-                }
-
-                return (
-                  <ToolTimelineRow
-                    key={message.info.id}
-                    message={message}
-                    toolPart={toolPart}
-                    childSessions={childSessions}
-                    withinGroup
-                  />
-                )
-              })}
-            </div>
-          ) : null}
-        </div>
-      </MessageContent>
-    </MessageComponent>
-  )
-}
 
 function StreamingAssistantPlaceholder({
   startTime,

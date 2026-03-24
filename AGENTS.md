@@ -1,37 +1,37 @@
 # Nucleus Desktop
 
-Open-source desktop AI co-worker app with Tauri + React.
+Open-source desktop coding ADE with Tauri + React.
 
 ## First Design Principles
 
-- Design the application to be local-first wherever practical: data, permissions, agent context, and core workflows should prefer running on the user's machine.
+- Design the application to be local-first wherever practical: data, permissions, project context, and core workflows should prefer running on the user's machine.
 - Limit reliance on third-party services and hosted infrastructure. Favor local capabilities or thin, optional integrations so the system stays understandable, portable, and easy for the person installing it to manage themselves.
 
 ## Product Direction
 
-Nucleus Desktop is intended to become an open-source analogue to Claude Cowork: a desktop agent workspace for knowledge work beyond coding.
+Nucleus Desktop is intended to become an open-source coding ADE: a desktop environment for supervised, agentic software development.
 
-- The primary unit in the product is a custom agent backed by a local folder. In product copy, navigation, and UX discussions, refer to these folder-backed units as agents rather than projects.
+- The primary unit in the product is a project backed by a local folder. In product copy, navigation, and UX discussions, refer to these folder-backed units as projects rather than agents.
 - Local-first operation is a core product principle. When choosing architecture, dependencies, or UX flows, prefer approaches that keep the app self-managed on the user's machine and avoid unnecessary external services.
-- Chats, plans, tools, files, and approvals all live inside an agent context. Switching the selected agent should switch the active chat/thread context with it.
-- The target experience is outcome-oriented task execution, not just turn-by-turn chat.
-- Users should be able to grant scoped access to local folders, tools, connectors, and browser workflows so the agent can complete multi-step work on their behalf.
+- Chats, plans, tools, files, and approvals all live inside a project context. Switching the selected project should switch the active chat/thread context with it.
+- The target experience is outcome-oriented software development, not just turn-by-turn chat.
+- Users should be able to grant scoped access to local folders, tools, connectors, and browser workflows so the ADE can complete multi-step coding work on their behalf.
 - The app should feel supervised and transparent: show plans, progress, sub-task activity, and require explicit approval for major or destructive actions.
-- Prioritize knowledge-work use cases such as research, report and document drafting, spreadsheet/presentation prep, file organization, and recurring operational tasks.
-- Keep provider-specific runtimes behind thin adapters so OpenCode, Codex, Claude Code, and future harnesses can power the same shared co-worker UX.
+- Prioritize coding use cases such as repo exploration, implementation, refactoring, debugging, code review, and multi-step development tasks.
+- Keep provider-specific runtimes behind thin adapters so OpenCode, Codex, Claude Code, and future harnesses can power the same shared ADE UX.
 
 ## Terminology
 
-- "Agent" means a user-defined, folder-backed co-worker workspace with its own threads, tools, and permissions.
-- Avoid calling these user-facing entities "projects" unless referring to code-level legacy types or persistence that has not been renamed yet.
-- The repository itself can still be called the project; the product surface should prefer agent/workspace language.
+- "Project" means a user-defined, folder-backed coding workspace with its own threads, tools, and permissions.
+- Avoid calling these user-facing entities "agents" unless referring to code-level legacy types or provider/runtime concepts that have not been renamed yet.
+- The repository itself can still be called the project; the product surface should prefer project/workspace language consistently.
 
 ## Project Overview
 
 This project is being built in phases:
 
 1. **Phase 1 (Current)**: UI shell with Tauri + React
-2. **Phase 2**: Agent runtime integration
+2. **Phase 2**: Coding runtime and harness integration
 3. **Phase 3**: Migrate UI components from Codex-interface project
 
 ## Commands
@@ -63,9 +63,9 @@ nucleus-desktop/
 nucleus-desktop/
 ├── src/
 │   ├── main.ts            # Tauri main process
-│   ├── agent/             # Agent runtime integration (TBD)
+│   ├── runtime/           # ADE runtime and harness integration (TBD)
 │   └── features/          # UI features (migrated from Codex-interface)
-│       ├── chat/          # Chat/thread UI scoped to the selected agent
+│       ├── chat/          # Chat/thread UI scoped to the selected project
 │       └── shared/        # Shared UI components
 ├── src-tauri/             # Tauri Rust backend (minimal)
 └── ...
@@ -87,7 +87,7 @@ The UI from `Codex-interface` project will be migrated here. Key components to b
 - `ai-elements/` - Message, Conversation, Loader components
 - `shared/components/ui/` - Button, Input, Dialog, etc.
 
-These components have already been decoupled from the old ACP implementation and use local types compatible with a future agent runtime.
+These components have already been decoupled from the old ACP implementation and use local types compatible with a future ADE runtime.
 
 ## Development Guidelines
 
@@ -99,10 +99,10 @@ These components have already been decoupled from the old ACP implementation and
 ## Integration Learnings
 
 - The current chat runtime is still OpenCode-shaped end-to-end: Tauri starts `opencode serve --port 4096` in `src-tauri/src/lib.rs`, and the React chat store talks to it through `@opencode-ai/sdk/client` plus the global event stream in `src/features/chat/store/chatStore.ts`.
-- The product direction has changed from "projects with chats" to "agents backed by folders." Existing stores/types may still say `project`, but new UX and architectural work should treat that layer as agent selection with chat threads nested under each agent.
-- If adding multiple agent harnesses (OpenCode, Codex, Claude Code), keep orchestration out of this app and introduce a thin per-harness adapter that maps each provider into shared UI-local thread/message/tool/subagent types before data reaches hooks or components.
+- The product direction has changed from an agent-builder framing to a coding ADE with project-backed workspaces. Existing stores/types may still say `agent` in places, but new UX and architectural work should treat that layer as project selection with chat threads nested under each project.
+- If adding multiple coding harnesses (OpenCode, Codex, Claude Code), keep orchestration out of this app and introduce a thin per-harness adapter that maps each provider into shared UI-local thread/message/tool/subagent types before data reaches hooks or components.
 - Codex is not a drop-in replacement for the OpenCode client. The closest fit is Codex App Server, which uses JSON-RPC `thread/*` and `turn/*` events instead of OpenCode's REST/SSE shape; prefer generating version-matched bindings with `codex app-server generate-ts` rather than hand-rolling protocol types.
-- Claude Cowork is a useful product reference: Anthropic positions it as Claude Code's agentic architecture packaged into Desktop for knowledge work beyond coding, with scoped file/tool access, visible planning, parallel sub-agents, plugins/skills, and explicit approval gates.
+- Claude Cowork is still a useful product reference for supervised agentic workflows, but Nucleus Desktop should stay focused on coding-first ADE experiences built around local projects.
 - For app UI controls, prefer the shared `shared/components/ui` primitives and standard sizing over one-off button/input overrides; search fields should use the shared `InputGroup` pattern unless a custom design is explicitly requested.
 - Sidebar chrome should use the standard sidebar tokens (`bg-sidebar`, `--sidebar-item-hover`, `--sidebar-item-active`) rather than the older translucent/glass backgrounds so both sidebars read as the same surface.
 - When a sidebar header opens a `DropdownMenu`, drive the trigger's visual active state with local `onOpenChange` state and use the shared radius tokens (`--radius-*`) instead of arbitrary extra-round corners.

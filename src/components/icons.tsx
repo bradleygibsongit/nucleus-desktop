@@ -10,6 +10,8 @@ import {
   ArrowRight01Icon,
   ArrowUp01Icon,
   ArrowUp02Icon,
+  BashIcon,
+  Shaka04Icon,
   Attachment01Icon,
   BookOpen02Icon,
   BrainIcon,
@@ -39,6 +41,7 @@ import {
   FileZipIcon,
   Folder01Icon,
   Folder02Icon,
+  Folder03Icon,
   FolderAddIcon,
   GitBranchIcon,
   GitCompareIcon,
@@ -146,12 +149,41 @@ export const Copy = forwardRef(function CopyIcon(
 }) as Icon
 Copy.displayName = "Copy"
 
+export const DotsThree = forwardRef(function DotsThreeIcon(
+  { size = 24, strokeWidth = 1.8, ...props }: IconProps,
+  ref: Ref<SVGSVGElement>
+) {
+  const radius = strokeWidth >= 2 ? 1.75 : 1.5
+
+  return (
+    <svg
+      ref={ref}
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <circle cx="6" cy="12" r={radius} fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r={radius} fill="currentColor" stroke="none" />
+      <circle cx="18" cy="12" r={radius} fill="currentColor" stroke="none" />
+    </svg>
+  )
+}) as Icon
+DotsThree.displayName = "DotsThree"
+
 export const Archive = createIcon("Archive", Archive03Icon)
 export const ArrowDown = createIcon("ArrowDown", ArrowDown01Icon)
 export const ArrowElbowDownLeft = createIcon("ArrowElbowDownLeft", ArrowDownLeft01Icon)
 export const ArrowUp = createIcon("ArrowUp", ArrowUp01Icon)
 export const ArrowUp02 = createIcon("ArrowUp02", ArrowUp02Icon)
 export const ArrowMoveDownLeft = createIcon("ArrowMoveDownLeft", ArrowMoveDownLeftIcon)
+export const Shaka = createIcon("Shaka", Shaka04Icon)
 export const BracketsCurly = createIcon("BracketsCurly", CodeSquareIcon)
 export const BookOpen = createIcon("BookOpen", BookOpen02Icon)
 export const Brain = createIcon("Brain", BrainIcon)
@@ -201,7 +233,7 @@ export const FileVue = createIcon("FileVue", CodeIcon)
 export const FileXls = createIcon("FileXls", Xls01Icon)
 export const FileZip = createIcon("FileZip", FileZipIcon)
 export const Folder = createIcon("Folder", Folder01Icon)
-export const FolderOpen = createIcon("FolderOpen", Folder02Icon)
+export const FolderOpen = createIcon("FolderOpen", Folder03Icon)
 export const FolderSimple = createIcon("FolderSimple", Folder02Icon)
 export const FolderSimplePlus = createIcon("FolderSimplePlus", FolderAddIcon)
 export const GearSix = createIcon("GearSix", Settings02Icon)
@@ -225,6 +257,7 @@ export const Square = createIcon("Square", StopIcon)
 export const SquareMinus = createIcon("SquareMinus", MinusSignSquareIcon)
 export const SquarePlus = createIcon("SquarePlus", PlusSignSquareIcon)
 export const Stop = createIcon("Stop", StopIcon)
+export const Bash = createIcon("Bash", BashIcon)
 export const Terminal = createIcon("Terminal", ComputerTerminal02Icon)
 export const Trash = createIcon("Trash", Delete02Icon)
 export const X = createIcon("X", Cancel01Icon)

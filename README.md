@@ -1,6 +1,8 @@
 # Nucleus Desktop
 
-Desktop AI agent app with Tauri + React.
+Desktop Agentic Developer Environment (ADE) with Tauri + React.
+
+Nucleus Desktop is a local-first coding workspace for agentic software development. Each workspace in the app is a project backed by a local folder, with chats, tools, files, and approvals scoped to that project.
 
 ## Prerequisites
 
@@ -59,6 +61,8 @@ nucleus-desktop/
 ## Features
 
 - Desktop UI shell with React + Tauri
+- Local-first project workspaces backed by folders
+- Coding-focused ADE workflows for chat, tools, and approvals
 - Shared layout system (sidebars, title bar, main content)
 - Theming based on system preference
 
@@ -67,7 +71,7 @@ nucleus-desktop/
 See [MIGRATION.md](./MIGRATION.md) for the full plan.
 
 1. **Phase 1 (Current)**: UI shell with Tauri + React
-2. **Phase 2**: Agent runtime integration
+2. **Phase 2**: Coding runtime and harness integration
 3. **Phase 3**: Migrate UI components from claude-interface project
 
 ## Resources

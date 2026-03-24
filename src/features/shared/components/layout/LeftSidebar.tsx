@@ -1,10 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from "react"
+import { Reorder } from "framer-motion"
 import {
   CaretDown,
   CaretRight,
+  Folder,
+  FolderOpen,
   FolderSimplePlus,
   GearSix,
   Archive,
+  DotsThree,
 } from "@/components/icons"
 import {
   DropdownMenu,
@@ -17,11 +21,11 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/features/shared/components/ui/tooltip"
-import { QuickStartModal } from "@/features/workspace/components/modals"
+import { ProjectSettingsModal, QuickStartModal } from "@/features/workspace/components/modals"
 import { useProjectStore } from "@/features/workspace/store"
-import { getAgentAvatarUrl } from "@/features/workspace/utils/avatar"
 import { openFolderPicker } from "@/features/workspace/utils/folderDialog"
 import { useChatStore } from "@/features/chat/store"
+import { hasProjectChatSession } from "@/features/chat/store/sessionState"
 import { useSidebar } from "./useSidebar"
 import { cn } from "@/lib/utils"
 import type { Session } from "@/features/chat/types"
@@ -41,6 +45,10 @@ interface LeftSidebarProps {
   onSelectSettingsSection?: (section: SettingsSectionId) => void
 }
 
+function haveProjectsChangedOrder(nextProjects: Project[], currentProjects: Project[]) {
+  return nextProjects.some((project, index) => project.id !== currentProjects[index]?.id)
+}
+
 export function LeftSidebar({
   activeView = "chat",
   activeSettingsSection = "general",
@@ -50,6 +58,8 @@ export function LeftSidebar({
   onSelectSettingsSection,
 }: LeftSidebarProps) {
   const [quickStartOpen, setQuickStartOpen] = useState(false)
+  const [projectSettingsProject, setProjectSettingsProject] = useState<Project | null>(null)
+  const [openProjectMenuId, setOpenProjectMenuId] = useState<string | null>(null)
   const [confirmArchiveSessionId, setConfirmArchiveSessionId] = useState<string | null>(null)
   const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>([])
   const pendingSessionSelectionRef = useRef<{ projectId: string; sessionId: string } | null>(null)
@@ -62,7 +72,11 @@ export function LeftSidebar({
     loadProjects,
     addProject,
     selectProject,
+    setProjectOrder,
   } = useProjectStore()
+  const [projectOrderPreview, setProjectOrderPreview] = useState<Project[] | null>(null)
+  const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null)
+  const projectOrderPreviewRef = useRef<Project[] | null>(null)
 
   const {
     getProjectChat,
@@ -101,13 +115,26 @@ export function LeftSidebar({
       return
     }
 
-    if (projectChat.activeSessionId && currentSessionId !== projectChat.activeSessionId) {
+    if (!projectChat.activeSessionId) {
+      if (currentSessionId !== null) {
+        void openDraftSession(selectedProjectId, project.path)
+      }
+      return
+    }
+
+    if (!hasProjectChatSession(projectChat, projectChat.activeSessionId)) {
+      void openDraftSession(selectedProjectId, project.path)
+      return
+    }
+
+    if (currentSessionId !== projectChat.activeSessionId) {
       void selectSession(selectedProjectId, projectChat.activeSessionId)
     }
   }, [
     currentSessionId,
     getProjectChat,
     loadSessionsForProject,
+    openDraftSession,
     projects,
     selectSession,
     selectedProjectId,
@@ -190,7 +217,8 @@ export function LeftSidebar({
     "bg-[var(--sidebar-item-active)] text-sidebar-accent-foreground"
   const sidebarSurfaceClass = "bg-sidebar"
   const sectionLabelClass =
-    "text-sm font-medium uppercase tracking-[0.08em] text-sidebar-foreground/48"
+    "text-[11px] font-medium uppercase tracking-[0.08em] text-sidebar-foreground/40"
+  const orderedProjects = projectOrderPreview ?? projects
 
   const stopResizing = useCallback(() => {
     resizeStateRef.current = null
@@ -265,6 +293,38 @@ export function LeftSidebar({
 
     if (!isExpanded) {
       await loadSessionsForProject(project.id, project.path)
+    }
+  }
+
+  useEffect(() => {
+    if (!draggedProjectId) {
+      setProjectOrderPreview(null)
+      projectOrderPreviewRef.current = null
+    }
+  }, [draggedProjectId, projects])
+
+  const clearProjectDragState = () => {
+    setDraggedProjectId(null)
+    setProjectOrderPreview(null)
+    projectOrderPreviewRef.current = null
+  }
+
+  const handleProjectReorder = (nextProjects: Project[]) => {
+    setProjectOrderPreview(nextProjects)
+    projectOrderPreviewRef.current = nextProjects
+  }
+
+  const commitProjectOrder = async () => {
+    const nextProjects = projectOrderPreviewRef.current
+    if (!nextProjects || !haveProjectsChangedOrder(nextProjects, projects)) {
+      clearProjectDragState()
+      return
+    }
+
+    try {
+      await setProjectOrder(nextProjects)
+    } finally {
+      clearProjectDragState()
     }
   }
 
@@ -399,14 +459,14 @@ export function LeftSidebar({
       {/* Scrollable content area */}
       <div className="flex-1 overflow-y-auto">
         <div className="px-2 pb-2" style={{ paddingTop: sidebarTopPadding }}>
-          <div className="mb-4 flex items-center justify-between gap-3 px-2">
+          <div className="mb-2 flex items-center justify-between gap-2 px-2">
             <span className={sectionLabelClass}>Workspaces</span>
             <DropdownMenu>
               <DropdownMenuTrigger
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/68  hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground"
+                className="flex h-6 w-6 items-center justify-center rounded text-sidebar-foreground/40 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground/68"
                 aria-label="Add workspace"
               >
-                <FolderSimplePlus size={16} />
+                <FolderSimplePlus size={14} />
               </DropdownMenuTrigger>
               <DropdownMenuContent side="bottom" align="end" className="w-48">
                 <DropdownMenuItem onClick={handleOpenProject}>
@@ -434,8 +494,15 @@ export function LeftSidebar({
               </div>
             )
           ) : isCollapsed ? null : (
-            <div className="space-y-1">
-              {projects.map((project) => {
+            <Reorder.Group
+              as="div"
+              axis="y"
+              values={orderedProjects}
+              onReorder={handleProjectReorder}
+              layoutScroll
+              className="flex flex-col gap-1"
+            >
+              {orderedProjects.map((project) => {
                 const projectChat = getProjectChat(project.id)
                 const archivedSessionIds = new Set(projectChat.archivedSessionIds ?? [])
                 const projectSessions = projectChat.sessions.filter(
@@ -445,35 +512,84 @@ export function LeftSidebar({
                     !archivedSessionIds.has(session.id)
                 )
                 const isExpanded = expandedProjectIds.includes(project.id)
+                const isProjectMenuOpen = openProjectMenuId === project.id
+                const isDraggingProject = draggedProjectId === project.id
 
                 return (
-                  <div key={project.id} className="space-y-1">
-                    <button
-                      type="button"
-                      onClick={() => void handleToggleProjectExpanded(project)}
-                      className={cn(
-                        "group/project flex h-8 w-full items-center gap-2 rounded-md px-2 text-left",
-                        "text-sidebar-foreground/48 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground/72",
-                      )}
-                      aria-label={isExpanded ? `Collapse ${project.name}` : `Expand ${project.name}`}
-                      aria-expanded={isExpanded}
-                    >
-                      <span className="relative flex size-5 shrink-0 items-center justify-center">
-                        <span className="flex size-5 items-center justify-center rounded-md border border-sidebar-border/45 bg-background/10 p-0.5 group-hover/project:opacity-0">
-                          <img
-                            src={getAgentAvatarUrl(project.avatarSeed)}
-                            alt=""
-                            className="size-full rounded-[20%] object-cover"
-                          />
+                  <Reorder.Item
+                    as="div"
+                    key={project.id}
+                    value={project}
+                    layout={draggedProjectId ? "position" : false}
+                    transition={{
+                      layout: {
+                        type: "spring",
+                        stiffness: 520,
+                        damping: 38,
+                        mass: 0.5,
+                      },
+                    }}
+                    whileDrag={{
+                      zIndex: 20,
+                      scale: 1.01,
+                    }}
+                    className={cn(
+                      "space-y-1 rounded-xl",
+                      isDraggingProject && "opacity-65"
+                    )}
+                    onDragStart={() => {
+                      setDraggedProjectId(project.id)
+                    }}
+                    onDragEnd={() => {
+                      void commitProjectOrder()
+                    }}
+                  >
+                    <div className="group/project-row relative">
+                      <button
+                        type="button"
+                        onClick={() => void handleToggleProjectExpanded(project)}
+                        className={cn(
+                          "group/project flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 pr-9 text-left",
+                          "text-sidebar-foreground/48 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground/72",
+                          "group-hover/project-row:bg-[var(--sidebar-item-hover)] group-hover/project-row:text-sidebar-foreground/72",
+                        )}
+                        aria-label={isExpanded ? `Collapse ${project.name}` : `Expand ${project.name}`}
+                        aria-expanded={isExpanded}
+                      >
+                        <span className="relative flex size-5 shrink-0 items-center justify-center">
+                          {isExpanded ? (
+                            <FolderOpen size={16} className="text-sidebar-foreground/50" />
+                          ) : (
+                            <Folder size={16} className="text-sidebar-foreground/50" />
+                          )}
                         </span>
-                        <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/project:opacity-100">
-                          {isExpanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
+                        <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                          <span className="truncate text-sm font-medium">{project.name}</span>
                         </span>
-                      </span>
-                      <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
-                        <span className="truncate text-sm font-medium">{project.name}</span>
-                      </span>
-                    </button>
+                      </button>
+
+                      <DropdownMenu
+                        onOpenChange={(open) => setOpenProjectMenuId(open ? project.id : null)}
+                      >
+                        <DropdownMenuTrigger
+                          className={cn(
+                            "absolute top-1/2 right-2 flex h-5 w-5 -translate-y-1/2 items-center justify-center text-sidebar-foreground/30 transition",
+                            "hover:text-sidebar-foreground/72 focus-visible:text-sidebar-foreground/72",
+                            isProjectMenuOpen
+                              ? "text-sidebar-foreground/72 opacity-100"
+                              : "opacity-0 group-hover/project-row:opacity-100",
+                          )}
+                          aria-label={`${project.name} settings menu`}
+                        >
+                          <DotsThree size={14} />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent side="bottom" align="end" className="w-40">
+                          <DropdownMenuItem onClick={() => setProjectSettingsProject(project)}>
+                            <span>Settings</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
 
                     {(() => {
                       if (!isExpanded) return null
@@ -581,10 +697,10 @@ export function LeftSidebar({
                         </div>
                       )
                     })()}
-                  </div>
+                  </Reorder.Item>
                 )
               })}
-            </div>
+            </Reorder.Group>
           )}
         </div>
       </div>
@@ -627,6 +743,15 @@ export function LeftSidebar({
       </div>
 
       <QuickStartModal open={quickStartOpen} onOpenChange={setQuickStartOpen} />
+      <ProjectSettingsModal
+        open={projectSettingsProject !== null}
+        project={projectSettingsProject}
+        onOpenChange={(open) => {
+          if (!open) {
+            setProjectSettingsProject(null)
+          }
+        }}
+      />
 
       {!isCollapsed ? (
         <div

@@ -21,6 +21,7 @@ import {
   createOptimisticRuntimeSession,
   deriveSessionTitle,
   findProjectForSession,
+  normalizeProjectChat,
   replaceSession,
   sortSessions,
   touchSession,
@@ -146,10 +147,10 @@ function normalizeProjectChatState(
   return Object.fromEntries(
     Object.entries(chatByProject ?? {}).map(([projectId, projectChat]) => [
       projectId,
-      {
+      normalizeProjectChat({
         ...projectChat,
-        selectedHarnessId: DEFAULT_HARNESS_ID,
-      },
+        selectedHarnessId: projectChat.selectedHarnessId ?? DEFAULT_HARNESS_ID,
+      }),
     ])
   )
 }

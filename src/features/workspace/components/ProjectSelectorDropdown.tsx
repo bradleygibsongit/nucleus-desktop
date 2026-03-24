@@ -1,6 +1,6 @@
 import type { ReactNode } from "react"
 import type { Project } from "@/features/workspace/types"
-import { Plus } from "@/components/icons"
+import { Folder, Plus } from "@/components/icons"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,7 +9,6 @@ import {
   DropdownMenuTrigger,
 } from "@/features/shared/components/ui/dropdown-menu"
 import { useProjectStore } from "@/features/workspace/store"
-import { getAgentAvatarUrl } from "@/features/workspace/utils/avatar"
 import { openFolderPicker } from "@/features/workspace/utils/folderDialog"
 import { cn } from "@/lib/utils"
 
@@ -70,11 +69,7 @@ export function ProjectSelectorDropdown({
                 onClick={() => void handleSelectProject(project.id)}
                 className="flex items-center gap-2 px-2 py-2"
               >
-                <img
-                  src={getAgentAvatarUrl(project.avatarSeed)}
-                  alt=""
-                  className="size-6 shrink-0 rounded-[28%] border border-border/60 bg-background/10 object-cover"
-                />
+                <ProjectDropdownAvatar project={project} />
                 <span className="min-w-0 flex-1">
                   <span className="font-sans block truncate text-sm leading-tight font-bold text-sidebar-foreground">
                     {project.name}
@@ -85,7 +80,7 @@ export function ProjectSelectorDropdown({
             )
           })
         ) : (
-          <div className="px-2 py-2 text-sm text-muted-foreground">No agents yet</div>
+          <div className="px-2 py-2 text-sm text-muted-foreground">No projects yet</div>
         )}
         <DropdownMenuSeparator className="my-2" />
         <DropdownMenuItem
@@ -93,9 +88,17 @@ export function ProjectSelectorDropdown({
           className="min-h-8 px-2 py-1 text-sm font-medium text-foreground"
         >
           <Plus size={14} className="text-muted-foreground" />
-          <span>Add new agent</span>
+          <span>Add new project</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+}
+
+function ProjectDropdownAvatar({ project }: { project: Project }) {
+  return (
+    <span className="flex size-6 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/20">
+      <Folder size={14} className="text-muted-foreground" />
+    </span>
   )
 }

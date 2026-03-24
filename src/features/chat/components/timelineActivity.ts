@@ -176,59 +176,11 @@ function createActivityGroupBlock(
 }
 
 export function buildTimelineBlocks(messages: MessageWithParts[]): TimelineBlock[] {
-  const blocks: TimelineBlock[] = []
-  let currentFamily: Exclude<ToolActivityFamily, "approval"> | null = null
-  let currentTurnId: string | null = null
-  let currentMessages: MessageWithParts[] = []
-
-  const flushCurrentGroup = () => {
-    if (!currentFamily || !currentTurnId || currentMessages.length === 0) {
-      currentFamily = null
-      currentTurnId = null
-      currentMessages = []
-      return
-    }
-
-    blocks.push(createActivityGroupBlock(currentMessages, currentFamily, currentTurnId))
-    currentFamily = null
-    currentTurnId = null
-    currentMessages = []
-  }
-
-  for (const message of messages) {
-    if (!isGroupableToolMessage(message)) {
-      flushCurrentGroup()
-      blocks.push({
-        type: "message",
-        key: message.info.id,
-        message,
-      })
-      continue
-    }
-
-    const family = getToolActivityFamily(message)
-    const turnId = message.info.turnId
-    if (!family || family === "approval") {
-      flushCurrentGroup()
-      blocks.push({
-        type: "message",
-        key: message.info.id,
-        message,
-      })
-      continue
-    }
-
-    if (currentFamily !== family || currentTurnId !== turnId) {
-      flushCurrentGroup()
-      currentFamily = family
-      currentTurnId = turnId
-    }
-
-    currentMessages.push(message)
-  }
-
-  flushCurrentGroup()
-  return blocks
+  return messages.map((message) => ({
+    type: "message" as const,
+    key: message.info.id,
+    message,
+  }))
 }
 
 export function isSettledToolStatus(status: ToolExecutionStatus): boolean {
