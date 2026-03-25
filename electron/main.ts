@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron"
+import { app, BrowserWindow, ipcMain, nativeImage } from "electron"
 import { join } from "node:path"
 import { IPC_CHANNELS } from "./ipc/channels"
 import { JsonStoreService } from "./services/store"
@@ -12,6 +12,10 @@ import { ProjectWatcherService } from "./services/projectWatcher"
 import { UpdaterService } from "./services/updater"
 
 let mainWindow: BrowserWindow | null = null
+
+function getDevAppIconPath(): string {
+  return join(process.cwd(), "public", "brands", "nucleus-app-icon-desktop.png")
+}
 
 function sendToRenderer(channel: string, payload: unknown): void {
   if (!mainWindow || mainWindow.isDestroyed()) {
@@ -38,6 +42,9 @@ function createWindow(): BrowserWindow {
     minHeight: 600,
     backgroundColor: "#1e1e1e",
     title: "Nucleus",
+    icon: process.platform === "linux" || process.platform === "win32"
+      ? getDevAppIconPath()
+      : undefined,
     webPreferences: {
       preload: join(__dirname, "../preload/preload.mjs"),
       contextIsolation: true,
@@ -176,6 +183,10 @@ function registerIpcHandlers(storeService: JsonStoreService): void {
 
 async function bootstrap(): Promise<void> {
   await app.whenReady()
+
+  if (!app.isPackaged && process.platform === "darwin") {
+    app.dock.setIcon(nativeImage.createFromPath(getDevAppIconPath()))
+  }
 
   const storeService = new JsonStoreService(app.getPath("userData"))
   registerIpcHandlers(storeService)
