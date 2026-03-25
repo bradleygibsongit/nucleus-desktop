@@ -197,6 +197,7 @@ export interface RuntimeApprovalPrompt extends RuntimePromptBase {
 }
 
 export type RuntimePrompt = RuntimeQuestionPrompt | RuntimeApprovalPrompt;
+export type RuntimeApprovalDisplayState = "pending" | "approved" | "denied";
 
 export interface RuntimeQuestionPromptResponse {
   kind: "question";

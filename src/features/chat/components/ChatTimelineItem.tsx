@@ -4,11 +4,8 @@ import {
   Bash,
   CaretDown,
   CaretRight,
-  CheckCircle,
   Compass,
-  Copy,
   Eye,
-  File,
   Globe,
   Image,
   MagnifyingGlass,
@@ -17,9 +14,13 @@ import {
   Zap,
   type Icon,
 } from "@/components/icons"
-import { getFileIcon } from "@/features/editor/utils/fileIcons"
 import { cn } from "@/lib/utils"
-import type { MessageWithParts, RuntimeMessagePart, RuntimeToolPart } from "../types"
+import type {
+  MessageWithParts,
+  RuntimeApprovalDisplayState,
+  RuntimeMessagePart,
+  RuntimeToolPart,
+} from "../types"
 import {
   Message as MessageComponent,
   MessageContent,
@@ -28,21 +29,11 @@ import {
 } from "./ai-elements/message"
 import type { ChildSessionData } from "./agent-activity/AgentActivitySubagent"
 import { getFileChangeEntries, getToolPart } from "./timelineActivity"
-import { formatElapsedDuration, useElapsedDuration } from "./workDuration"
 
 interface ChatTimelineItemProps {
   message: MessageWithParts
-  isStreaming: boolean
   childSessions?: Map<string, ChildSessionData>
-  workStartTime?: number
-  completedWorkDurationMs?: number
-  showCopyAction?: boolean
-  changedFilesSummary?: {
-    fileCount: number
-    label: string
-    added: number
-    removed: number
-  }
+  approvalState?: RuntimeApprovalDisplayState | null
 }
 
 function getMessageText(parts: RuntimeMessagePart[]): string {
@@ -55,90 +46,21 @@ function getMessageText(parts: RuntimeMessagePart[]): string {
 function TimelineTextBlock({
   eyebrow,
   text,
-  isStreaming,
   tone = "default",
-  workLabel,
-  changedFilesSummary,
-  onCopy,
 }: {
   eyebrow?: string
   text: string
-  isStreaming: boolean
   tone?: "default" | "muted" | "accent"
-  workLabel?: string
-  changedFilesSummary?: {
-    fileCount: number
-    label: string
-    added: number
-    removed: number
-  }
-  onCopy?: () => Promise<void> | void
 }) {
-  const [isCopied, setIsCopied] = useState(false)
-
-  useEffect(() => {
-    if (!isCopied) {
-      return
-    }
-
-    const timeoutId = window.setTimeout(() => setIsCopied(false), 1800)
-    return () => window.clearTimeout(timeoutId)
-  }, [isCopied])
-
-  const handleCopy = async () => {
-    if (!onCopy) {
-      return
-    }
-
-    await onCopy()
-    setIsCopied(true)
-  }
-
-  const footer = workLabel || changedFilesSummary || onCopy ? (
-    <div className="mt-2 flex items-center gap-1.5 text-xs tracking-[0.01em] text-muted-foreground/80 tabular-nums">
-      {workLabel ? <span>{workLabel}</span> : null}
-      {workLabel && onCopy ? (
-        <span aria-hidden="true" className="text-muted-foreground/45">
-          ·
-        </span>
-      ) : null}
-      {onCopy ? (
-        <button
-          type="button"
-          onClick={() => void handleCopy()}
-          className="inline-flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground/88 transition-colors hover:bg-muted/55 hover:text-foreground"
-          aria-label="Copy message"
-        >
-          {isCopied ? <CheckCircle size={14} /> : <Copy size={15} />}
-        </button>
-      ) : null}
-      {onCopy && changedFilesSummary ? (
-        <span aria-hidden="true" className="text-muted-foreground/45">
-          ·
-        </span>
-      ) : null}
-      {changedFilesSummary ? (
-        <ChangedFilesAggregateChip
-          fileCount={changedFilesSummary.fileCount}
-          label={changedFilesSummary.label}
-          added={changedFilesSummary.added}
-          removed={changedFilesSummary.removed}
-        />
-      ) : null}
-    </div>
-  ) : null
-
   if (tone === "default") {
     return (
       <MessageComponent from="assistant">
         <MessageContent>
           <MessageResponse
-            isStreaming={isStreaming}
             className="leading-relaxed [&>p]:mb-4 last:[&>p]:mb-0"
           >
             {text}
           </MessageResponse>
-          {footer}
         </MessageContent>
       </MessageComponent>
     )
@@ -157,40 +79,14 @@ function TimelineTextBlock({
             </div>
           ) : null}
           <MessageResponse
-            isStreaming={isStreaming}
             className="leading-relaxed [&>p]:mb-4 last:[&>p]:mb-0"
           >
             {text}
           </MessageResponse>
-          {footer}
         </div>
       </MessageContent>
     </MessageComponent>
   )
-}
-
-function useAssistantWorkLabel({
-  startTime,
-  isActive,
-  completedDurationMs,
-}: {
-  startTime?: number
-  isActive: boolean
-  completedDurationMs?: number
-}) {
-  const elapsed = useElapsedDuration(startTime, isActive, startTime && completedDurationMs != null
-    ? startTime + completedDurationMs
-    : undefined)
-
-  if (isActive && elapsed) {
-    return elapsed
-  }
-
-  if (completedDurationMs != null) {
-    return formatElapsedDuration(completedDurationMs)
-  }
-
-  return null
 }
 
 function getBaseName(path: string): string {
@@ -279,64 +175,6 @@ function renderDiffStats({ added, removed }: { added: number; removed: number })
   )
 }
 
-function ChangedFileChip({
-  path,
-  added,
-  removed,
-}: {
-  path: string
-  added: number
-  removed: number
-}) {
-  const filename = getBaseName(path)
-  const FileIcon = getFileIcon(filename)
-
-  return (
-    <button
-      type="button"
-      onClick={() => {}}
-      className="inline-flex items-center gap-3 rounded-xl border border-border/80 bg-card px-3 py-2 text-sm text-foreground shadow-sm transition-colors hover:border-border hover:bg-card/95"
-      aria-label={`Open changes for ${filename}`}
-    >
-      <span className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-muted/65 text-[var(--color-chat-file-accent)]">
-        <FileIcon size={16} />
-      </span>
-      <span className="truncate font-medium text-foreground/88">{filename}</span>
-      <span className="inline-flex items-center gap-2 tabular-nums">
-        {added > 0 ? <span className="font-medium text-emerald-500">+{added}</span> : null}
-        {removed > 0 ? <span className="font-medium text-red-500">-{removed}</span> : null}
-      </span>
-    </button>
-  )
-}
-
-function ChangedFilesAggregateChip({
-  fileCount,
-  label,
-  added,
-  removed,
-}: {
-  fileCount: number
-  label: string
-  added: number
-  removed: number
-}) {
-  const FileIcon = fileCount === 1 ? getFileIcon(label) : File
-
-  return (
-    <button
-      type="button"
-      onClick={() => {}}
-      className="inline-flex max-w-[220px] items-center gap-1.5 rounded-md border border-border/70 bg-card/90 px-1.5 py-1 text-[12px] leading-none text-foreground/88 shadow-sm transition-colors hover:border-border hover:bg-card"
-      aria-label={`Open changes for ${label}`}
-    >
-      <FileIcon size={12} className="shrink-0 text-[var(--color-chat-file-accent)]" />
-      <span className="truncate font-medium text-muted-foreground/88">{label}</span>
-      {added > 0 ? <span className="shrink-0 font-medium text-emerald-500">+{added}</span> : null}
-      {removed > 0 ? <span className="shrink-0 font-medium text-red-500">-{removed}</span> : null}
-    </button>
-  )
-}
 
 function prettyValue(value: unknown): string {
   if (typeof value === "string") {
@@ -589,11 +427,13 @@ function InlineActivityRow({
   summary,
   details,
   withinGroup = false,
+  approvalState = null,
 }: {
   icon?: Icon
   summary: ReactNode
   details?: ReactNode
   withinGroup?: boolean
+  approvalState?: RuntimeApprovalDisplayState | null
 }) {
   const canExpand = Boolean(details)
   const [isOpen, setIsOpen] = useState(false)
@@ -664,8 +504,31 @@ function InlineActivityRow({
 
   }, [releaseAnchorLock, stickToBottom])
 
+  const approvalTone =
+    approvalState === "pending"
+      ? {
+          text: "text-[var(--color-chat-approval-emphasis)]",
+          icon: "text-[var(--color-chat-approval-emphasis)]",
+        }
+      : approvalState === "approved"
+        ? {
+            text: "text-emerald-600 dark:text-emerald-400",
+            icon: "text-emerald-600 dark:text-emerald-400",
+          }
+        : approvalState === "denied"
+          ? {
+              text: "text-red-600 dark:text-red-400",
+              icon: "text-red-600 dark:text-red-400",
+            }
+          : null
+
   const content = (
-    <div className="group relative w-full py-0 text-sm leading-5 text-muted-foreground">
+    <div
+      className={cn(
+        "group relative w-full py-0 text-sm leading-5",
+        approvalTone ? approvalTone.text : "text-muted-foreground"
+      )}
+    >
       {canExpand ? (
         <button
           ref={buttonRef}
@@ -673,7 +536,15 @@ function InlineActivityRow({
           onClick={handleToggle}
           className="relative z-10 inline-flex max-w-full items-center gap-1.5 align-top text-left"
         >
-          {IconComponent ? <IconComponent size={14} className="shrink-0 text-muted-foreground/70" /> : null}
+          {IconComponent ? (
+            <IconComponent
+              size={14}
+              className={cn(
+                "shrink-0",
+                approvalTone ? approvalTone.icon : "text-muted-foreground/70"
+              )}
+            />
+          ) : null}
           <span className="min-w-0">{summary}</span>
           <span
             className={cn(
@@ -686,7 +557,15 @@ function InlineActivityRow({
         </button>
       ) : (
         <span className="inline-flex max-w-full items-center gap-1.5">
-          {IconComponent ? <IconComponent size={14} className="shrink-0 text-muted-foreground/70" /> : null}
+          {IconComponent ? (
+            <IconComponent
+              size={14}
+              className={cn(
+                "shrink-0",
+                approvalTone ? approvalTone.icon : "text-muted-foreground/70"
+              )}
+            />
+          ) : null}
           <span className="min-w-0">{summary}</span>
         </span>
       )}
@@ -714,11 +593,13 @@ export function ToolTimelineRow({
   toolPart,
   childSessions,
   withinGroup = false,
+  approvalState = null,
 }: {
   message: MessageWithParts
   toolPart: RuntimeToolPart
   childSessions?: Map<string, ChildSessionData>
   withinGroup?: boolean
+  approvalState?: RuntimeApprovalDisplayState | null
 }) {
   const details = useMemo(
     () => renderToolDetails(message, toolPart, childSessions),
@@ -732,6 +613,7 @@ export function ToolTimelineRow({
         summary={renderCommandSummary(toolPart)}
         details={details}
         withinGroup={withinGroup}
+        approvalState={approvalState}
       />
     )
   }
@@ -742,6 +624,7 @@ export function ToolTimelineRow({
         icon={PencilSimple}
         summary={renderFileChangeSummary(toolPart)}
         withinGroup={withinGroup}
+        approvalState={approvalState}
       />
     )
   }
@@ -752,6 +635,7 @@ export function ToolTimelineRow({
       summary={renderGenericToolSummary(message, toolPart)}
       details={details}
       withinGroup={withinGroup}
+      approvalState={approvalState}
     />
   )
 }
@@ -770,28 +654,11 @@ export function InlineSubagentActivity({
 
 export function ChatTimelineItem({
   message,
-  isStreaming,
   childSessions,
-  workStartTime,
-  completedWorkDurationMs,
-  showCopyAction = false,
-  changedFilesSummary,
+  approvalState = null,
 }: ChatTimelineItemProps) {
   const text = getMessageText(message.parts)
   const toolPart = getToolPart(message.parts)
-  const workLabel = useAssistantWorkLabel({
-    startTime: workStartTime,
-    isActive: isStreaming,
-    completedDurationMs: completedWorkDurationMs,
-  })
-  const canCopyMessage = showCopyAction && !isStreaming && !!text.trim()
-  const handleCopyMessage = async () => {
-    if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
-      return
-    }
-
-    await navigator.clipboard.writeText(text)
-  }
 
   if (message.info.role === "user") {
     if (!text.trim()) {
@@ -808,10 +675,17 @@ export function ChatTimelineItem({
   }
 
   if (toolPart) {
-    return <ToolTimelineRow message={message} toolPart={toolPart} childSessions={childSessions} />
+    return (
+      <ToolTimelineRow
+        message={message}
+        toolPart={toolPart}
+        childSessions={childSessions}
+        approvalState={approvalState}
+      />
+    )
   }
 
-  if (!text.trim() && !isStreaming) {
+  if (!text.trim()) {
     return null
   }
 
@@ -822,10 +696,6 @@ export function ChatTimelineItem({
     return (
       <TimelineTextBlock
         text={text}
-        isStreaming={isStreaming}
-        workLabel={workLabel ?? undefined}
-        changedFilesSummary={changedFilesSummary}
-        onCopy={canCopyMessage ? handleCopyMessage : undefined}
       />
     )
   }
@@ -835,11 +705,7 @@ export function ChatTimelineItem({
       <TimelineTextBlock
         eyebrow="Plan"
         text={text}
-        isStreaming={isStreaming}
         tone="accent"
-        workLabel={workLabel ?? undefined}
-        changedFilesSummary={changedFilesSummary}
-        onCopy={canCopyMessage ? handleCopyMessage : undefined}
       />
     )
   }
@@ -849,11 +715,7 @@ export function ChatTimelineItem({
       <TimelineTextBlock
         eyebrow={itemType === "enteredReviewMode" ? "Review Mode" : "Review Closed"}
         text={text}
-        isStreaming={isStreaming}
         tone="accent"
-        workLabel={workLabel ?? undefined}
-        changedFilesSummary={changedFilesSummary}
-        onCopy={canCopyMessage ? handleCopyMessage : undefined}
       />
     )
   }
@@ -863,11 +725,7 @@ export function ChatTimelineItem({
       <TimelineTextBlock
         eyebrow="Approval"
         text={text}
-        isStreaming={isStreaming}
         tone="muted"
-        workLabel={workLabel ?? undefined}
-        changedFilesSummary={changedFilesSummary}
-        onCopy={canCopyMessage ? handleCopyMessage : undefined}
       />
     )
   }
@@ -876,10 +734,6 @@ export function ChatTimelineItem({
     return (
       <TimelineTextBlock
         text={text}
-        isStreaming={isStreaming}
-        workLabel={workLabel ?? undefined}
-        changedFilesSummary={changedFilesSummary}
-        onCopy={canCopyMessage ? handleCopyMessage : undefined}
       />
     )
   }
@@ -887,10 +741,6 @@ export function ChatTimelineItem({
   return (
     <TimelineTextBlock
       text={text}
-      isStreaming={isStreaming}
-      workLabel={workLabel ?? undefined}
-      changedFilesSummary={changedFilesSummary}
-      onCopy={canCopyMessage ? handleCopyMessage : undefined}
     />
   )
 }

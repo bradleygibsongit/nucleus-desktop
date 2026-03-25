@@ -1,109 +1,117 @@
 import { useEffect, useState } from "react"
-import { useChat } from "../hooks/useChat"
+import {
+  useChatComposerState,
+  useChatProjectState,
+  useChatTimelineState,
+} from "../hooks/useChat"
 import { ChatMessages } from "./ChatMessages"
 import { ChatInput } from "./ChatInput"
 
-export function ChatContainer() {
+function ChatTimelinePane({
+  threadKey,
+  activeSessionId,
+  selectedProject,
+  showInlineIntro,
+}: {
+  threadKey: string
+  activeSessionId: string | null
+  selectedProject: ReturnType<typeof useChatProjectState>["selectedProject"]
+  showInlineIntro: boolean
+}) {
+  const { messages, childSessions, status, activePromptState } =
+    useChatTimelineState(activeSessionId)
+
+  return (
+    <ChatMessages
+      threadKey={threadKey}
+      messages={messages}
+      status={status}
+      activePromptState={activePromptState}
+      selectedProject={selectedProject}
+      childSessions={childSessions}
+      showInlineIntro={showInlineIntro}
+    />
+  )
+}
+
+function ChatComposerPane({
+  activeSessionId,
+  selectedProjectId,
+  selectedProjectPath,
+  onTurnStarted,
+}: {
+  activeSessionId: string | null
+  selectedProjectId: string | null
+  selectedProjectPath?: string | null
+  onTurnStarted: () => void
+}) {
   const {
-    messages,
-    childSessions,
-    status,
     input,
     setInput,
-    handleSubmit,
+    status,
     activePrompt,
     answerPrompt,
     dismissPrompt,
     abort,
-    selectedProject,
-    activeSessionId,
-    createSession,
-    createOptimisticSession,
     executeCommand,
-  } = useChat()
-  const threadKey = `${selectedProject?.id ?? "no-project"}:${activeSessionId ?? "draft"}`
-  const [showInlineIntro, setShowInlineIntro] = useState(
-    messages.length === 0 && activeSessionId === null
+    submit,
+  } = useChatComposerState({
+    selectedProjectId,
+    selectedProjectPath,
+    activeSessionId,
+  })
+
+  return (
+    <ChatInput
+      input={input}
+      setInput={setInput}
+      onSubmit={async (text, options) => {
+        const didSubmit = await submit(text, options)
+        if (didSubmit) {
+          onTurnStarted()
+        }
+      }}
+      prompt={activePrompt}
+      onAnswerPrompt={answerPrompt}
+      onDismissPrompt={dismissPrompt}
+      onAbort={abort}
+      onExecuteCommand={async (command, args) => {
+        const didStart = await executeCommand(command, args)
+        if (didStart) {
+          onTurnStarted()
+        }
+      }}
+      status={status}
+    />
   )
+}
+
+export function ChatContainer() {
+  const { selectedProjectId, selectedProject, activeSessionId } = useChatProjectState()
+  const threadKey = `${selectedProject?.id ?? "no-project"}:${activeSessionId ?? "draft"}`
+  const [showInlineIntro, setShowInlineIntro] = useState(activeSessionId == null)
 
   useEffect(() => {
-    setShowInlineIntro(messages.length === 0 && activeSessionId === null)
-  }, [threadKey, messages.length, activeSessionId])
-
-  // Handle submit - create session if needed
-  const handleSubmitWithSession = async (
-    text: string,
-    options?: {
-      agent?: string
-      collaborationMode?: "default" | "plan"
-      model?: string
-      reasoningEffort?: string | null
-    }
-  ) => {
-    let sessionId = activeSessionId
-    setShowInlineIntro(false)
-    
-    if (!sessionId) {
-      setInput("")
-
-      const session = createOptimisticSession()
-      if (!session) {
-        console.error("[ChatContainer] Failed to create optimistic session")
-        setShowInlineIntro(true)
-        setInput(text)
-        return
-      }
-      sessionId = session.id
-    }
-    
-    // Pass the session ID and agent directly to avoid stale closure issue
-    await handleSubmit(text, sessionId, options)
-  }
-
-  // Handle command execution - create session if needed
-  const handleExecuteCommand = async (command: string, args?: string) => {
-    let sessionId = activeSessionId
-    setShowInlineIntro(false)
-    
-    if (!sessionId) {
-      // Create a new session first
-      const session = await createSession()
-      if (!session) {
-        console.error("[ChatContainer] Failed to create session for command")
-        setShowInlineIntro(true)
-        return
-      }
-      sessionId = session.id
-    }
-    
-    await executeCommand(command, args, sessionId)
-  }
+    setShowInlineIntro(activeSessionId == null)
+  }, [activeSessionId, threadKey])
 
   return (
     <div className="h-full flex flex-col">
       <div className="flex-1 min-h-0 overflow-hidden">
-        <ChatMessages
+        <ChatTimelinePane
           threadKey={threadKey}
-          messages={messages}
-          status={status}
-          activePrompt={activePrompt}
+          activeSessionId={activeSessionId}
           selectedProject={selectedProject}
-          childSessions={childSessions}
           showInlineIntro={showInlineIntro}
         />
       </div>
       <div className="flex-shrink-0 flex justify-center">
         <div className="w-full max-w-[803px]">
-          <ChatInput
-            input={input}
-            setInput={setInput}
-            onSubmit={handleSubmitWithSession}
-            prompt={activePrompt}
-            onAnswerPrompt={answerPrompt}
-            onDismissPrompt={dismissPrompt}
-            onAbort={abort}
-            onExecuteCommand={handleExecuteCommand}
-            status={status}
+          <ChatComposerPane
+            activeSessionId={activeSessionId}
+            selectedProjectId={selectedProjectId}
+            selectedProjectPath={selectedProject?.path}
+            onTurnStarted={() => setShowInlineIntro(false)}
           />
         </div>
       </div>

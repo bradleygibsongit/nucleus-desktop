@@ -2,20 +2,20 @@ import { useEffect, useRef, useState } from "react"
 
 export function formatElapsedDuration(durationMs: number): string {
   const safeDurationMs = Math.max(0, durationMs)
+  const hours = Math.floor(safeDurationMs / 3_600_000)
+  const minutes = Math.floor((safeDurationMs % 3_600_000) / 60_000)
+  const seconds = (safeDurationMs % 60_000) / 1000
+  const secondsWithTenths = `${seconds.toFixed(1)}s`
 
-  if (safeDurationMs < 1000) {
-    return `${(safeDurationMs / 1000).toFixed(2)}s`
+  if (hours > 0) {
+    return `${hours}h, ${minutes}m, ${secondsWithTenths}`
   }
 
-  if (safeDurationMs < 60_000) {
-    const seconds = safeDurationMs / 1000
-    return `${seconds < 10 ? seconds.toFixed(1) : Math.floor(seconds)}s`
+  if (minutes > 0) {
+    return `${minutes}m, ${secondsWithTenths}`
   }
 
-  const minutes = Math.floor(safeDurationMs / 60_000)
-  const seconds = Math.floor((safeDurationMs % 60_000) / 1000)
-
-  return `${minutes}m ${String(seconds).padStart(2, "0")}s`
+  return secondsWithTenths
 }
 
 export function useElapsedDuration(

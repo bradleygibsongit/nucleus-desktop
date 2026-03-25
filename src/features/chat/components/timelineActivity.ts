@@ -176,11 +176,23 @@ function createActivityGroupBlock(
 }
 
 export function buildTimelineBlocks(messages: MessageWithParts[]): TimelineBlock[] {
-  return messages.map((message) => ({
-    type: "message" as const,
-    key: message.info.id,
-    message,
-  }))
+  const lastIndexById = new Map<string, number>()
+
+  messages.forEach((message, index) => {
+    lastIndexById.set(message.info.id, index)
+  })
+
+  return messages.flatMap((message, index) => {
+    if (lastIndexById.get(message.info.id) !== index) {
+      return []
+    }
+
+    return {
+      type: "message" as const,
+      key: message.info.id,
+      message,
+    }
+  })
 }
 
 export function isSettledToolStatus(status: ToolExecutionStatus): boolean {

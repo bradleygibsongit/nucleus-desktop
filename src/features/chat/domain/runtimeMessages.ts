@@ -88,9 +88,24 @@ function isProvisionalMessageId(messageId: string): boolean {
 }
 
 export function dedupeMessages(messages: MessageWithParts[]): MessageWithParts[] {
-  const deduped: MessageWithParts[] = []
+  const dedupedById: MessageWithParts[] = []
+  const indexById = new Map<string, number>()
 
   for (const message of messages) {
+    const existingIndex = indexById.get(message.info.id)
+
+    if (existingIndex == null) {
+      indexById.set(message.info.id, dedupedById.length)
+      dedupedById.push(message)
+      continue
+    }
+
+    dedupedById[existingIndex] = message
+  }
+
+  const deduped: MessageWithParts[] = []
+
+  for (const message of dedupedById) {
     const semanticKey = [
       message.info.role,
       message.info.itemType ?? "",

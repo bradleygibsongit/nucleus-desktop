@@ -68,6 +68,14 @@ function isJsonRpcResponse(
   return "id" in value && !("method" in value)
 }
 
+function isAlreadyInitializedError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false
+  }
+
+  return error.message.toLowerCase().includes("already initialized")
+}
+
 export class CodexRpcClient {
   private connectPromise: Promise<void> | null = null
   private isConnected = false
@@ -225,7 +233,7 @@ export class CodexRpcClient {
       })
       this.notify("initialized")
     } catch (error) {
-      if (error instanceof Error && error.message === "Already initialized") {
+      if (isAlreadyInitializedError(error)) {
         return
       }
 
