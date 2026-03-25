@@ -1,9 +1,5 @@
 import { readDir } from "@tauri-apps/plugin-fs"
-
-interface FileTreeItem {
-  name: string
-  children?: string[]
-}
+import type { FileTreeItem } from "@/features/version-control/types"
 
 /**
  * Directories to skip when reading project files.
@@ -42,7 +38,7 @@ const IGNORED_DIRECTORIES = new Set([
 /**
  * Check if a file/directory should be ignored.
  */
-function shouldIgnore(name: string): boolean {
+export function shouldIgnoreFileSystemEntry(name: string): boolean {
   // Ignore entries in the ignore list
   if (IGNORED_DIRECTORIES.has(name)) {
     return true
@@ -88,9 +84,15 @@ function isCommonConfigFile(name: string): boolean {
 export async function readProjectFiles(
   projectPath: string
 ): Promise<Record<string, FileTreeItem>> {
-  const result: Record<string, FileTreeItem> = {}
+  const result: Record<string, FileTreeItem> = {
+    root: {
+      name: projectPath.split("/").pop() || "root",
+      isDirectory: true,
+      children: [],
+    },
+  }
 
-  async function processDirectory(dirPath: string, parentId: string | null) {
+  async function processDirectory(dirPath: string, parentId: string) {
     let entries
     try {
       entries = await readDir(dirPath)
@@ -102,7 +104,7 @@ export async function readProjectFiles(
     }
 
     // Filter out ignored entries, then sort: directories first, then files, alphabetically
-    const filtered = entries.filter((e) => !shouldIgnore(e.name))
+    const filtered = entries.filter((e) => !shouldIgnoreFileSystemEntry(e.name))
     const sorted = filtered.sort((a, b) => {
       if (a.isDirectory && !b.isDirectory) return -1
       if (!a.isDirectory && b.isDirectory) return 1
@@ -122,6 +124,7 @@ export async function readProjectFiles(
         // Process directory recursively
         result[id] = {
           name: entry.name,
+          isDirectory: true,
           children: [], // Will be populated by recursive call
         }
         await processDirectory(entryPath, id)
@@ -129,23 +132,76 @@ export async function readProjectFiles(
         // File entry (no children)
         result[id] = {
           name: entry.name,
+          isDirectory: false,
         }
       }
     }
 
     // Update parent's children if it exists
-    if (parentId && result[parentId]) {
+    if (result[parentId]) {
       result[parentId].children = childIds
-    } else if (!parentId) {
-      // This is the root - create root entry
-      result["root"] = {
-        name: projectPath.split("/").pop() || "root",
-        children: childIds,
-      }
     }
   }
 
-  await processDirectory(projectPath, null)
+  await processDirectory(projectPath, "root")
+
+  return result
+}
+
+export async function readProjectSubtree(
+  entryPath: string
+): Promise<Record<string, FileTreeItem>> {
+  const result: Record<string, FileTreeItem> = {
+    [entryPath]: {
+      name: entryPath.split("/").pop() || entryPath,
+      isDirectory: true,
+      children: [],
+    },
+  }
+
+  async function processDirectory(dirPath: string, parentId: string) {
+    let entries
+    try {
+      entries = await readDir(dirPath)
+    } catch (error) {
+      console.warn(`Skipping unreadable directory ${dirPath}`)
+      return
+    }
+
+    const filtered = entries.filter((entry) => !shouldIgnoreFileSystemEntry(entry.name))
+    const sorted = filtered.sort((left, right) => {
+      if (left.isDirectory && !right.isDirectory) return -1
+      if (!left.isDirectory && right.isDirectory) return 1
+      return left.name.localeCompare(right.name)
+    })
+
+    const childIds: string[] = []
+
+    for (const entry of sorted) {
+      const childPath = `${dirPath}/${entry.name}`
+      childIds.push(childPath)
+
+      if (entry.isDirectory) {
+        result[childPath] = {
+          name: entry.name,
+          isDirectory: true,
+          children: [],
+        }
+        await processDirectory(childPath, childPath)
+      } else {
+        result[childPath] = {
+          name: entry.name,
+          isDirectory: false,
+        }
+      }
+    }
+
+    if (result[parentId]) {
+      result[parentId].children = childIds
+    }
+  }
+
+  await processDirectory(entryPath, entryPath)
 
   return result
 }

@@ -9,5 +9,6 @@ export interface FileChange {
 
 export interface FileTreeItem {
   name: string
+  isDirectory?: boolean
   children?: string[]
 }

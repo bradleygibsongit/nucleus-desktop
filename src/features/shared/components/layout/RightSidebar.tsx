@@ -1,19 +1,16 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { FileTreeViewer } from "@/features/version-control/components"
-import { useProjectStore } from "@/features/workspace/store"
+import { useFileTreeStore, useProjectStore } from "@/features/workspace/store"
 import { useTabStore } from "@/features/editor/store"
-import { useChatStore } from "@/features/chat/store"
 import { TerminalPanel } from "@/features/terminal/components"
 import {
   loadProjectSecrets,
   saveProjectSecret,
   type ProjectSecretFieldDefinition,
 } from "@/features/workspace/utils/envFiles"
-import { readProjectFiles } from "@/features/workspace/utils/fileSystem"
 import { useRightSidebar } from "./useRightSidebar"
 import { SidebarShell } from "./SidebarShell"
 import { SourceControlActionGroup } from "./AppHeader"
-import type { FileTreeItem } from "@/features/version-control/types"
 import { Button, Input } from "@/features/shared/components/ui"
 import { cn } from "@/lib/utils"
 import { Eye, Folder, Plus } from "@/components/icons"
@@ -59,7 +56,6 @@ function createSecretState(definition: ProjectSecretFieldDefinition): SecretFiel
 }
 
 export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
-  const [fileTreeData, setFileTreeData] = useState<Record<string, FileTreeItem>>({})
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   const [activeTab, setActiveTab] = useState<RightSidebarTab>("files")
   const [isSecretsLoading, setIsSecretsLoading] = useState(false)
@@ -69,11 +65,21 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
   const [draftSecretByProject, setDraftSecretByProject] = useState<Record<string, DraftSecretState | null>>({})
   const { isCollapsed, width, setWidth } = useRightSidebar()
   const { projects, selectedProjectId } = useProjectStore()
+  const {
+    activeProjectPath,
+    dataByProjectPath,
+    lastEventByProjectPath,
+    loadingByProjectPath,
+    initialize: initializeFileTreeStore,
+    setActiveProjectPath,
+  } = useFileTreeStore()
   const { openFile, switchProject } = useTabStore()
-  const { onFileChange } = useChatStore()
 
   // Get the selected project
   const selectedProject = projects.find((p) => p.id === selectedProjectId)
+  const fileTreeData = activeProjectPath ? (dataByProjectPath[activeProjectPath] ?? {}) : {}
+  const lastFileTreeEvent = activeProjectPath ? (lastEventByProjectPath[activeProjectPath] ?? null) : null
+  const isFileTreeLoading = activeProjectPath ? (loadingByProjectPath[activeProjectPath] ?? false) : false
   const selectedProjectSecrets = useMemo(() => {
     if (!selectedProjectId) {
       return []
@@ -89,46 +95,7 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
     return draftSecretByProject[selectedProjectId] ?? null
   }, [draftSecretByProject, selectedProjectId])
 
-  // Track refresh timeout for debouncing
-  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const secretsRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // Load files function (showLoading only for initial load)
-  const loadFiles = useCallback(async (isInitial = false) => {
-    if (!selectedProject?.path) {
-      setFileTreeData({})
-      setIsInitialLoad(false)
-      return
-    }
-
-    // Only show loading state on initial load
-    if (isInitial) {
-      setIsInitialLoad(true)
-    }
-
-    try {
-      const data = await readProjectFiles(selectedProject.path)
-      setFileTreeData(data)
-    } catch (error) {
-      console.error("Failed to load project files:", error)
-      // Only clear on initial load failure, preserve existing data on refresh failure
-      if (isInitial) {
-        setFileTreeData({})
-      }
-    } finally {
-      setIsInitialLoad(false)
-    }
-  }, [selectedProject?.path])
-
-  // Debounced refresh (silent, no loading indicator)
-  const scheduleRefresh = useCallback(() => {
-    if (refreshTimeoutRef.current) {
-      clearTimeout(refreshTimeoutRef.current)
-    }
-    refreshTimeoutRef.current = setTimeout(() => {
-      loadFiles(false) // Silent refresh
-    }, 300) // Debounce 300ms to batch rapid changes
-  }, [loadFiles])
 
   const loadSecrets = useCallback(async () => {
     if (!selectedProject?.path || !selectedProjectId) {
@@ -166,40 +133,39 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
   // Switch project tabs and load files when selected project changes
   useEffect(() => {
     switchProject(selectedProjectId ?? null)
-    loadFiles(true) // Initial load with loading indicator
     void loadSecrets()
-  }, [selectedProjectId, switchProject, loadFiles, loadSecrets])
+  }, [selectedProjectId, switchProject, loadSecrets])
 
-  // Subscribe to file change events from the active harness
   useEffect(() => {
-    if (!selectedProject?.path) return
+    void initializeFileTreeStore()
+  }, [initializeFileTreeStore])
 
-    const unsubscribe = onFileChange((event) => {
-      // Check if the changed file is within the current project
-      // Handle both absolute paths and relative paths
-      const isAbsoluteMatch = event.file.startsWith(selectedProject.path)
-      const isRelativePath = !event.file.startsWith("/")
+  useEffect(() => {
+    setIsInitialLoad(true)
 
-      if (isAbsoluteMatch || isRelativePath) {
-        scheduleRefresh()
-      }
-
-      const changedFileName = event.file.split("/").pop() ?? event.file
-      if (changedFileName.startsWith(".env")) {
-        scheduleSecretsRefresh()
-      }
+    void setActiveProjectPath(selectedProject?.path ?? null).finally(() => {
+      setIsInitialLoad(false)
     })
 
     return () => {
-      unsubscribe()
-      if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current)
-      }
       if (secretsRefreshTimeoutRef.current) {
         clearTimeout(secretsRefreshTimeoutRef.current)
       }
     }
-  }, [selectedProject?.path, onFileChange, scheduleRefresh, scheduleSecretsRefresh])
+  }, [selectedProject?.path, setActiveProjectPath])
+
+  useEffect(() => {
+    if (!selectedProject?.path || !lastFileTreeEvent) {
+      return
+    }
+
+    const changedPaths = [lastFileTreeEvent.oldPath, lastFileTreeEvent.path]
+      .filter((value): value is string => Boolean(value))
+
+    if (changedPaths.some((path) => (path.split("/").pop() ?? "").startsWith(".env"))) {
+      scheduleSecretsRefresh()
+    }
+  }, [lastFileTreeEvent, scheduleSecretsRefresh, selectedProject?.path])
 
   const updateSecretField = useCallback((
     fieldKey: string,
@@ -404,7 +370,7 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
           )}
         >
         {activeTab === "files" ? (
-          isInitialLoad ? (
+          isInitialLoad || isFileTreeLoading ? (
             <div className="flex items-center justify-center py-8">
               <span className="text-sm text-muted-foreground">Loading files...</span>
             </div>
