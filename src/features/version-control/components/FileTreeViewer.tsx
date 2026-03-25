@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { hotkeysCoreFeature, syncDataLoaderFeature } from "@headless-tree/core"
 import { useTree } from "@headless-tree/react"
 import { DefaultFolderOpenedIcon, FolderIcon, FileIcon } from "@react-symbols/icons/utils"
@@ -25,15 +25,58 @@ export function FileTreeViewer({
   // Keep a ref to the latest data for the dataLoader callbacks
   const dataRef = useRef(data)
   dataRef.current = data
+  const [expandedItems, setExpandedItems] = useState<string[]>(initialExpanded)
+  const [focusedItem, setFocusedItem] = useState<string | null>(null)
+
+  const sanitizedExpandedItems = useMemo(
+    () =>
+      expandedItems.filter((itemId) => {
+        if (itemId === rootId) {
+          return true
+        }
+
+        const item = data[itemId]
+        if (!item) {
+          return false
+        }
+
+        return item.isDirectory ?? (item.children?.length ?? 0) > 0
+      }),
+    [data, expandedItems, rootId]
+  )
+
+  const sanitizedFocusedItem = useMemo(() => {
+    if (!focusedItem) {
+      return null
+    }
+
+    return data[focusedItem] ? focusedItem : null
+  }, [data, focusedItem])
+
+  useEffect(() => {
+    if (sanitizedExpandedItems.length !== expandedItems.length) {
+      setExpandedItems(sanitizedExpandedItems)
+    }
+  }, [expandedItems.length, sanitizedExpandedItems])
+
+  useEffect(() => {
+    if (focusedItem !== sanitizedFocusedItem) {
+      setFocusedItem(sanitizedFocusedItem)
+    }
+  }, [focusedItem, sanitizedFocusedItem])
 
   const tree = useTree<FileTreeItem>({
-    initialState: {
-      expandedItems: initialExpanded,
+    state: {
+      expandedItems: sanitizedExpandedItems,
+      focusedItem: sanitizedFocusedItem,
     },
+    setExpandedItems,
+    setFocusedItem,
     indent,
     rootItemId: rootId,
     getItemName: (item) => item.getItemData().name,
-    isItemFolder: (item) => (item.getItemData()?.children?.length ?? 0) > 0,
+    isItemFolder: (item) =>
+      item.getItemData()?.isDirectory ?? (item.getItemData()?.children?.length ?? 0) > 0,
     dataLoader: {
       getItem: (itemId) => dataRef.current[itemId],
       getChildren: (itemId) => dataRef.current[itemId]?.children ?? [],

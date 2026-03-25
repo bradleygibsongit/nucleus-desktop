@@ -1,13 +1,20 @@
+use notify::event::{CreateKind, ModifyKind, RemoveKind, RenameMode};
+use notify::{
+    Config as NotifyConfig, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher,
+};
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
+use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
@@ -21,6 +28,7 @@ use objc2_foundation::{MainThreadMarker, NSData};
 const CODEX_RPC_MESSAGE_EVENT: &str = "codex-rpc:message";
 const CODEX_RPC_STATUS_EVENT: &str = "codex-rpc:status";
 const APP_UPDATE_EVENT: &str = "app-update:event";
+const PROJECT_FS_EVENT: &str = "project-fs:event";
 const TERMINAL_DATA_EVENT: &str = "terminal:data";
 const TERMINAL_EXIT_EVENT: &str = "terminal:exit";
 const APP_UPDATE_ENDPOINT: &str =
@@ -41,6 +49,20 @@ struct PendingUpdate(Mutex<Option<Update>>);
 
 struct TerminalManager {
     sessions: Mutex<HashMap<String, Arc<TerminalSession>>>,
+}
+
+struct ProjectWatcherManager {
+    state: Mutex<ProjectWatcherState>,
+}
+
+struct ProjectWatcherState {
+    active_path: Option<String>,
+    watcher: Option<ProjectWatcherHandle>,
+}
+
+struct ProjectWatcherHandle {
+    stop_tx: Sender<()>,
+    join_handle: JoinHandle<()>,
 }
 
 struct TerminalSession {
@@ -68,6 +90,17 @@ struct TerminalDataEvent {
 #[serde(rename_all = "camelCase")]
 struct TerminalExitEvent {
     session_id: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectFsEvent {
+    root_path: String,
+    kind: &'static str,
+    path: String,
+    old_path: Option<String>,
+    is_directory: bool,
+    requires_rescan: bool,
 }
 
 #[derive(Serialize)]
@@ -270,6 +303,273 @@ fn decode_utf8_chunk(pending: &mut Vec<u8>, chunk: &[u8]) -> String {
     decoded
 }
 
+fn ignored_directory_names() -> &'static [&'static str] {
+    &[
+        ".git",
+        ".svn",
+        ".hg",
+        "node_modules",
+        ".ruff_cache",
+        "__pycache__",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".tox",
+        ".venv",
+        "venv",
+        ".env",
+        "dist",
+        "build",
+        ".next",
+        ".nuxt",
+        ".output",
+        ".turbo",
+        ".cache",
+        ".parcel-cache",
+        "coverage",
+        ".nyc_output",
+        "target",
+        ".cargo",
+    ]
+}
+
+fn is_common_config_file(name: &str) -> bool {
+    matches!(
+        name,
+        ".env"
+            | ".env.local"
+            | ".env.development"
+            | ".env.production"
+            | ".gitignore"
+            | ".dockerignore"
+            | ".editorconfig"
+            | ".prettierrc"
+            | ".eslintrc"
+            | ".eslintrc.js"
+            | ".eslintrc.json"
+            | ".babelrc"
+            | ".npmrc"
+            | ".nvmrc"
+            | ".python-version"
+            | ".ruby-version"
+            | ".tool-versions"
+    ) || name.starts_with(".env")
+}
+
+fn should_ignore_entry_name(name: &str) -> bool {
+    if ignored_directory_names().iter().any(|entry| entry == &name) {
+        return true;
+    }
+
+    name.starts_with('.') && !is_common_config_file(name)
+}
+
+fn is_visible_project_path(root_path: &Path, target_path: &Path) -> bool {
+    let Ok(relative_path) = target_path.strip_prefix(root_path) else {
+        return false;
+    };
+
+    for component in relative_path.components() {
+        let Component::Normal(name) = component else {
+            continue;
+        };
+
+        if should_ignore_entry_name(&name.to_string_lossy()) {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn path_is_directory(path: &Path) -> bool {
+    fs::metadata(path)
+        .map(|metadata| metadata.is_dir())
+        .unwrap_or(false)
+}
+
+fn emit_project_fs_event(app: &AppHandle, payload: ProjectFsEvent) {
+    if let Err(error) = app.emit(PROJECT_FS_EVENT, payload) {
+        log::warn!("Failed to emit project filesystem event: {}", error);
+    }
+}
+
+fn emit_project_rescan_event(app: &AppHandle, root_path: &str) {
+    emit_project_fs_event(
+        app,
+        ProjectFsEvent {
+            root_path: root_path.to_string(),
+            kind: "rescan",
+            path: root_path.to_string(),
+            old_path: None,
+            is_directory: true,
+            requires_rescan: true,
+        },
+    );
+}
+
+fn emit_project_change_event(
+    app: &AppHandle,
+    root_path: &str,
+    kind: &'static str,
+    path: &Path,
+    old_path: Option<&Path>,
+) {
+    let path_string = path.display().to_string();
+    let old_path_string = old_path.map(|entry| entry.display().to_string());
+    let is_directory = path_is_directory(path);
+
+    emit_project_fs_event(
+        app,
+        ProjectFsEvent {
+            root_path: root_path.to_string(),
+            kind,
+            path: path_string,
+            old_path: old_path_string,
+            is_directory,
+            requires_rescan: false,
+        },
+    );
+}
+
+fn handle_project_fs_event(app: &AppHandle, root_path: &str, root: &Path, event: Event) {
+    match event.kind {
+        EventKind::Create(
+            CreateKind::Any | CreateKind::File | CreateKind::Folder | CreateKind::Other,
+        ) => {
+            for path in event.paths {
+                if is_visible_project_path(root, &path) {
+                    emit_project_change_event(app, root_path, "add", &path, None);
+                }
+            }
+        }
+        EventKind::Modify(ModifyKind::Name(
+            RenameMode::Both
+            | RenameMode::Any
+            | RenameMode::To
+            | RenameMode::From
+            | RenameMode::Other,
+        )) => match event.paths.as_slice() {
+            [old_path, new_path, ..] => {
+                if is_visible_project_path(root, old_path)
+                    || is_visible_project_path(root, new_path)
+                {
+                    emit_project_change_event(app, root_path, "rename", new_path, Some(old_path));
+                }
+            }
+            [path] => {
+                if is_visible_project_path(root, path) {
+                    emit_project_change_event(app, root_path, "modify", path, None);
+                }
+            }
+            _ => emit_project_rescan_event(app, root_path),
+        },
+        EventKind::Modify(_) => {
+            for path in event.paths {
+                if is_visible_project_path(root, &path) {
+                    emit_project_change_event(app, root_path, "modify", &path, None);
+                }
+            }
+        }
+        EventKind::Remove(
+            RemoveKind::Any | RemoveKind::File | RemoveKind::Folder | RemoveKind::Other,
+        ) => {
+            for path in event.paths {
+                if is_visible_project_path(root, &path) {
+                    emit_project_fs_event(
+                        app,
+                        ProjectFsEvent {
+                            root_path: root_path.to_string(),
+                            kind: "unlink",
+                            path: path.display().to_string(),
+                            old_path: None,
+                            is_directory: false,
+                            requires_rescan: false,
+                        },
+                    );
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn spawn_project_watcher(
+    app: AppHandle,
+    project_path: String,
+) -> Result<ProjectWatcherHandle, String> {
+    let root = PathBuf::from(&project_path);
+    if !root.is_dir() {
+        return Err(format!("Project path is not a folder: {}", root.display()));
+    }
+
+    let (event_tx, event_rx) = mpsc::channel::<notify::Result<Event>>();
+    let mut watcher = RecommendedWatcher::new(
+        move |result| {
+            let _ = event_tx.send(result);
+        },
+        NotifyConfig::default(),
+    )
+    .map_err(|error| format!("Failed to create filesystem watcher: {}", error))?;
+
+    watcher
+        .watch(&root, RecursiveMode::Recursive)
+        .map_err(|error| format!("Failed to watch project files: {}", error))?;
+
+    let (stop_tx, stop_rx) = mpsc::channel::<()>();
+    let join_handle = std::thread::spawn(move || {
+        let _watcher = watcher;
+
+        loop {
+            if stop_rx.try_recv().is_ok() {
+                break;
+            }
+
+            match event_rx.recv_timeout(Duration::from_millis(100)) {
+                Ok(Ok(event)) => {
+                    handle_project_fs_event(&app, &project_path, &root, event);
+
+                    while let Ok(next_result) = event_rx.try_recv() {
+                        match next_result {
+                            Ok(next_event) => {
+                                handle_project_fs_event(&app, &project_path, &root, next_event);
+                            }
+                            Err(error) => {
+                                log::warn!("Project filesystem watcher error: {}", error);
+                                emit_project_rescan_event(&app, &project_path);
+                            }
+                        }
+                    }
+                }
+                Ok(Err(error)) => {
+                    log::warn!("Project filesystem watcher error: {}", error);
+                    emit_project_rescan_event(&app, &project_path);
+                }
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => break,
+            }
+        }
+    });
+
+    Ok(ProjectWatcherHandle {
+        stop_tx,
+        join_handle,
+    })
+}
+
+fn stop_project_watcher(handle: ProjectWatcherHandle) {
+    let _ = handle.stop_tx.send(());
+    let _ = handle.join_handle.join();
+}
+
+fn take_project_watcher(manager: &ProjectWatcherManager) -> Option<ProjectWatcherHandle> {
+    let Ok(mut state) = manager.state.lock() else {
+        return None;
+    };
+
+    state.active_path = None;
+    state.watcher.take()
+}
+
 #[tauri::command]
 async fn ensure_codex_server(
     app: AppHandle,
@@ -339,6 +639,50 @@ async fn stop_codex_server(state: State<'_, CodexServer>) -> Result<String, Stri
     } else {
         Ok("Codex App Server was not running".to_string())
     }
+}
+
+#[tauri::command]
+async fn start_project_file_watcher(
+    app: AppHandle,
+    watcher_manager: State<'_, ProjectWatcherManager>,
+    project_path: String,
+) -> Result<(), String> {
+    {
+        let state = watcher_manager
+            .state
+            .lock()
+            .map_err(|error| error.to_string())?;
+        if state.active_path.as_deref() == Some(project_path.as_str()) {
+            return Ok(());
+        }
+    }
+
+    let new_watcher = spawn_project_watcher(app, project_path.clone())?;
+    let previous_watcher = {
+        let mut state = watcher_manager
+            .state
+            .lock()
+            .map_err(|error| error.to_string())?;
+        state.active_path = Some(project_path);
+        state.watcher.replace(new_watcher)
+    };
+
+    if let Some(handle) = previous_watcher {
+        stop_project_watcher(handle);
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn stop_project_file_watcher(
+    watcher_manager: State<'_, ProjectWatcherManager>,
+) -> Result<(), String> {
+    if let Some(handle) = take_project_watcher(&watcher_manager) {
+        stop_project_watcher(handle);
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -866,15 +1210,18 @@ fn git_head_exists(project_path: &str) -> bool {
 
 fn get_working_tree_summary(project_path: &str) -> GitWorkingTreeSummary {
     let changed_files = run_git_command(project_path, &["status", "--porcelain"])
-        .map(|output| output.lines().filter(|line| !line.trim().is_empty()).count())
+        .map(|output| {
+            output
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .count()
+        })
         .unwrap_or(0);
 
     let shortstat = if git_head_exists(project_path) {
-        run_git_command(project_path, &["diff", "--shortstat", "HEAD"])
-            .unwrap_or_default()
+        run_git_command(project_path, &["diff", "--shortstat", "HEAD"]).unwrap_or_default()
     } else {
-        run_git_command(project_path, &["diff", "--shortstat", "--cached"])
-            .unwrap_or_default()
+        run_git_command(project_path, &["diff", "--shortstat", "--cached"]).unwrap_or_default()
     };
 
     let (_, additions, deletions) = parse_git_shortstat(&shortstat);
@@ -941,7 +1288,10 @@ fn get_git_branches_response(project_path: &str) -> Result<GitBranchesResponse, 
 }
 
 fn local_branch_name_for_remote(branch_name: &str) -> &str {
-    branch_name.split_once('/').map(|(_, local)| local).unwrap_or(branch_name)
+    branch_name
+        .split_once('/')
+        .map(|(_, local)| local)
+        .unwrap_or(branch_name)
 }
 
 #[tauri::command]
@@ -951,7 +1301,10 @@ async fn get_git_branches(project_path: String) -> Result<GitBranchesResponse, S
 }
 
 #[tauri::command]
-async fn checkout_git_branch(project_path: String, branch_name: String) -> Result<GitBranchesResponse, String> {
+async fn checkout_git_branch(
+    project_path: String,
+    branch_name: String,
+) -> Result<GitBranchesResponse, String> {
     let trimmed_path = ensure_git_project_path(&project_path)?;
     let target_branch = branch_name.trim();
 
@@ -965,13 +1318,23 @@ async fn checkout_git_branch(project_path: String, branch_name: String) -> Resul
     }
 
     let local_ref = format!("refs/heads/{}", target_branch);
-    if run_git_command(trimmed_path, &["show-ref", "--verify", "--quiet", &local_ref]).is_ok() {
+    if run_git_command(
+        trimmed_path,
+        &["show-ref", "--verify", "--quiet", &local_ref],
+    )
+    .is_ok()
+    {
         run_git_command(trimmed_path, &["switch", target_branch])?;
         return get_git_branches_response(trimmed_path);
     }
 
     let remote_ref = format!("refs/remotes/{}", target_branch);
-    if run_git_command(trimmed_path, &["show-ref", "--verify", "--quiet", &remote_ref]).is_ok() {
+    if run_git_command(
+        trimmed_path,
+        &["show-ref", "--verify", "--quiet", &remote_ref],
+    )
+    .is_ok()
+    {
         let local_branch_name = local_branch_name_for_remote(target_branch);
         let existing_local_ref = format!("refs/heads/{}", local_branch_name);
 
@@ -1194,6 +1557,12 @@ pub fn run() {
             }),
         })
         .manage(PendingUpdate(Mutex::new(None)))
+        .manage(ProjectWatcherManager {
+            state: Mutex::new(ProjectWatcherState {
+                active_path: None,
+                watcher: None,
+            }),
+        })
         .manage(TerminalManager {
             sessions: Mutex::new(HashMap::new()),
         })
@@ -1201,6 +1570,8 @@ pub fn run() {
             ensure_codex_server,
             codex_rpc_send,
             stop_codex_server,
+            start_project_file_watcher,
+            stop_project_file_watcher,
             list_skills,
             check_for_app_update,
             install_app_update,
@@ -1253,6 +1624,11 @@ pub fn run() {
 
                 for session in terminal_sessions {
                     session.kill();
+                }
+
+                let watcher_manager: State<ProjectWatcherManager> = window.state();
+                if let Some(handle) = take_project_watcher(&watcher_manager) {
+                    stop_project_watcher(handle);
                 }
             }
         })
