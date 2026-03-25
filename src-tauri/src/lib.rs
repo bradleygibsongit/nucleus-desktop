@@ -117,10 +117,19 @@ struct AppUpdateDownloadEvent {
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct GitWorkingTreeSummary {
+    changed_files: usize,
+    additions: usize,
+    deletions: usize,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct GitBranchesResponse {
     current_branch: String,
     upstream_branch: Option<String>,
     branches: Vec<String>,
+    working_tree_summary: GitWorkingTreeSummary,
 }
 
 impl TerminalSession {
@@ -804,8 +813,7 @@ fn run_git_command(project_path: &str, args: &[&str]) -> Result<String, String> 
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-#[tauri::command]
-async fn get_git_branches(project_path: String) -> Result<GitBranchesResponse, String> {
+fn ensure_git_project_path(project_path: &str) -> Result<&str, String> {
     let trimmed_path = project_path.trim();
     if trimmed_path.is_empty() {
         return Err("Project path is required".to_string());
@@ -822,10 +830,69 @@ async fn get_git_branches(project_path: String) -> Result<GitBranchesResponse, S
 
     run_git_command(trimmed_path, &["rev-parse", "--show-toplevel"])?;
 
+    Ok(trimmed_path)
+}
+
+fn parse_git_shortstat(shortstat: &str) -> (usize, usize, usize) {
+    let mut changed_files = 0;
+    let mut additions = 0;
+    let mut deletions = 0;
+    let mut previous_number: Option<usize> = None;
+
+    for token in shortstat.split_whitespace() {
+        if let Ok(value) = token.parse::<usize>() {
+            previous_number = Some(value);
+            continue;
+        }
+
+        let Some(value) = previous_number.take() else {
+            continue;
+        };
+
+        match token {
+            "file" | "files" => changed_files = value,
+            "insertion(+)" | "insertions(+)" => additions = value,
+            "deletion(-)" | "deletions(-)" => deletions = value,
+            _ => {}
+        }
+    }
+
+    (changed_files, additions, deletions)
+}
+
+fn git_head_exists(project_path: &str) -> bool {
+    run_git_command(project_path, &["rev-parse", "--verify", "HEAD"]).is_ok()
+}
+
+fn get_working_tree_summary(project_path: &str) -> GitWorkingTreeSummary {
+    let changed_files = run_git_command(project_path, &["status", "--porcelain"])
+        .map(|output| output.lines().filter(|line| !line.trim().is_empty()).count())
+        .unwrap_or(0);
+
+    let shortstat = if git_head_exists(project_path) {
+        run_git_command(project_path, &["diff", "--shortstat", "HEAD"])
+            .unwrap_or_default()
+    } else {
+        run_git_command(project_path, &["diff", "--shortstat", "--cached"])
+            .unwrap_or_default()
+    };
+
+    let (_, additions, deletions) = parse_git_shortstat(&shortstat);
+
+    GitWorkingTreeSummary {
+        changed_files,
+        additions,
+        deletions,
+    }
+}
+
+fn get_git_branches_response(project_path: &str) -> Result<GitBranchesResponse, String> {
+    ensure_git_project_path(project_path)?;
+
     let current_branch = {
-        let branch = run_git_command(trimmed_path, &["branch", "--show-current"])?;
+        let branch = run_git_command(project_path, &["branch", "--show-current"])?;
         if branch.is_empty() {
-            let commit = run_git_command(trimmed_path, &["rev-parse", "--short", "HEAD"])?;
+            let commit = run_git_command(project_path, &["rev-parse", "--short", "HEAD"])?;
             format!("detached@{}", commit)
         } else {
             branch
@@ -833,7 +900,7 @@ async fn get_git_branches(project_path: String) -> Result<GitBranchesResponse, S
     };
 
     let upstream_branch = run_git_command(
-        trimmed_path,
+        project_path,
         &[
             "rev-parse",
             "--abbrev-ref",
@@ -845,7 +912,7 @@ async fn get_git_branches(project_path: String) -> Result<GitBranchesResponse, S
     .filter(|value| !value.is_empty());
 
     let branches_output = run_git_command(
-        trimmed_path,
+        project_path,
         &[
             "for-each-ref",
             "--sort=refname",
@@ -869,7 +936,81 @@ async fn get_git_branches(project_path: String) -> Result<GitBranchesResponse, S
         current_branch,
         upstream_branch,
         branches,
+        working_tree_summary: get_working_tree_summary(project_path),
     })
+}
+
+fn local_branch_name_for_remote(branch_name: &str) -> &str {
+    branch_name.split_once('/').map(|(_, local)| local).unwrap_or(branch_name)
+}
+
+#[tauri::command]
+async fn get_git_branches(project_path: String) -> Result<GitBranchesResponse, String> {
+    let trimmed_path = ensure_git_project_path(&project_path)?;
+    get_git_branches_response(trimmed_path)
+}
+
+#[tauri::command]
+async fn checkout_git_branch(project_path: String, branch_name: String) -> Result<GitBranchesResponse, String> {
+    let trimmed_path = ensure_git_project_path(&project_path)?;
+    let target_branch = branch_name.trim();
+
+    if target_branch.is_empty() {
+        return Err("Branch name is required".to_string());
+    }
+
+    let current_branch = run_git_command(trimmed_path, &["branch", "--show-current"])?;
+    if current_branch == target_branch {
+        return get_git_branches_response(trimmed_path);
+    }
+
+    let local_ref = format!("refs/heads/{}", target_branch);
+    if run_git_command(trimmed_path, &["show-ref", "--verify", "--quiet", &local_ref]).is_ok() {
+        run_git_command(trimmed_path, &["switch", target_branch])?;
+        return get_git_branches_response(trimmed_path);
+    }
+
+    let remote_ref = format!("refs/remotes/{}", target_branch);
+    if run_git_command(trimmed_path, &["show-ref", "--verify", "--quiet", &remote_ref]).is_ok() {
+        let local_branch_name = local_branch_name_for_remote(target_branch);
+        let existing_local_ref = format!("refs/heads/{}", local_branch_name);
+
+        if run_git_command(
+            trimmed_path,
+            &["show-ref", "--verify", "--quiet", &existing_local_ref],
+        )
+        .is_ok()
+        {
+            run_git_command(trimmed_path, &["switch", local_branch_name])?;
+        } else {
+            run_git_command(
+                trimmed_path,
+                &["switch", "--track", "-c", local_branch_name, target_branch],
+            )?;
+        }
+
+        return get_git_branches_response(trimmed_path);
+    }
+
+    Err(format!("Branch not found: {}", target_branch))
+}
+
+#[tauri::command]
+async fn create_and_checkout_git_branch(
+    project_path: String,
+    branch_name: String,
+) -> Result<GitBranchesResponse, String> {
+    let trimmed_path = ensure_git_project_path(&project_path)?;
+    let next_branch = branch_name.trim();
+
+    if next_branch.is_empty() {
+        return Err("Branch name is required".to_string());
+    }
+
+    run_git_command(trimmed_path, &["check-ref-format", "--branch", next_branch])?;
+    run_git_command(trimmed_path, &["switch", "-c", next_branch])?;
+
+    get_git_branches_response(trimmed_path)
 }
 
 fn resolve_managed_skills_root() -> Result<PathBuf, String> {
@@ -1064,6 +1205,8 @@ pub fn run() {
             check_for_app_update,
             install_app_update,
             get_git_branches,
+            checkout_git_branch,
+            create_and_checkout_git_branch,
             terminal_create_session,
             terminal_write,
             terminal_resize,
