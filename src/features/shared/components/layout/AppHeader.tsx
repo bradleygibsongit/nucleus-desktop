@@ -1,14 +1,16 @@
-import { useState } from "react"
-import { CaretDown, CloudUpload, GitCommit, GitPullRequest } from "@/components/icons"
-import { Button, buttonVariants } from "@/features/shared/components/ui/button"
-import { ButtonGroup, ButtonGroupSeparator } from "@/features/shared/components/ui/button-group"
-import { CommitChangesDialog } from "./CommitChangesDialog"
+import { invoke } from "@tauri-apps/api/core"
+import { useEffect, useState } from "react"
+import { GitPullRequest } from "@/components/icons"
+import { useChatComposerState, useChatProjectState } from "@/features/chat/hooks/useChat"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/features/shared/components/ui/dropdown-menu"
+  buildCreatePrMessage,
+  DEFAULT_PR_TARGET_BRANCH,
+} from "@/features/settings/createPrMessage"
+import {
+  normalizeCreatePrInstructions,
+  useSettingsStore,
+} from "@/features/settings/store/settingsStore"
+import { Button } from "@/features/shared/components/ui/button"
 import {
   Tooltip,
   TooltipContent,
@@ -17,127 +19,119 @@ import {
 } from "@/features/shared/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 
+interface GitWorkingTreeSummary {
+  changedFiles: number
+}
+
+interface GitBranchesResponse {
+  currentBranch: string
+  upstreamBranch: string | null
+  workingTreeSummary: GitWorkingTreeSummary
+}
+
 export function SourceControlActionGroup({
   className,
-  projectPath = null,
 }: {
   className?: string
-  projectPath?: string | null
 }) {
-  const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const [isCommitDialogOpen, setIsCommitDialogOpen] = useState(false)
-  const splitButtonClass = cn(
-    "h-6 border-transparent bg-transparent text-sidebar-foreground shadow-none",
-    "hover:bg-sidebar-accent/60 hover:text-foreground",
+  const { selectedProjectId, selectedProject, activeSessionId } = useChatProjectState()
+  const createPrInstructions = useSettingsStore((state) => state.createPrInstructions)
+  const initializeSettings = useSettingsStore((state) => state.initialize)
+  const [isPreparing, setIsPreparing] = useState(false)
+  const { submit, status } = useChatComposerState({
+    selectedProjectId,
+    selectedProjectPath: selectedProject?.path ?? null,
+    activeSessionId,
+  })
+
+  useEffect(() => {
+    void initializeSettings()
+  }, [initializeSettings])
+
+  const handleCreatePr = async () => {
+    if (!selectedProject?.path) {
+      return
+    }
+
+    setIsPreparing(true)
+
+    try {
+      const branchData = await invoke<GitBranchesResponse>("get_git_branches", {
+        projectPath: selectedProject.path,
+      })
+
+      const message = buildCreatePrMessage(
+        {
+          currentBranch: branchData.currentBranch,
+          targetBranch: DEFAULT_PR_TARGET_BRANCH,
+          upstreamBranch: branchData.upstreamBranch,
+          uncommittedChanges: branchData.workingTreeSummary.changedFiles,
+        },
+        normalizeCreatePrInstructions(createPrInstructions),
+      )
+
+      await submit(message)
+    } catch (error) {
+      console.error("Failed to prepare PR message:", error)
+
+      const fallbackMessage = buildCreatePrMessage(
+        {
+          currentBranch: "unknown",
+          targetBranch: DEFAULT_PR_TARGET_BRANCH,
+          upstreamBranch: null,
+          uncommittedChanges: 0,
+        },
+        normalizeCreatePrInstructions(createPrInstructions),
+      )
+
+      await submit(fallbackMessage)
+    } finally {
+      setIsPreparing(false)
+    }
+  }
+
+  const isAgentRunning = status === "streaming" || isPreparing
+  const isDisabled = !selectedProject || isAgentRunning
+  const disabledReason = isAgentRunning
+    ? "The agent needs to finish running, or you need to cancel it before you can create a PR."
+    : null
+
+  const button = (
+    <Button
+      type="button"
+      variant="default"
+      size="sm"
+      onClick={() => void handleCreatePr()}
+      disabled={isDisabled}
+      className={cn(
+        "h-7 rounded-lg border-transparent shadow-none disabled:opacity-100",
+        isDisabled
+          ? "cursor-not-allowed bg-muted text-muted-foreground"
+          : "bg-cta text-cta-foreground hover:bg-cta/90",
+        className,
+      )}
+    >
+      <GitPullRequest size={16} />
+      <span>{isAgentRunning ? "Create PR" : "Create PR"}</span>
+    </Button>
   )
 
-  const handlePrimaryAction = () => {
-    setIsCommitDialogOpen(true)
+  if (!disabledReason) {
+    return button
   }
-
-  const handleMenuAction = (action: "push" | "create-pr") => {
-    console.info("[AppHeader] Source control action selected:", action)
-  }
-
-  const menuActions = [
-    {
-      id: "push" as const,
-      label: "Push",
-      icon: CloudUpload,
-      disabledReason: "There are no active changes to push yet.",
-    },
-    {
-      id: "create-pr" as const,
-      label: "Create PR",
-      icon: GitPullRequest,
-      disabledReason: "Create PR becomes available once you're working from a non-main branch.",
-    },
-  ]
 
   return (
-    <>
-      <ButtonGroup className={cn("shrink-0 rounded-lg border border-sidebar-border/90 bg-card", className)}>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handlePrimaryAction}
-          className={cn(
-            splitButtonClass,
-            "gap-1.5 px-1.5",
-          )}
-        >
-          <GitCommit size={18} />
-          Commit
-        </Button>
-
-        <ButtonGroupSeparator className="bg-sidebar-border/90" />
-
-        <DropdownMenu onOpenChange={setIsMenuOpen}>
-          <DropdownMenuTrigger
-            className={cn(
-              buttonVariants({ variant: "outline", size: "sm" }),
-              splitButtonClass,
-              "min-w-0 rounded-l-none px-1.5",
-              isMenuOpen && "bg-sidebar-accent/70 text-foreground",
-            )}
-            aria-label="More source control actions"
-          >
-            <CaretDown size={16} />
-          </DropdownMenuTrigger>
-
-          <TooltipProvider delay={150}>
-            <DropdownMenuContent side="bottom" align="end" className="w-56">
-              {menuActions.map(({ id, label, icon: Icon, disabledReason }) => {
-                const isDisabled = Boolean(disabledReason)
-
-                const item = (
-                  <DropdownMenuItem
-                    onClick={(event) => {
-                      if (isDisabled) {
-                        event.preventDefault()
-                        return
-                      }
-
-                      handleMenuAction(id)
-                    }}
-                    className={cn(
-                      isDisabled && [
-                        "cursor-not-allowed text-muted-foreground/80",
-                        "hover:bg-transparent hover:text-muted-foreground/80",
-                        "focus:bg-transparent focus:text-muted-foreground/80",
-                        "data-highlighted:bg-transparent data-highlighted:text-muted-foreground/80",
-                      ],
-                    )}
-                    aria-disabled={isDisabled}
-                  >
-                    <Icon size={18} />
-                    <span>{label}</span>
-                  </DropdownMenuItem>
-                )
-
-                if (!isDisabled) {
-                  return <div key={id}>{item}</div>
-                }
-
-                return (
-                  <Tooltip key={id}>
-                    <TooltipTrigger asChild>{item}</TooltipTrigger>
-                    <TooltipContent side="left" align="center" className="max-w-56">
-                      {disabledReason}
-                    </TooltipContent>
-                  </Tooltip>
-                )
-              })}
-            </DropdownMenuContent>
-          </TooltipProvider>
-        </DropdownMenu>
-      </ButtonGroup>
-
-      <CommitChangesDialog
-        open={isCommitDialogOpen}
-        onOpenChange={setIsCommitDialogOpen}
-        projectPath={projectPath}
-      />
-    </>
+    <TooltipProvider delay={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex">
+            {button}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="end" className="max-w-64 text-sm leading-5">
+          {disabledReason}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }
