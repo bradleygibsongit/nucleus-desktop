@@ -55,7 +55,7 @@ function haveProjectsChangedOrder(nextProjects: Project[], currentProjects: Proj
 
 export function LeftSidebar({
   activeView = "chat",
-  activeSettingsSection = "general",
+  activeSettingsSection = "git",
   onOpenChat,
   onOpenAutomations,
   onOpenSettings,

@@ -10,7 +10,7 @@ import { AppUpdateBootstrap } from "@/features/updates/components/AppUpdateBoots
 
 export function AppLayout() {
   const [activeView, setActiveView] = useState<"chat" | "settings" | "automations">("chat")
-  const [activeSettingsSection, setActiveSettingsSection] = useState<SettingsSectionId>("general")
+  const [activeSettingsSection, setActiveSettingsSection] = useState<SettingsSectionId>("git")
 
   return (
     <SidebarProvider>

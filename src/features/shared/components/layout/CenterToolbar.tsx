@@ -99,7 +99,7 @@ export function CenterToolbar({ activeView = "chat", onOpenChat }: CenterToolbar
         <div data-tauri-drag-region className="min-w-0 flex-1 self-stretch" />
         {activeView === "chat" ? (
           <div className="hidden shrink-0 items-center gap-2 pr-3 md:flex">
-            {!showRightSidebar ? <SourceControlActionGroup projectPath={selectedProject?.path ?? null} /> : null}
+            {!showRightSidebar ? <SourceControlActionGroup /> : null}
             <Button
               type="button"
               onClick={toggleRight}
