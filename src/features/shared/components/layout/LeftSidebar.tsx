@@ -47,6 +47,7 @@ interface LeftSidebarProps {
 
 const WINDOW_CONTROLS_GUTTER_WIDTH = 80
 const DESKTOP_LEFT_TOGGLE_OFFSET = WINDOW_CONTROLS_GUTTER_WIDTH + 12
+const COLLAPSED_HOVER_TRIGGER_WIDTH = 12
 
 function haveProjectIdsChangedOrder(nextProjectIds: string[], currentProjects: Project[]) {
   return nextProjectIds.some((projectId, index) => projectId !== currentProjects[index]?.id)
@@ -85,11 +86,12 @@ function ProjectReorderHandle({
 function ReorderableProjectItem(props: {
   project: Project
   isDraggingProject: boolean
+  enableLayoutAnimation: boolean
   children: ReactNode
   onDragStart: () => void
   onDragEnd: () => void
 }) {
-  const { project, isDraggingProject, children, onDragStart, onDragEnd } = props
+  const { project, isDraggingProject, enableLayoutAnimation, children, onDragStart, onDragEnd } = props
   const dragControls = useDragControls()
 
   return (
@@ -101,16 +103,12 @@ function ReorderableProjectItem(props: {
       dragListener={false}
       dragControls={dragControls}
       transition={{
-        layout: {
-          type: "spring",
-          stiffness: 560,
-          damping: 42,
-          mass: 0.55,
-        },
+        layout: enableLayoutAnimation
+          ? { type: "spring", stiffness: 560, damping: 42, mass: 0.55 }
+          : { duration: 0 },
       }}
       whileDrag={{
         zIndex: 20,
-        boxShadow: "0 16px 36px rgba(15, 23, 42, 0.16)",
       }}
       className={cn(
         "relative space-y-1 rounded-xl",
@@ -155,6 +153,7 @@ export function LeftSidebar({
   } = useProjectStore()
   const [projectOrderPreview, setProjectOrderPreview] = useState<string[] | null>(null)
   const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null)
+  const [isHoverPreviewOpen, setIsHoverPreviewOpen] = useState(false)
   const projectOrderPreviewRef = useRef<string[] | null>(null)
 
   const {
@@ -168,14 +167,6 @@ export function LeftSidebar({
     status,
     activePromptBySession,
   } = useChatStore()
-
-  // Derive session title for the toolbar header
-  const selectedProjectChat = selectedProjectId ? getProjectChat(selectedProjectId) : null
-  const activeSession =
-    selectedProjectChat?.sessions.find(
-      (session) => session.id === selectedProjectChat.activeSessionId,
-    ) ?? null
-  const activeSessionTitle = activeSession?.title?.trim() || ""
 
   // Load projects on mount
   useEffect(() => {
@@ -340,6 +331,12 @@ export function LeftSidebar({
     }
   }, [draggedProjectId, projects])
 
+  useEffect(() => {
+    if (!isCollapsed && isHoverPreviewOpen) {
+      setIsHoverPreviewOpen(false)
+    }
+  }, [isCollapsed, isHoverPreviewOpen])
+
   const clearProjectDragState = () => {
     setDraggedProjectId(null)
     setProjectOrderPreview(null)
@@ -366,54 +363,243 @@ export function LeftSidebar({
     void setProjectOrder(nextProjects)
   }
 
-  if (isCollapsed) {
-    return null
+  const renderProjectRow = (project: Project) => {
+    const projectChat = getProjectChat(project.id)
+    const archivedSessionIds = new Set(projectChat.archivedSessionIds ?? [])
+    const projectSessions = projectChat.sessions.filter(
+      (session): session is Session =>
+        session != null &&
+        typeof session.id === "string" &&
+        !archivedSessionIds.has(session.id)
+    )
+    const isExpanded = expandedProjectIds.includes(project.id)
+    const isProjectMenuOpen = openProjectMenuId === project.id
+    const isDraggingProject = draggedProjectId === project.id
+
+    const content = (
+      <>
+        <div className="group/project-row relative">
+          <button
+            type="button"
+            onClick={() => void handleToggleProjectExpanded(project)}
+            className={cn(
+              "group/project flex h-8 w-full min-w-0 items-center gap-2 rounded-md pl-8 pr-14 text-left",
+              "text-sidebar-foreground/72 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground/92",
+              "group-hover/project-row:bg-[var(--sidebar-item-hover)] group-hover/project-row:text-sidebar-foreground/92",
+            )}
+            aria-label={isExpanded ? `Collapse ${project.name}` : `Expand ${project.name}`}
+            aria-expanded={isExpanded}
+          >
+            <span className="relative flex size-5 shrink-0 items-center justify-center">
+              <ProjectIcon
+                project={project}
+                isExpanded={isExpanded}
+                size={16}
+                className="text-sidebar-foreground/68"
+              />
+            </span>
+            <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
+              <span className="truncate text-sm font-medium">{project.name}</span>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={(event) => void handleCreateProjectThread(event, project)}
+            className={cn(
+              "absolute top-1/2 right-7 flex h-5 w-5 -translate-y-1/2 items-center justify-center text-sidebar-foreground/30 transition",
+              "hover:text-sidebar-foreground/72 focus-visible:text-sidebar-foreground/72",
+              "opacity-0 group-hover/project-row:opacity-100 focus-visible:opacity-100",
+            )}
+            aria-label={`New thread in ${project.name}`}
+          >
+            <PencilSimple size={14} />
+          </button>
+
+          <DropdownMenu
+            onOpenChange={(open) => setOpenProjectMenuId(open ? project.id : null)}
+          >
+            <DropdownMenuTrigger
+              className={cn(
+                "absolute top-1/2 right-2 flex h-5 w-5 -translate-y-1/2 items-center justify-center text-sidebar-foreground/30 transition",
+                "hover:text-sidebar-foreground/72 focus-visible:text-sidebar-foreground/72",
+                isProjectMenuOpen
+                  ? "text-sidebar-foreground/72 opacity-100"
+                  : "opacity-0 group-hover/project-row:opacity-100",
+              )}
+              aria-label={`${project.name} settings menu`}
+            >
+              <DotsThree size={14} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="bottom" align="end" className="w-40">
+              <DropdownMenuItem onClick={() => setProjectSettingsProject(project)}>
+                <span>Settings</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={() => setProjectPendingRemoval(project)}
+              >
+                <span>Remove project</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        {(() => {
+          if (!isExpanded) return null
+
+          if (projectSessions.length === 0) {
+            return (
+              <div className="pt-1">
+                <div className="px-8 py-1.5 text-[13px] text-sidebar-foreground/36">
+                  No threads yet.
+                </div>
+              </div>
+            )
+          }
+
+          return (
+            <div className="space-y-0.5 pt-0.5">
+              {projectSessions.map((session) => {
+                const activePromptState = activePromptBySession[session.id]
+                const isAwaitingResponse = activePromptState?.status === "active"
+                const isActiveSession = currentSessionId === session.id
+                const isRunningSession =
+                  session.id === currentSessionId &&
+                  (status === "streaming" ||
+                    status === "connecting" ||
+                    isAwaitingResponse)
+                const isConfirmingArchive = confirmArchiveSessionId === session.id
+
+                return (
+                  <div
+                    key={session.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => void handleSelectSession(project.id, session.id)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" && event.key !== " ") {
+                        return
+                      }
+
+                      event.preventDefault()
+                      void handleSelectSession(project.id, session.id)
+                    }}
+                    onMouseLeave={() => {
+                      if (confirmArchiveSessionId === session.id) {
+                        setConfirmArchiveSessionId(null)
+                      }
+                    }}
+                    className={cn(
+                      "group/session flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring/60",
+                      "text-sidebar-foreground/48 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground/72",
+                      isActiveSession && "bg-[var(--sidebar-item-active)]",
+                    )}
+                  >
+                    {isRunningSession ? (
+                      <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                        <span className="size-3 rounded-full border border-sidebar-foreground/18 border-t-sidebar-foreground/62 animate-spin" />
+                      </span>
+                    ) : (
+                      <span className="h-4 w-4 shrink-0" />
+                    )}
+
+                    <div className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left">
+                      <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-none">
+                        {formatSessionTitle(session)}
+                      </span>
+                      {isAwaitingResponse ? (
+                        <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-emerald-500/14 px-2 text-[11px] font-medium text-emerald-400">
+                          Awaiting response
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div
+                      className={cn(
+                        "flex shrink-0 items-center justify-end",
+                        isConfirmingArchive ? "min-w-[4.75rem]" : "w-7"
+                      )}
+                    >
+                      {isConfirmingArchive ? (
+                        <button
+                          type="button"
+                          onClick={(event) =>
+                            void handleArchiveIntent(event, project.id, session.id)
+                          }
+                          className="rounded-full border border-border/70 bg-muted/60 px-2 py-0.5 text-sm font-medium tracking-tight text-destructive hover:bg-muted/80"
+                          aria-label="Confirm archive session"
+                        >
+                          Confirm
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(event) =>
+                            void handleArchiveIntent(event, project.id, session.id)
+                          }
+                          className="rounded p-1 opacity-0  hover:bg-[var(--sidebar-item-hover)] focus-visible:opacity-100 group-hover/session:opacity-100"
+                          aria-label="Archive session"
+                        >
+                          <Archive size={14} className="text-muted-foreground" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })()}
+      </>
+    )
+
+    return (
+      <ReorderableProjectItem
+        key={project.id}
+        project={project}
+        isDraggingProject={isDraggingProject}
+        enableLayoutAnimation={draggedProjectId !== null}
+        onDragStart={() => {
+          setDraggedProjectId(project.id)
+        }}
+        onDragEnd={() => {
+          commitProjectOrder()
+        }}
+      >
+        {content}
+      </ReorderableProjectItem>
+    )
   }
 
-  return (
-    <SidebarShell
-      width={width}
-      setWidth={setWidth}
-      isCollapsed={isCollapsed}
-      side="left"
-      sizeConstraintClass="min-w-[240px] max-w-[420px]"
-    >
-      {/* Toolbar header */}
-      <div className="relative hidden h-11 shrink-0 items-center border-b border-sidebar-border/70 px-3 md:flex">
-        <div
-          className="drag-region h-full shrink-0"
-          style={{ width: WINDOW_CONTROLS_GUTTER_WIDTH }}
-          aria-hidden="true"
-        />
-        <div
-          className="absolute top-1/2 z-10 -translate-y-1/2"
-          style={{ left: DESKTOP_LEFT_TOGGLE_OFFSET }}
+  const sidebarHeader = (
+    <div className="relative hidden h-11 shrink-0 items-center border-b border-sidebar-border/70 px-3 md:flex">
+      <div
+        className="drag-region h-full shrink-0"
+        style={{ width: WINDOW_CONTROLS_GUTTER_WIDTH }}
+        aria-hidden="true"
+      />
+      <div
+        className="absolute top-1/2 z-10 -translate-y-1/2"
+        style={{ left: DESKTOP_LEFT_TOGGLE_OFFSET }}
+      >
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          onClick={toggle}
+          className="text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+          aria-label="Toggle left sidebar"
         >
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            onClick={toggle}
-            className="text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
-            aria-label="Toggle left sidebar"
-          >
-            <Sidebar size={14} />
-          </Button>
-        </div>
-        <div className="size-7 shrink-0" aria-hidden="true" />
-        {activeView === "chat" ? (
-          <div className="flex min-w-0 items-center gap-2">
-            <div className="flex min-w-0 items-center gap-3">
-              {activeSessionTitle ? (
-                <span className="max-w-[240px] truncate text-sm font-medium text-foreground">
-                  {activeSessionTitle}
-                </span>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
+          <Sidebar size={14} />
+        </Button>
       </div>
+      <div className="size-7 shrink-0" aria-hidden="true" />
+    </div>
+  )
 
+  const sidebarBody = (
+    <>
       {/* Body */}
       {isLoading ? (
         <div className="flex flex-1 items-center justify-center">
@@ -501,209 +687,7 @@ export function LeftSidebar({
                 >
                   {orderedProjectIds.map((projectId) => {
                     const project = projectById.get(projectId)
-                    if (!project) {
-                      return null
-                    }
-
-                    const projectChat = getProjectChat(project.id)
-                    const archivedSessionIds = new Set(projectChat.archivedSessionIds ?? [])
-                    const projectSessions = projectChat.sessions.filter(
-                      (session): session is Session =>
-                        session != null &&
-                        typeof session.id === "string" &&
-                        !archivedSessionIds.has(session.id)
-                    )
-                    const isExpanded = expandedProjectIds.includes(project.id)
-                    const isProjectMenuOpen = openProjectMenuId === project.id
-                    const isDraggingProject = draggedProjectId === project.id
-
-                    return (
-                      <ReorderableProjectItem
-                        key={project.id}
-                        project={project}
-                        isDraggingProject={isDraggingProject}
-                        onDragStart={() => {
-                          setDraggedProjectId(project.id)
-                        }}
-                        onDragEnd={() => {
-                          commitProjectOrder()
-                        }}
-                      >
-                        <div className="group/project-row relative">
-                          <button
-                            type="button"
-                            onClick={() => void handleToggleProjectExpanded(project)}
-                            className={cn(
-                              "group/project flex h-8 w-full min-w-0 items-center gap-2 rounded-md pl-8 pr-14 text-left",
-                              "text-sidebar-foreground/72 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground/92",
-                              "group-hover/project-row:bg-[var(--sidebar-item-hover)] group-hover/project-row:text-sidebar-foreground/92",
-                            )}
-                            aria-label={isExpanded ? `Collapse ${project.name}` : `Expand ${project.name}`}
-                            aria-expanded={isExpanded}
-                          >
-                            <span className="relative flex size-5 shrink-0 items-center justify-center">
-                              <ProjectIcon
-                                project={project}
-                                isExpanded={isExpanded}
-                                size={16}
-                                className="text-sidebar-foreground/68"
-                              />
-                            </span>
-                            <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
-                              <span className="truncate text-sm font-medium">{project.name}</span>
-                            </span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={(event) => void handleCreateProjectThread(event, project)}
-                            className={cn(
-                              "absolute top-1/2 right-7 flex h-5 w-5 -translate-y-1/2 items-center justify-center text-sidebar-foreground/30 transition",
-                              "hover:text-sidebar-foreground/72 focus-visible:text-sidebar-foreground/72",
-                              "opacity-0 group-hover/project-row:opacity-100 focus-visible:opacity-100",
-                            )}
-                            aria-label={`New thread in ${project.name}`}
-                          >
-                            <PencilSimple size={14} />
-                          </button>
-
-                          <DropdownMenu
-                            onOpenChange={(open) => setOpenProjectMenuId(open ? project.id : null)}
-                          >
-                            <DropdownMenuTrigger
-                              className={cn(
-                                "absolute top-1/2 right-2 flex h-5 w-5 -translate-y-1/2 items-center justify-center text-sidebar-foreground/30 transition",
-                                "hover:text-sidebar-foreground/72 focus-visible:text-sidebar-foreground/72",
-                                isProjectMenuOpen
-                                  ? "text-sidebar-foreground/72 opacity-100"
-                                  : "opacity-0 group-hover/project-row:opacity-100",
-                              )}
-                              aria-label={`${project.name} settings menu`}
-                            >
-                              <DotsThree size={14} />
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent side="bottom" align="end" className="w-40">
-                              <DropdownMenuItem onClick={() => setProjectSettingsProject(project)}>
-                                <span>Settings</span>
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                variant="destructive"
-                                onClick={() => setProjectPendingRemoval(project)}
-                              >
-                                <span>Remove project</span>
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-
-                        {(() => {
-                          if (!isExpanded) return null
-
-                          if (projectSessions.length === 0) {
-                            return (
-                              <div className="pt-1">
-                                <div className="px-8 py-1.5 text-[13px] text-sidebar-foreground/36">
-                                  No threads yet.
-                                </div>
-                              </div>
-                            )
-                          }
-
-                          return (
-                            <div className="space-y-0.5 pt-0.5">
-                              {projectSessions.map((session) => {
-                                const activePromptState = activePromptBySession[session.id]
-                                const isAwaitingResponse = activePromptState?.status === "active"
-                                const isActiveSession = currentSessionId === session.id
-                                const isRunningSession =
-                                  session.id === currentSessionId &&
-                                  (status === "streaming" ||
-                                    status === "connecting" ||
-                                    isAwaitingResponse)
-                                const isConfirmingArchive = confirmArchiveSessionId === session.id
-
-                                return (
-                                  <div
-                                    key={session.id}
-                                    role="button"
-                                    tabIndex={0}
-                                    onClick={() => void handleSelectSession(project.id, session.id)}
-                                    onKeyDown={(event) => {
-                                      if (event.key !== "Enter" && event.key !== " ") {
-                                        return
-                                      }
-
-                                      event.preventDefault()
-                                      void handleSelectSession(project.id, session.id)
-                                    }}
-                                    onMouseLeave={() => {
-                                      if (confirmArchiveSessionId === session.id) {
-                                        setConfirmArchiveSessionId(null)
-                                      }
-                                    }}
-                                    className={cn(
-                                      "group/session flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring/60",
-                                      "text-sidebar-foreground/48 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground/72",
-                                      isActiveSession && "bg-[var(--sidebar-item-active)]",
-                                    )}
-                                  >
-                                    {isRunningSession ? (
-                                      <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                                        <span className="size-3 rounded-full border border-sidebar-foreground/18 border-t-sidebar-foreground/62 animate-spin" />
-                                      </span>
-                                    ) : (
-                                      <span className="h-4 w-4 shrink-0" />
-                                    )}
-
-                                    <div className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left">
-                                      <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-none">
-                                        {formatSessionTitle(session)}
-                                      </span>
-                                      {isAwaitingResponse ? (
-                                        <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-emerald-500/14 px-2 text-[11px] font-medium text-emerald-400">
-                                          Awaiting response
-                                        </span>
-                                      ) : null}
-                                    </div>
-
-                                    <div
-                                      className={cn(
-                                        "flex shrink-0 items-center justify-end",
-                                        isConfirmingArchive ? "min-w-[4.75rem]" : "w-7"
-                                      )}
-                                    >
-                                      {isConfirmingArchive ? (
-                                        <button
-                                          type="button"
-                                          onClick={(event) =>
-                                            void handleArchiveIntent(event, project.id, session.id)
-                                          }
-                                          className="rounded-full border border-border/70 bg-muted/60 px-2 py-0.5 text-sm font-medium tracking-tight text-destructive hover:bg-muted/80"
-                                          aria-label="Confirm archive session"
-                                        >
-                                          Confirm
-                                        </button>
-                                      ) : (
-                                        <button
-                                          type="button"
-                                          onClick={(event) =>
-                                            void handleArchiveIntent(event, project.id, session.id)
-                                          }
-                                          className="rounded p-1 opacity-0  hover:bg-[var(--sidebar-item-hover)] focus-visible:opacity-100 group-hover/session:opacity-100"
-                                          aria-label="Archive session"
-                                        >
-                                          <Archive size={14} className="text-muted-foreground" />
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          )
-                        })()}
-                      </ReorderableProjectItem>
-                    )
+                    return project ? renderProjectRow(project) : null
                   })}
                 </Reorder.Group>
               )}
@@ -727,6 +711,61 @@ export function LeftSidebar({
           </div>
         </>
       )}
+    </>
+  )
+
+  if (isCollapsed) {
+    return (
+      <>
+        <div
+          className="fixed inset-y-0 left-0 z-30"
+          style={{ width: COLLAPSED_HOVER_TRIGGER_WIDTH }}
+          onMouseEnter={() => setIsHoverPreviewOpen(true)}
+        />
+        {(isHoverPreviewOpen || draggedProjectId !== null) && (
+          <div
+            className="fixed top-11 bottom-0 left-0 z-30 flex flex-col overflow-hidden border-r border-sidebar-border/70 bg-sidebar text-sidebar-foreground shadow-[0_18px_48px_rgba(0,0,0,0.18)]"
+            style={{ width }}
+            onMouseEnter={() => setIsHoverPreviewOpen(true)}
+            onMouseLeave={() => setIsHoverPreviewOpen(false)}
+          >
+            {sidebarBody}
+          </div>
+        )}
+
+        <QuickStartModal open={quickStartOpen} onOpenChange={setQuickStartOpen} />
+        <ProjectSettingsModal
+          open={projectSettingsProject !== null}
+          project={projectSettingsProject}
+          onOpenChange={(open) => {
+            if (!open) {
+              setProjectSettingsProject(null)
+            }
+          }}
+        />
+        <RemoveProjectModal
+          open={projectPendingRemoval !== null}
+          project={projectPendingRemoval}
+          onOpenChange={(open) => {
+            if (!open) {
+              setProjectPendingRemoval(null)
+            }
+          }}
+        />
+      </>
+    )
+  }
+
+  return (
+    <SidebarShell
+      width={width}
+      setWidth={setWidth}
+      isCollapsed={isCollapsed}
+      side="left"
+      sizeConstraintClass="min-w-[240px] max-w-[420px]"
+    >
+      {sidebarHeader}
+      {sidebarBody}
 
       <QuickStartModal open={quickStartOpen} onOpenChange={setQuickStartOpen} />
       <ProjectSettingsModal
