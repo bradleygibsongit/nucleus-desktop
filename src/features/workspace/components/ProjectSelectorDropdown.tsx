@@ -1,6 +1,6 @@
 import type { ReactNode } from "react"
 import type { Project } from "@/features/workspace/types"
-import { Folder, Plus } from "@/components/icons"
+import { Plus } from "@/components/icons"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,6 +10,7 @@ import {
 } from "@/features/shared/components/ui/dropdown-menu"
 import { useProjectStore } from "@/features/workspace/store"
 import { openFolderPicker } from "@/features/workspace/utils/folderDialog"
+import { ProjectIcon } from "@/features/workspace/components/ProjectIcon"
 import { cn } from "@/lib/utils"
 
 interface ProjectSelectorDropdownProps {
@@ -98,7 +99,7 @@ export function ProjectSelectorDropdown({
 function ProjectDropdownAvatar({ project }: { project: Project }) {
   return (
     <span className="flex size-6 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/20">
-      <Folder size={14} className="text-muted-foreground" />
+      <ProjectIcon project={project} size={14} className="text-muted-foreground" />
     </span>
   )
 }

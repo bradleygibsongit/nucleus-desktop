@@ -1,8 +1,6 @@
-import { useState, useEffect, useRef } from "react"
-import { Reorder } from "framer-motion"
+import { useState, useEffect, useMemo, useRef, type ReactNode } from "react"
+import { Reorder, useDragControls, type DragControls } from "framer-motion"
 import {
-  Folder,
-  FolderOpen,
   FolderSimplePlus,
   GearSix,
   Archive,
@@ -21,6 +19,7 @@ import {
   QuickStartModal,
   RemoveProjectModal,
 } from "@/features/workspace/components/modals"
+import { ProjectIcon } from "@/features/workspace/components/ProjectIcon"
 import { useProjectStore } from "@/features/workspace/store"
 import { openFolderPicker } from "@/features/workspace/utils/folderDialog"
 import { useChatStore } from "@/features/chat/store"
@@ -49,8 +48,84 @@ interface LeftSidebarProps {
 const WINDOW_CONTROLS_GUTTER_WIDTH = 80
 const DESKTOP_LEFT_TOGGLE_OFFSET = WINDOW_CONTROLS_GUTTER_WIDTH + 12
 
-function haveProjectsChangedOrder(nextProjects: Project[], currentProjects: Project[]) {
-  return nextProjects.some((project, index) => project.id !== currentProjects[index]?.id)
+function haveProjectIdsChangedOrder(nextProjectIds: string[], currentProjects: Project[]) {
+  return nextProjectIds.some((projectId, index) => projectId !== currentProjects[index]?.id)
+}
+
+function ProjectReorderHandle({
+  projectName,
+  dragControls,
+}: {
+  projectName: string
+  dragControls: DragControls
+}) {
+  return (
+    <button
+      type="button"
+      onPointerDown={(event) => {
+        event.preventDefault()
+        dragControls.start(event)
+      }}
+      className={cn(
+        "absolute left-1.5 top-1.5 z-10 flex h-5 w-5 cursor-grab items-center justify-center rounded",
+        "text-sidebar-foreground/26 transition hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground/58 active:cursor-grabbing",
+      )}
+      aria-label={`Drag to reorder ${projectName}`}
+      title={`Drag to reorder ${projectName}`}
+    >
+      <span className="grid grid-cols-2 gap-[2px]">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <span key={index} className="h-[2px] w-[2px] rounded-full bg-current" />
+        ))}
+      </span>
+    </button>
+  )
+}
+
+function ReorderableProjectItem(props: {
+  project: Project
+  isDraggingProject: boolean
+  children: ReactNode
+  onDragStart: () => void
+  onDragEnd: () => void
+}) {
+  const { project, isDraggingProject, children, onDragStart, onDragEnd } = props
+  const dragControls = useDragControls()
+
+  return (
+    <Reorder.Item
+      as="div"
+      key={project.id}
+      value={project.id}
+      layout="position"
+      dragListener={false}
+      dragControls={dragControls}
+      transition={{
+        layout: {
+          type: "spring",
+          stiffness: 560,
+          damping: 42,
+          mass: 0.55,
+        },
+      }}
+      whileDrag={{
+        zIndex: 20,
+        boxShadow: "0 16px 36px rgba(15, 23, 42, 0.16)",
+      }}
+      className={cn(
+        "relative space-y-1 rounded-xl",
+        isDraggingProject && "opacity-65"
+      )}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+    >
+      <ProjectReorderHandle
+        projectName={project.name}
+        dragControls={dragControls}
+      />
+      {children}
+    </Reorder.Item>
+  )
 }
 
 export function LeftSidebar({
@@ -78,9 +153,9 @@ export function LeftSidebar({
     selectProject,
     setProjectOrder,
   } = useProjectStore()
-  const [projectOrderPreview, setProjectOrderPreview] = useState<Project[] | null>(null)
+  const [projectOrderPreview, setProjectOrderPreview] = useState<string[] | null>(null)
   const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null)
-  const projectOrderPreviewRef = useRef<Project[] | null>(null)
+  const projectOrderPreviewRef = useRef<string[] | null>(null)
 
   const {
     getProjectChat,
@@ -238,7 +313,11 @@ export function LeftSidebar({
     "bg-[var(--sidebar-item-active)] text-sidebar-accent-foreground"
   const sectionLabelClass =
     "text-[11px] font-medium uppercase tracking-[0.08em] text-sidebar-foreground/40"
-  const orderedProjects = projectOrderPreview ?? projects
+  const projectById = useMemo(
+    () => new Map(projects.map((project) => [project.id, project])),
+    [projects]
+  )
+  const orderedProjectIds = projectOrderPreview ?? projects.map((project) => project.id)
 
   const handleToggleProjectExpanded = async (project: Project) => {
     const isExpanded = expandedProjectIds.includes(project.id)
@@ -267,23 +346,24 @@ export function LeftSidebar({
     projectOrderPreviewRef.current = null
   }
 
-  const handleProjectReorder = (nextProjects: Project[]) => {
-    setProjectOrderPreview(nextProjects)
-    projectOrderPreviewRef.current = nextProjects
+  const handleProjectReorder = (nextProjectIds: string[]) => {
+    setProjectOrderPreview(nextProjectIds)
+    projectOrderPreviewRef.current = nextProjectIds
   }
 
-  const commitProjectOrder = async () => {
-    const nextProjects = projectOrderPreviewRef.current
-    if (!nextProjects || !haveProjectsChangedOrder(nextProjects, projects)) {
+  const commitProjectOrder = () => {
+    const nextProjectIds = projectOrderPreviewRef.current
+    if (!nextProjectIds || !haveProjectIdsChangedOrder(nextProjectIds, projects)) {
       clearProjectDragState()
       return
     }
 
-    try {
-      await setProjectOrder(nextProjects)
-    } finally {
-      clearProjectDragState()
-    }
+    const nextProjects = nextProjectIds
+      .map((projectId) => projectById.get(projectId))
+      .filter((project): project is Project => project != null)
+
+    clearProjectDragState()
+    void setProjectOrder(nextProjects)
   }
 
   if (isCollapsed) {
@@ -415,12 +495,16 @@ export function LeftSidebar({
                 <Reorder.Group
                   as="div"
                   axis="y"
-                  values={orderedProjects}
+                  values={orderedProjectIds}
                   onReorder={handleProjectReorder}
-                  layoutScroll
                   className="flex flex-col gap-1"
                 >
-                  {orderedProjects.map((project) => {
+                  {orderedProjectIds.map((projectId) => {
+                    const project = projectById.get(projectId)
+                    if (!project) {
+                      return null
+                    }
+
                     const projectChat = getProjectChat(project.id)
                     const archivedSessionIds = new Set(projectChat.archivedSessionIds ?? [])
                     const projectSessions = projectChat.sessions.filter(
@@ -434,32 +518,15 @@ export function LeftSidebar({
                     const isDraggingProject = draggedProjectId === project.id
 
                     return (
-                      <Reorder.Item
-                        as="div"
+                      <ReorderableProjectItem
                         key={project.id}
-                        value={project}
-                        layout={draggedProjectId ? "position" : false}
-                        transition={{
-                          layout: {
-                            type: "spring",
-                            stiffness: 520,
-                            damping: 38,
-                            mass: 0.5,
-                          },
-                        }}
-                        whileDrag={{
-                          zIndex: 20,
-                          scale: 1.01,
-                        }}
-                        className={cn(
-                          "space-y-1 rounded-xl",
-                          isDraggingProject && "opacity-65"
-                        )}
+                        project={project}
+                        isDraggingProject={isDraggingProject}
                         onDragStart={() => {
                           setDraggedProjectId(project.id)
                         }}
                         onDragEnd={() => {
-                          void commitProjectOrder()
+                          commitProjectOrder()
                         }}
                       >
                         <div className="group/project-row relative">
@@ -467,19 +534,20 @@ export function LeftSidebar({
                             type="button"
                             onClick={() => void handleToggleProjectExpanded(project)}
                             className={cn(
-                              "group/project flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 pr-14 text-left",
-                              "text-sidebar-foreground/48 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground/72",
-                              "group-hover/project-row:bg-[var(--sidebar-item-hover)] group-hover/project-row:text-sidebar-foreground/72",
+                              "group/project flex h-8 w-full min-w-0 items-center gap-2 rounded-md pl-8 pr-14 text-left",
+                              "text-sidebar-foreground/72 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground/92",
+                              "group-hover/project-row:bg-[var(--sidebar-item-hover)] group-hover/project-row:text-sidebar-foreground/92",
                             )}
                             aria-label={isExpanded ? `Collapse ${project.name}` : `Expand ${project.name}`}
                             aria-expanded={isExpanded}
                           >
                             <span className="relative flex size-5 shrink-0 items-center justify-center">
-                              {isExpanded ? (
-                                <FolderOpen size={16} className="text-sidebar-foreground/50" />
-                              ) : (
-                                <Folder size={16} className="text-sidebar-foreground/50" />
-                              )}
+                              <ProjectIcon
+                                project={project}
+                                isExpanded={isExpanded}
+                                size={16}
+                                className="text-sidebar-foreground/68"
+                              />
                             </span>
                             <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
                               <span className="truncate text-sm font-medium">{project.name}</span>
@@ -534,7 +602,7 @@ export function LeftSidebar({
                           if (projectSessions.length === 0) {
                             return (
                               <div className="pt-1">
-                                <div className="px-2 py-1.5 text-[13px] text-sidebar-foreground/36">
+                                <div className="px-8 py-1.5 text-[13px] text-sidebar-foreground/36">
                                   No threads yet.
                                 </div>
                               </div>
@@ -634,7 +702,7 @@ export function LeftSidebar({
                             </div>
                           )
                         })()}
-                      </Reorder.Item>
+                      </ReorderableProjectItem>
                     )
                   })}
                 </Reorder.Group>

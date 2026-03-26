@@ -19,6 +19,7 @@ export interface Repository {
 export interface Project {
   id: string
   name: string       // Folder name (derived from path)
+  iconPath?: string | null
   path: string       // Full filesystem path
   addedAt: number    // Timestamp when added (for ordering)
 }

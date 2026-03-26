@@ -6,6 +6,7 @@ import { useRightSidebar } from "./useRightSidebar"
 import { Button } from "@/features/shared/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useProjectStore } from "@/features/workspace/store"
+import { ProjectIcon } from "@/features/workspace/components/ProjectIcon"
 import { useChatStore } from "@/features/chat/store"
 
 interface CenterToolbarProps {
@@ -94,8 +95,11 @@ export function CenterToolbar({ activeView = "chat", onOpenChat }: CenterToolbar
           style={collapsedBranchOffset > 0 ? { marginLeft: collapsedBranchOffset } : undefined}
         >
           {selectedProject ? (
-            <span className="max-w-[220px] truncate text-sm font-medium text-foreground">
-              {selectedProject.name}
+            <span className="flex min-w-0 items-center gap-2">
+              <ProjectIcon project={selectedProject} size={16} className="shrink-0" />
+              <span className="max-w-[220px] truncate text-sm font-medium text-foreground">
+                {selectedProject.name}
+              </span>
             </span>
           ) : null}
           {activeView === "chat" ? (
@@ -123,8 +127,11 @@ export function CenterToolbar({ activeView = "chat", onOpenChat }: CenterToolbar
       {/* Mobile controls */}
       <div className="flex shrink-0 items-center gap-1 px-3 md:hidden">
         {selectedProject ? (
-          <span className="mr-1 max-w-[140px] truncate text-sm font-medium text-foreground">
-            {selectedProject.name}
+          <span className="mr-1 flex min-w-0 items-center gap-2">
+            <ProjectIcon project={selectedProject} size={16} className="shrink-0" />
+            <span className="max-w-[140px] truncate text-sm font-medium text-foreground">
+              {selectedProject.name}
+            </span>
           </span>
         ) : null}
         <Button

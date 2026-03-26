@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import { desktop, loadDesktopStore, type DesktopStoreHandle } from "@/desktop/client"
 import type { Project } from "../types"
+import { normalizeProjectIconPath } from "../utils/projectIcon"
 
 const STORE_FILE = "projects.json"
 const STORE_KEY = "projects"
@@ -19,7 +20,7 @@ interface ProjectState {
   removeProject: (id: string) => Promise<void>
   setProjectOrder: (projects: Project[]) => Promise<void>
   selectProject: (id: string) => Promise<void>
-  updateProject: (id: string, updates: Partial<Pick<Project, "name">>) => Promise<void>
+  updateProject: (id: string, updates: Partial<Pick<Project, "name" | "iconPath">>) => Promise<void>
   setDefaultLocation: (path: string) => Promise<void>
 }
 
@@ -30,6 +31,13 @@ async function getStore(): Promise<DesktopStoreHandle> {
     storeInstance = await loadDesktopStore(STORE_FILE)
   }
   return storeInstance
+}
+
+function hydrateProject(project: Project): Project {
+  return {
+    ...project,
+    iconPath: normalizeProjectIconPath(project.iconPath),
+  }
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -56,7 +64,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       }
 
       if (persisted && Array.isArray(persisted)) {
-        const projects = persisted
+        const projects = persisted.map((project) => hydrateProject(project))
 
         // Restore saved selection if valid, otherwise select first project
         const validSelectedId = savedSelectedId && projects.some(p => p.id === savedSelectedId)
@@ -93,6 +101,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const newProject: Project = {
       id: crypto.randomUUID(),
       name: projectName,
+      iconPath: null,
       path,
       addedAt: Date.now(),
     }
@@ -128,11 +137,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   setProjectOrder: async (projects: Project[]) => {
-    const store = await getStore()
-    await store.set(STORE_KEY, projects)
-    await store.save()
-
+    const previousProjects = get().projects
     set({ projects })
+
+    const store = await getStore()
+    try {
+      await store.set(STORE_KEY, projects)
+      await store.save()
+    } catch (error) {
+      console.error("Failed to persist project order:", error)
+      set({ projects: previousProjects })
+      throw error
+    }
   },
 
   selectProject: async (id: string) => {
@@ -157,6 +173,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
             ...project,
             ...updates,
             name: updates.name?.trim() ? updates.name.trim() : project.name,
+            iconPath: Object.prototype.hasOwnProperty.call(updates, "iconPath")
+              ? normalizeProjectIconPath(updates.iconPath)
+              : project.iconPath ?? null,
           }
         : project
     )
