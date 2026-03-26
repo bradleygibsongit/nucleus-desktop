@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { desktop } from "@/desktop/client"
-import { FileTreeViewer } from "@/features/version-control/components"
+import { FileChangesList, FileTreeViewer } from "@/features/version-control/components"
 import { useFileTreeStore, useProjectStore } from "@/features/workspace/store"
 import { useTabStore } from "@/features/editor/store"
 import { TerminalPanel } from "@/features/terminal/components"
@@ -9,26 +9,27 @@ import {
   saveProjectSecret,
   type ProjectSecretFieldDefinition,
 } from "@/features/workspace/utils/envFiles"
+import { useProjectGitChanges } from "@/features/shared/hooks"
 import { useRightSidebar } from "./useRightSidebar"
 import { SidebarShell } from "./SidebarShell"
 import { SourceControlActionGroup } from "./AppHeader"
 import { Button, Input } from "@/features/shared/components/ui"
 import { cn } from "@/lib/utils"
-import { Eye, Folder, Plus } from "@/components/icons"
+import { Eye, Plus } from "@/components/icons"
 
 interface RightSidebarProps {
   activeView?: "chat" | "settings" | "automations"
 }
 
-type RightSidebarTab = "files" | "secrets"
+type RightSidebarTab = "files" | "changes" | "secrets"
 
 const RIGHT_SIDEBAR_TABS: Array<{
   key: RightSidebarTab
   label: string
-  icon: typeof Folder
 }> = [
-  { key: "files", label: "Files", icon: Folder },
-  { key: "secrets", label: "Secrets", icon: Eye },
+  { key: "files", label: "Files" },
+  { key: "changes", label: "Changes" },
+  { key: "secrets", label: "Secrets" },
 ]
 
 interface SecretFieldState {
@@ -77,10 +78,16 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
     setActiveProjectPath,
     refreshActiveProject,
   } = useFileTreeStore()
-  const { openFile, switchProject } = useTabStore()
+  const { openDiff, openFile, switchProject } = useTabStore()
 
   // Get the selected project
   const selectedProject = projects.find((p) => p.id === selectedProjectId)
+  const {
+    changes: projectChanges,
+    isLoading: isChangesLoading,
+    loadError: changesError,
+  } = useProjectGitChanges(selectedProject?.path ?? null, { enabled: activeTab === "changes" })
+
   const fileTreeData = activeProjectPath ? (dataByProjectPath[activeProjectPath] ?? {}) : {}
   const lastFileTreeEvent = activeProjectPath ? (lastEventByProjectPath[activeProjectPath] ?? null) : null
   const isFileTreeLoading = activeProjectPath ? (loadingByProjectPath[activeProjectPath] ?? false) : false
@@ -98,7 +105,6 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
 
     return draftSecretByProject[selectedProjectId] ?? null
   }, [draftSecretByProject, selectedProjectId])
-
   const secretsRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadSecrets = useCallback(async () => {
@@ -377,30 +383,39 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
       </div>
 
       {/* Tab header */}
-      <div className="shrink-0 border-b border-sidebar-border px-3 py-2">
-        <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-xl bg-sidebar-accent p-1">
-            {RIGHT_SIDEBAR_TABS.map(({ key, label, icon: Icon }) => {
-              const isActive = activeTab === key
+      <div className="shrink-0 px-3 py-1.5">
+        <div className="flex items-center gap-1">
+          {RIGHT_SIDEBAR_TABS.map(({ key, label }) => {
+            const isActive = activeTab === key
 
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setActiveTab(key)}
-                  className={cn(
-                    "inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-sm font-medium transition-colors cursor-pointer",
-                    isActive
-                      ? "bg-card text-card-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <Icon className="size-4 shrink-0" />
-                  <span>{label}</span>
-                </button>
-              )
-            })}
-          </div>
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setActiveTab(key)}
+                className={cn(
+                  "inline-flex h-7 items-center gap-1 rounded-lg px-2 text-sm font-medium transition-colors",
+                  isActive
+                    ? "bg-[var(--sidebar-item-active)] text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground/56 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground"
+                )}
+              >
+                <span>{label}</span>
+                {key === "changes" && projectChanges.length > 0 ? (
+                  <span
+                    className={cn(
+                      "text-[11px] leading-none",
+                      isActive
+                        ? "text-sidebar-accent-foreground/70"
+                        : "text-sidebar-foreground/40"
+                    )}
+                  >
+                    {projectChanges.length}
+                  </span>
+                ) : null}
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -418,7 +433,7 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
             </div>
           ) : !selectedProject ? (
             <div className="flex items-center justify-center py-8">
-              <span className="text-sm text-muted-foreground">Select an agent to view files</span>
+              <span className="text-sm text-muted-foreground">Select a project to view files</span>
             </div>
           ) : (
             <div className="space-y-2">
@@ -449,11 +464,44 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
               )}
             </div>
           )
+        ) : activeTab === "changes" ? (
+          !selectedProject ? (
+            <div className="flex items-center justify-center py-8">
+              <span className="text-sm text-muted-foreground">Select a project to view changes</span>
+            </div>
+          ) : isChangesLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <span className="text-sm text-muted-foreground">Loading changes...</span>
+            </div>
+          ) : changesError ? (
+            <div className="rounded-xl border border-destructive/20 bg-destructive/5 px-2.5 py-2 text-xs leading-5 text-destructive">
+              {changesError}
+            </div>
+          ) : projectChanges.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center gap-2 py-8 text-center">
+              <div className="rounded-full border border-border/70 bg-card px-3 py-1 text-xs font-medium text-muted-foreground">
+                Working tree clean
+              </div>
+              <span className="max-w-56 text-sm text-muted-foreground">
+                This project has no local file changes right now.
+              </span>
+            </div>
+          ) : (
+            <div className="px-1.5 py-1">
+              <FileChangesList
+                changes={projectChanges}
+                onFileClick={(file) => {
+                  const fileName = file.path.split("/").pop() ?? file.path
+                  openDiff(file.path, fileName, file.previousPath)
+                }}
+              />
+            </div>
+          )
         ) : (
           <div className="space-y-2 px-1.5 py-1">
             {!selectedProject ? (
               <div className="flex items-center justify-center py-8">
-                <span className="text-sm text-muted-foreground">Select an agent to manage secrets</span>
+                <span className="text-sm text-muted-foreground">Select a project to manage secrets</span>
               </div>
             ) : (
               <>

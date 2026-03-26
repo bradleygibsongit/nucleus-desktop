@@ -4,6 +4,8 @@ import type {
   CopyPathsIntoDirectoryOptions,
   DesktopDirEntry,
   GitBranchesResponse,
+  GitFileChange,
+  GitFileDiff,
   ProjectFileSystemEvent,
   SkillsSyncResponse,
   TerminalDataEvent,
@@ -74,6 +76,12 @@ declare global {
       }
       git: {
         getBranches: (projectPath: string) => Promise<GitBranchesResponse>
+        getChanges: (projectPath: string) => Promise<GitFileChange[]>
+        getFileDiff: (
+          projectPath: string,
+          filePath: string,
+          previousPath?: string | null
+        ) => Promise<GitFileDiff>
         checkoutBranch: (
           projectPath: string,
           branchName: string

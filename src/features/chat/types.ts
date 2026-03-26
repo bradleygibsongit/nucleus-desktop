@@ -12,6 +12,7 @@ export interface Tab {
   type: TabType;
   title: string;
   filePath?: string;
+  previousFilePath?: string | null;
 }
 
 export type HarnessId = "codex" | "claude-code";

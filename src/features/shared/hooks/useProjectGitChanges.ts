@@ -1,9 +1,9 @@
 import { useEffect } from "react"
-import { useShallow } from "zustand/react/shallow"
-import { desktop, type GitBranchesResponse } from "@/desktop/client"
+import type { GitFileChange } from "@/desktop/client"
+import { desktop } from "@/desktop/client"
 import { useProjectGitStore } from "./projectGitStore"
 
-interface UseProjectGitBranchesOptions {
+interface UseProjectGitChangesOptions {
   enabled?: boolean
 }
 
@@ -11,17 +11,12 @@ interface RefreshOptions {
   quiet?: boolean
 }
 
-export function useProjectGitBranches(
+export function useProjectGitChanges(
   projectPath: string | null,
-  options?: UseProjectGitBranchesOptions
+  options?: UseProjectGitChangesOptions
 ) {
   const enabled = options?.enabled ?? true
-  const { requestRefresh } = useProjectGitStore(
-    useShallow((state) => ({
-      requestRefresh: state.requestRefresh,
-    }))
-  )
-  const setBranchData = useProjectGitStore((state) => state.setBranchData)
+  const requestRefresh = useProjectGitStore((state) => state.requestRefresh)
   const entry = useProjectGitStore((state) =>
     projectPath ? state.entriesByProjectPath[projectPath] : undefined
   )
@@ -33,8 +28,8 @@ export function useProjectGitBranches(
 
     useProjectGitStore.getState().ensureEntry(projectPath)
     void requestRefresh(projectPath, {
-      includeBranches: true,
-      quietBranches: false,
+      includeChanges: true,
+      quietChanges: false,
       debounceMs: 0,
     })
   }, [enabled, projectPath, requestRefresh])
@@ -45,21 +40,21 @@ export function useProjectGitBranches(
     }
 
     const unlisten = desktop.watcher.onEvent((event) => {
-      if (event.rootPath !== projectPath || event.kind !== "rescan") {
+      if (event.rootPath !== projectPath) {
         return
       }
 
       void requestRefresh(projectPath, {
-        includeBranches: true,
-        quietBranches: true,
+        includeChanges: true,
+        quietChanges: true,
         debounceMs: 120,
       })
     })
 
     const handleFocus = () => {
       void requestRefresh(projectPath, {
-        includeBranches: true,
-        quietBranches: true,
+        includeChanges: true,
+        quietChanges: true,
         debounceMs: 0,
       })
     }
@@ -72,31 +67,25 @@ export function useProjectGitBranches(
     }
   }, [enabled, projectPath, requestRefresh])
 
-  const refresh = async ({ quiet = false }: RefreshOptions = {}): Promise<GitBranchesResponse | null> => {
+  const refresh = async ({ quiet = false }: RefreshOptions = {}): Promise<GitFileChange[]> => {
     if (!projectPath || !enabled) {
-      return null
+      return []
     }
 
     await requestRefresh(projectPath, {
-      includeBranches: true,
-      quietBranches: quiet,
+      includeChanges: true,
+      quietChanges: quiet,
       debounceMs: 0,
     })
 
-    return useProjectGitStore.getState().entriesByProjectPath[projectPath]?.branchData ?? null
+    return useProjectGitStore.getState().entriesByProjectPath[projectPath]?.changes ?? []
   }
 
   return {
-    branchData: entry?.branchData ?? null,
-    isLoading: entry?.isBranchLoading ?? false,
-    loadError: entry?.branchError ?? null,
+    changes: entry?.changes ?? [],
+    isLoading: entry?.isChangesLoading ?? false,
+    loadError: entry?.changesError ?? null,
     refresh,
-    setBranchData: (nextData: GitBranchesResponse | null) => {
-      if (!projectPath) {
-        return
-      }
-
-      setBranchData(projectPath, nextData)
-    },
+    setChanges: (_nextChanges: GitFileChange[]) => {},
   }
 }

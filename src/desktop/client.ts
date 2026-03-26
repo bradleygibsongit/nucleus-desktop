@@ -4,6 +4,8 @@ import type {
   CopyPathsIntoDirectoryOptions,
   DesktopDirEntry,
   GitBranchesResponse,
+  GitFileChange,
+  GitFileDiff,
   ProjectFileSystemEvent,
   SkillsSyncResponse,
   TerminalDataEvent,
@@ -99,6 +101,9 @@ export const desktop = {
   },
   git: {
     getBranches: (projectPath: string) => window.nucleus.git.getBranches(projectPath),
+    getChanges: (projectPath: string) => window.nucleus.git.getChanges(projectPath),
+    getFileDiff: (projectPath: string, filePath: string, previousPath?: string | null) =>
+      window.nucleus.git.getFileDiff(projectPath, filePath, previousPath),
     checkoutBranch: (projectPath: string, branchName: string) =>
       window.nucleus.git.checkoutBranch(projectPath, branchName),
     createAndCheckoutBranch: (projectPath: string, branchName: string) =>
@@ -114,6 +119,8 @@ export type {
   AppUpdateInfo,
   DesktopDirEntry,
   GitBranchesResponse,
+  GitFileChange,
+  GitFileDiff,
   ProjectFileSystemEvent,
   SkillsSyncResponse,
   TerminalDataEvent,

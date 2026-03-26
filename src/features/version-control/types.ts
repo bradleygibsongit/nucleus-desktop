@@ -3,6 +3,7 @@ export type FileStatus = "modified" | "added" | "deleted" | "untracked" | "renam
 export interface FileChange {
   path: string
   status: FileStatus
+  previousPath?: string | null
   additions?: number
   deletions?: number
 }

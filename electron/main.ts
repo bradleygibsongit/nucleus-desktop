@@ -167,6 +167,14 @@ function registerIpcHandlers(storeService: JsonStoreService): void {
   ipcMain.handle(IPC_CHANNELS.gitGetBranches, (_event, projectPath: string) =>
     gitService.getBranches(projectPath)
   )
+  ipcMain.handle(IPC_CHANNELS.gitGetChanges, (_event, projectPath: string) =>
+    gitService.getChanges(projectPath)
+  )
+  ipcMain.handle(
+    IPC_CHANNELS.gitGetFileDiff,
+    (_event, projectPath: string, filePath: string, previousPath?: string | null) =>
+      gitService.getFileDiff(projectPath, filePath, previousPath)
+  )
   ipcMain.handle(
     IPC_CHANNELS.gitCheckoutBranch,
     (_event, projectPath: string, branchName: string) =>

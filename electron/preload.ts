@@ -5,6 +5,8 @@ import type {
   CopyPathsIntoDirectoryOptions,
   DesktopDirEntry,
   GitBranchesResponse,
+  GitFileChange,
+  GitFileDiff,
   ProjectFileSystemEvent,
   SkillsSyncResponse,
   TerminalDataEvent,
@@ -115,6 +117,15 @@ contextBridge.exposeInMainWorld("nucleus", {
   git: {
     getBranches: (projectPath: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.gitGetBranches, projectPath) as Promise<GitBranchesResponse>,
+    getChanges: (projectPath: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.gitGetChanges, projectPath) as Promise<GitFileChange[]>,
+    getFileDiff: (projectPath: string, filePath: string, previousPath?: string | null) =>
+      ipcRenderer.invoke(
+        IPC_CHANNELS.gitGetFileDiff,
+        projectPath,
+        filePath,
+        previousPath ?? null
+      ) as Promise<GitFileDiff>,
     checkoutBranch: (projectPath: string, branchName: string) =>
       ipcRenderer.invoke(
         IPC_CHANNELS.gitCheckoutBranch,

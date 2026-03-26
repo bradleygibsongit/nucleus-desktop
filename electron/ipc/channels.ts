@@ -23,6 +23,8 @@ export const IPC_CHANNELS = {
   terminalResize: "terminal:resize",
   terminalCloseSession: "terminal:closeSession",
   gitGetBranches: "git:getBranches",
+  gitGetChanges: "git:getChanges",
+  gitGetFileDiff: "git:getFileDiff",
   gitCheckoutBranch: "git:checkoutBranch",
   gitCreateAndCheckoutBranch: "git:createAndCheckoutBranch",
   skillsList: "skills:list",

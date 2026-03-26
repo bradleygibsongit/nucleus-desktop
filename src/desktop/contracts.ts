@@ -4,6 +4,31 @@ export interface GitWorkingTreeSummary {
   deletions: number
 }
 
+export type GitFileStatus =
+  | "modified"
+  | "added"
+  | "deleted"
+  | "untracked"
+  | "renamed"
+  | "copied"
+  | "ignored"
+
+export interface GitFileChange {
+  path: string
+  status: GitFileStatus
+  previousPath?: string | null
+  additions?: number
+  deletions?: number
+}
+
+export interface GitFileDiff {
+  path: string
+  previousPath?: string | null
+  status: GitFileStatus
+  original: string
+  modified: string
+}
+
 export interface GitBranchesResponse {
   currentBranch: string
   upstreamBranch: string | null

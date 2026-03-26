@@ -17,6 +17,7 @@ interface TabState {
   // Actions
   switchProject: (projectId: string | null) => void
   openFile: (filePath: string, fileName: string) => void
+  openDiff: (filePath: string, fileName: string, previousFilePath?: string | null) => void
   closeTab: (tabId: string) => void
   setActiveTab: (tabId: string) => void
 }
@@ -74,6 +75,32 @@ export const useTabStore = create<TabState>((set, get) => ({
       type: "file",
       title: fileName,
       filePath,
+    }
+
+    set({
+      tabs: [...tabs, newTab],
+      activeTabId: newTab.id,
+    })
+  },
+
+  openDiff: (filePath: string, fileName: string, previousFilePath?: string | null) => {
+    const { tabs } = get()
+
+    const existingTab = tabs.find(
+      (tab) => tab.type === "diff" && tab.filePath === filePath
+    )
+
+    if (existingTab) {
+      set({ activeTabId: existingTab.id })
+      return
+    }
+
+    const newTab: Tab = {
+      id: crypto.randomUUID(),
+      type: "diff",
+      title: fileName,
+      filePath,
+      previousFilePath: previousFilePath ?? null,
     }
 
     set({

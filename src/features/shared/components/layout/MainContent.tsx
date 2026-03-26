@@ -1,29 +1,28 @@
 import { AutomationsPage } from "@/features/automations/components/AutomationsPage"
 import { ChatContainer, TabBar } from "@/features/chat/components"
-import { FileViewer, DiffViewer } from "@/features/editor/components"
-import { getDiffData } from "@/features/editor/mocks/mock-diffs"
+import { FileViewer, ProjectDiffViewer } from "@/features/editor/components"
 import { SettingsPage } from "@/features/settings/components/SettingsPage"
 import { useTabStore } from "@/features/editor/store"
 import type { Tab } from "@/features/chat/types"
 import type { SettingsSectionId } from "@/features/settings/config"
 import { UpdateBanner } from "@/features/updates/components/UpdateBanner"
+import { useProjectStore } from "@/features/workspace/store"
 
 interface DiffTabContentProps {
   tab: Tab
 }
 
 function DiffTabContent({ tab }: DiffTabContentProps) {
-  const diffData = getDiffData(tab.filePath ?? tab.title)
-
-  if (!diffData) {
-    return <div className="p-4 text-muted-foreground">Diff not found</div>
-  }
+  const { projects, selectedProjectId } = useProjectStore()
+  const selectedProject =
+    projects.find((project) => project.id === selectedProjectId) ?? null
 
   return (
-    <DiffViewer
+    <ProjectDiffViewer
       filename={tab.title}
-      original={diffData.original}
-      modified={diffData.modified}
+      projectPath={selectedProject?.path ?? null}
+      filePath={tab.filePath}
+      previousFilePath={tab.previousFilePath}
     />
   )
 }
