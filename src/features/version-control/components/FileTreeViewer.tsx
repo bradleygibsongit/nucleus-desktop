@@ -383,7 +383,7 @@ export function FileTreeViewer({
                 )}
                 onClick={handleClick}
               >
-                <span className="flex items-center gap-1.5">
+                <span className="flex w-full min-w-0 items-center gap-1.5 overflow-hidden">
                   {isFolder ? (
                     item.isExpanded() ? (
                       <DefaultFolderOpenedIcon
@@ -405,7 +405,9 @@ export function FileTreeViewer({
                       fileName={item.getItemName()}
                     />
                   )}
-                  {item.getItemName()}
+                  <span className="min-w-0 flex-1 truncate" title={item.getItemName()}>
+                    {item.getItemName()}
+                  </span>
                 </span>
               </TreeItemLabel>
             </TreeItem>

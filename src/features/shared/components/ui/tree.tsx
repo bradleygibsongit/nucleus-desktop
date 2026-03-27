@@ -96,7 +96,7 @@ function TreeItem<T = any>({ item, className, asChild, children, ...props }: Omi
         data-slot="tree-item"
         style={mergedStyle}
         className={cn(
-          'z-10 ps-(--tree-padding) outline-hidden select-none not-last:pb-0.5 focus:z-20 data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+          'z-10 w-full text-left ps-(--tree-padding) outline-hidden select-none not-last:pb-0.5 focus:z-20 data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
           className,
         )}
         data-focus={typeof item.isFocused === 'function' ? item.isFocused() || false : undefined}
@@ -132,7 +132,7 @@ function TreeItemLabel<T = any>({ item: propItem, children, className, ...props 
     <span
       data-slot="tree-item-label"
       className={cn(
-        'in-focus-visible:ring-ring/50 hover:bg-sidebar-accent/50 in-data-[selected=true]:bg-sidebar-accent in-data-[selected=true]:text-sidebar-accent-foreground in-data-[drag-target=true]:bg-sidebar-accent flex items-center gap-1 rounded-sm px-2 py-1.5 text-sm not-in-data-[folder=true]:ps-7 in-focus-visible:ring-[3px] in-data-[search-match=true]:bg-blue-50! [&_svg]:pointer-events-none [&_svg]:shrink-0',
+        'in-focus-visible:ring-ring/50 hover:bg-sidebar-accent/50 in-data-[selected=true]:bg-sidebar-accent in-data-[selected=true]:text-sidebar-accent-foreground in-data-[drag-target=true]:bg-sidebar-accent flex w-full min-w-0 items-center gap-1 overflow-hidden rounded-sm px-2 py-1.5 text-sm not-in-data-[folder=true]:ps-7 in-focus-visible:ring-[3px] in-data-[search-match=true]:bg-blue-50! [&_svg]:pointer-events-none [&_svg]:shrink-0',
         className,
       )}
       {...props}
