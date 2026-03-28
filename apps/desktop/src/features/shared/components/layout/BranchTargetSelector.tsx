@@ -230,22 +230,23 @@ export function BranchTargetSelector({ projectPath }: BranchTargetSelectorProps)
                         onClick={() => void handleBranchSelect(branch)}
                         disabled={isSubmitting}
                         className={cn(
-                          "flex w-full items-start justify-between gap-2 rounded-lg px-2 py-1.5 text-left transition-colors",
-                          isCurrent
-                            ? "text-foreground"
-                            : "text-foreground/92 hover:bg-muted/60",
-                          isPending && "bg-muted/60",
+                          "group flex w-full items-start justify-between gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground",
+                          isCurrent ? "text-foreground" : "text-foreground/92",
+                          isPending && "bg-accent text-accent-foreground",
                           isSubmitting && "opacity-80",
                         )}
                       >
                         <span className="flex min-w-0 items-start gap-3">
-                          <GitBranch size={16} className="mt-0.5 shrink-0 text-muted-foreground" />
+                          <GitBranch
+                            size={16}
+                            className="mt-0.5 shrink-0 text-muted-foreground transition-colors group-hover:text-accent-foreground/70"
+                          />
                           <span className="min-w-0">
                             <span className="block truncate text-sm font-medium">
                               {branch}
                             </span>
                             {isCurrent && workingTreeSummary.changedFiles > 0 ? (
-                              <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-muted-foreground">
+                              <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-muted-foreground transition-colors group-hover:text-accent-foreground/70">
                                 <span>
                                   Uncommitted: {workingTreeSummary.changedFiles} file
                                   {workingTreeSummary.changedFiles === 1 ? "" : "s"}
@@ -297,9 +298,12 @@ export function BranchTargetSelector({ projectPath }: BranchTargetSelectorProps)
                   setIsOpen(false)
                   setIsCreateDialogOpen(true)
                 }}
-                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm font-medium text-foreground transition-colors hover:bg-muted/60"
+                className="group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
               >
-                <Plus size={16} className="shrink-0 text-muted-foreground" />
+                <Plus
+                  size={16}
+                  className="shrink-0 text-muted-foreground transition-colors group-hover:text-accent-foreground/70"
+                />
                 <span className="truncate">Create and checkout new branch...</span>
               </button>
             </div>
