@@ -79,19 +79,40 @@ export function QuickStartModal({ open, onOpenChange }: QuickStartModalProps) {
   const [command, setCommand] = useState("")
   const [location, setLocation] = useState("")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [isRunStarting, setIsRunStarting] = useState(false)
   const [activeRun, setActiveRun] = useState<ActiveRunState | null>(null)
   const activeRunStateRef = useRef<ActiveRunState | null>(null)
   const ignoredExitSessionIdsRef = useRef(new Set<string>())
+  const isRunStartingRef = useRef(false)
   const runOutputBufferRef = useRef("")
   const activeRunListenersRef = useRef<(() => void) | null>(null)
+
+  const cleanupRunSession = async (runState: ActiveRunState, errorContext: string) => {
+    activeRunListenersRef.current?.()
+    activeRunListenersRef.current = null
+    runOutputBufferRef.current = ""
+    if (activeRunStateRef.current?.sessionId === runState.sessionId) {
+      activeRunStateRef.current = null
+    }
+    ignoredExitSessionIdsRef.current.add(runState.sessionId)
+
+    try {
+      await desktop.terminal.closeSession(runState.sessionId)
+    } catch (error) {
+      console.error(errorContext, error)
+    }
+  }
 
   useEffect(() => {
     if (open) {
       activeRunListenersRef.current?.()
       activeRunListenersRef.current = null
+      isRunStartingRef.current = false
+      setIsRunStarting(false)
       setLocation(defaultLocation)
       setErrorMessage(null)
       setStep("configure")
+      activeRunStateRef.current = null
       setActiveRun(null)
       runOutputBufferRef.current = ""
     }
@@ -111,10 +132,10 @@ export function QuickStartModal({ open, onOpenChange }: QuickStartModalProps) {
         return
       }
 
-      ignoredExitSessionIdsRef.current.add(activeRunState.sessionId)
-      void desktop.terminal.closeSession(activeRunState.sessionId).catch((error) => {
-        console.error("Failed to close quick start terminal session:", error)
-      })
+      void cleanupRunSession(
+        activeRunState,
+        "Failed to close quick start terminal session:",
+      )
     }
   }, [])
 
@@ -125,11 +146,7 @@ export function QuickStartModal({ open, onOpenChange }: QuickStartModalProps) {
 
     activeRunListenersRef.current?.()
     activeRunListenersRef.current = null
-    runOutputBufferRef.current = ""
-    ignoredExitSessionIdsRef.current.add(activeRun.sessionId)
-    void desktop.terminal.closeSession(activeRun.sessionId).catch((error) => {
-      console.error("Failed to close quick start terminal session:", error)
-    })
+    void cleanupRunSession(activeRun, "Failed to close quick start terminal session:")
     setStep("configure")
     setActiveRun(null)
   }, [activeRun, open])
@@ -163,11 +180,7 @@ export function QuickStartModal({ open, onOpenChange }: QuickStartModalProps) {
       throw new Error("Project was created, but it could not be added to the workspace list.")
     }
 
-    activeRunListenersRef.current?.()
-    activeRunListenersRef.current = null
-    runOutputBufferRef.current = ""
-    ignoredExitSessionIdsRef.current.add(runState.sessionId)
-    await desktop.terminal.closeSession(runState.sessionId)
+    await cleanupRunSession(runState, "Failed to close quick start terminal session:")
     await selectProject(project.id)
     await openDraftSession(project.id, project.path)
 
@@ -178,13 +191,7 @@ export function QuickStartModal({ open, onOpenChange }: QuickStartModalProps) {
 
   const handleModalOpenChange = (nextOpen: boolean) => {
     if (!nextOpen && activeRun) {
-      activeRunListenersRef.current?.()
-      activeRunListenersRef.current = null
-      runOutputBufferRef.current = ""
-      ignoredExitSessionIdsRef.current.add(activeRun.sessionId)
-      void desktop.terminal.closeSession(activeRun.sessionId).catch((error) => {
-        console.error("Failed to close quick start terminal session:", error)
-      })
+      void cleanupRunSession(activeRun, "Failed to close quick start terminal session:")
       setActiveRun(null)
       setStep("configure")
     }
@@ -216,6 +223,13 @@ export function QuickStartModal({ open, onOpenChange }: QuickStartModalProps) {
       setErrorMessage("Add an install command before running.")
       return
     }
+
+    if (isRunStartingRef.current || activeRunStateRef.current) {
+      return
+    }
+
+    isRunStartingRef.current = true
+    setIsRunStarting(true)
 
     try {
       const entries = await desktop.fs.readDir(trimmedLocation)
@@ -254,11 +268,17 @@ export function QuickStartModal({ open, onOpenChange }: QuickStartModalProps) {
 
         void finishSuccessfulRun(nextRun).catch((error) => {
           console.error("Failed to finish quick start setup:", error)
-          setErrorMessage(
-            error instanceof Error ? error.message : "Failed to open the created project.",
-          )
-          setStep("configure")
-          setActiveRun(null)
+          void cleanupRunSession(
+            nextRun,
+            "Failed to close quick start terminal session after setup error:",
+          ).finally(() => {
+            setErrorMessage(
+              error instanceof Error ? error.message : "Failed to open the created project.",
+            )
+            setStep("configure")
+            activeRunStateRef.current = null
+            setActiveRun(null)
+          })
         })
       })
 
@@ -277,6 +297,7 @@ export function QuickStartModal({ open, onOpenChange }: QuickStartModalProps) {
         runOutputBufferRef.current = ""
         setErrorMessage("The terminal session ended before the install command completed.")
         setStep("configure")
+        activeRunStateRef.current = null
         setActiveRun(null)
       })
 
@@ -286,6 +307,7 @@ export function QuickStartModal({ open, onOpenChange }: QuickStartModalProps) {
       }
 
       setErrorMessage(null)
+      activeRunStateRef.current = nextRun
       setActiveRun(nextRun)
       setStep("running")
 
@@ -302,23 +324,28 @@ export function QuickStartModal({ open, onOpenChange }: QuickStartModalProps) {
       await setDefaultLocation(trimmedLocation)
     } catch (error) {
       console.error("Failed to start quick start terminal session:", error)
-      activeRunListenersRef.current?.()
-      activeRunListenersRef.current = null
-      runOutputBufferRef.current = ""
-      ignoredExitSessionIdsRef.current.add(sessionId)
-      void desktop.terminal.closeSession(sessionId).catch((terminalError) => {
-        console.error("Failed to close quick start terminal session:", terminalError)
-      })
+      await cleanupRunSession(
+        {
+          sessionId,
+          cwd: trimmedLocation,
+          existingDirectoryNames: [],
+        },
+        "Failed to close quick start terminal session:",
+      )
+      activeRunStateRef.current = null
       setActiveRun(null)
       setStep("configure")
       setErrorMessage(
         error instanceof Error ? error.message : "Failed to start the install command.",
       )
+    } finally {
+      isRunStartingRef.current = false
+      setIsRunStarting(false)
     }
   }
 
   const canRun =
-    command.trim().length > 0 && location.trim().length > 0
+    command.trim().length > 0 && location.trim().length > 0 && !isRunStarting
 
   return (
     <Dialog open={open} onOpenChange={handleModalOpenChange}>
