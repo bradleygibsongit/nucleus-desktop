@@ -95,8 +95,13 @@ export const desktop = {
     openExternal: (url: string) => window.nucleus.shell.openExternal(url),
   },
   terminal: {
-    createSession: (sessionId: string, cwd: string, cols: number, rows: number) =>
-      window.nucleus.terminal.createSession(sessionId, cwd, cols, rows),
+    createSession: (
+      sessionId: string,
+      cwd: string,
+      cols: number,
+      rows: number,
+      initialCommand?: string
+    ) => window.nucleus.terminal.createSession(sessionId, cwd, cols, rows, initialCommand),
     write: (sessionId: string, data: string) => window.nucleus.terminal.write(sessionId, data),
     resize: (sessionId: string, cols: number, rows: number) =>
       window.nucleus.terminal.resize(sessionId, cols, rows),

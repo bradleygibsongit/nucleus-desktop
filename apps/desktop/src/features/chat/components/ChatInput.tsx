@@ -800,6 +800,23 @@ export function ChatInput({
     }
 
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.repeat || event.isComposing) {
+        return
+      }
+
+      if (
+        event.key === "Enter" &&
+        !event.shiftKey &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        activeApprovalPrompt
+      ) {
+        event.preventDefault()
+        handleApprovePrompt()
+        return
+      }
+
       if (event.key === "Escape") {
         event.preventDefault()
         if (activeApprovalPrompt) {
@@ -813,7 +830,13 @@ export function ChatInput({
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [activeApprovalPrompt, handleDenyPrompt, handleDismissPrompt, isPromptActive])
+  }, [
+    activeApprovalPrompt,
+    handleApprovePrompt,
+    handleDenyPrompt,
+    handleDismissPrompt,
+    isPromptActive,
+  ])
 
   const promptProgressLabel = activeQuestionPrompt
     ? `${currentPromptQuestionIndex + 1} of ${activeQuestionPrompt.questions.length}`

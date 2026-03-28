@@ -103,13 +103,20 @@ contextBridge.exposeInMainWorld("nucleus", {
       ipcRenderer.invoke(IPC_CHANNELS.shellOpenExternal, url) as Promise<void>,
   },
   terminal: {
-    createSession: (sessionId: string, cwd: string, cols: number, rows: number) =>
+    createSession: (
+      sessionId: string,
+      cwd: string,
+      cols: number,
+      rows: number,
+      initialCommand?: string
+    ) =>
       ipcRenderer.invoke(
         IPC_CHANNELS.terminalCreateSession,
         sessionId,
         cwd,
         cols,
-        rows
+        rows,
+        initialCommand
       ) as Promise<TerminalStartResponse>,
     write: (sessionId: string, data: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.terminalWrite, sessionId, data) as Promise<void>,

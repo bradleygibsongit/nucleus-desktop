@@ -113,6 +113,7 @@ export interface ProjectFileSystemEvent {
 
 export interface TerminalStartResponse {
   initialData: string
+  shellKind: "posix" | "cmd" | "powershell"
 }
 
 export interface TerminalDataEvent {
@@ -122,6 +123,7 @@ export interface TerminalDataEvent {
 
 export interface TerminalExitEvent {
   sessionId: string
+  exitCode?: number
 }
 
 export interface AppUpdateInfo {

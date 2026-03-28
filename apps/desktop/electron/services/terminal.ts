@@ -16,6 +16,7 @@ interface TerminalSession {
   pty: IPty
   buffer: string
   exited: boolean
+  shellKind: TerminalStartResponse["shellKind"]
 }
 
 function trimScrollback(buffer: string): string {
@@ -34,6 +35,20 @@ function resolveDefaultShell(): string {
   return process.env.SHELL || "/bin/zsh"
 }
 
+function resolveShellKind(shell: string): TerminalStartResponse["shellKind"] {
+  if (process.platform !== "win32") {
+    return "posix"
+  }
+
+  const normalizedShell = shell.toLowerCase()
+
+  if (normalizedShell.includes("powershell") || normalizedShell.endsWith("pwsh.exe")) {
+    return "powershell"
+  }
+
+  return "cmd"
+}
+
 export class TerminalService {
   private readonly sessions = new Map<string, TerminalSession>()
 
@@ -43,7 +58,8 @@ export class TerminalService {
     sessionId: string,
     cwd: string,
     cols: number,
-    rows: number
+    rows: number,
+    initialCommand?: string
   ): Promise<TerminalStartResponse> {
     if (!sessionId.trim()) {
       throw new Error("Terminal session id is required")
@@ -61,10 +77,11 @@ export class TerminalService {
     const existing = this.sessions.get(sessionId)
     if (existing && !existing.exited) {
       existing.pty.resize(Math.max(1, cols), Math.max(1, rows))
-      return { initialData: existing.buffer }
+      return { initialData: existing.buffer, shellKind: existing.shellKind }
     }
 
     const shell = resolveDefaultShell()
+    const shellKind = resolveShellKind(shell)
     const shellArgs =
       process.platform === "win32"
         ? []
@@ -84,6 +101,7 @@ export class TerminalService {
       pty: terminal,
       buffer: "",
       exited: false,
+      shellKind,
     }
 
     terminal.onData((data) => {
@@ -97,14 +115,22 @@ export class TerminalService {
       this.sendEvent(EVENT_CHANNELS.terminalData, payload)
     })
 
-    terminal.onExit(() => {
+    terminal.onExit((event) => {
       session.exited = true
-      const payload: TerminalExitEvent = { sessionId }
+      const payload: TerminalExitEvent = {
+        sessionId,
+        exitCode: event.exitCode,
+      }
       this.sendEvent(EVENT_CHANNELS.terminalExit, payload)
     })
 
     this.sessions.set(sessionId, session)
-    return { initialData: session.buffer }
+
+    if (initialCommand) {
+      terminal.write(initialCommand)
+    }
+
+    return { initialData: session.buffer, shellKind }
   }
 
   async write(sessionId: string, data: string): Promise<void> {

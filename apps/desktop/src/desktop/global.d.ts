@@ -73,7 +73,8 @@ declare global {
           sessionId: string,
           cwd: string,
           cols: number,
-          rows: number
+          rows: number,
+          initialCommand?: string
         ) => Promise<TerminalStartResponse>
         write: (sessionId: string, data: string) => Promise<void>
         resize: (sessionId: string, cols: number, rows: number) => Promise<void>

@@ -97,6 +97,9 @@ export function ApprovalPromptSurface({
         >
           <CheckCircle className="size-4" />
           <span>Approve</span>
+          <span className="rounded-md border border-black/10 bg-black/10 px-1.5 py-0.5 text-[11px] leading-none text-[var(--color-chat-approval-emphasis-foreground)]/80">
+            Enter
+          </span>
         </button>
       </div>
     </div>

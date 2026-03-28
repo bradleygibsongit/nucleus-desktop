@@ -183,8 +183,14 @@ function registerIpcHandlers(storeService: JsonStoreService): void {
 
   ipcMain.handle(
     IPC_CHANNELS.terminalCreateSession,
-    (_event, sessionId: string, cwd: string, cols: number, rows: number) =>
-      terminalService.createSession(sessionId, cwd, cols, rows)
+    (
+      _event,
+      sessionId: string,
+      cwd: string,
+      cols: number,
+      rows: number,
+      initialCommand?: string
+    ) => terminalService.createSession(sessionId, cwd, cols, rows, initialCommand)
   )
   ipcMain.handle(IPC_CHANNELS.terminalWrite, (_event, sessionId: string, data: string) =>
     terminalService.write(sessionId, data)
