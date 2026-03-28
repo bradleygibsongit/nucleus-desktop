@@ -82,7 +82,7 @@ export function CreateBranchDialog({
       }}
     >
       <DialogContent
-        className="w-[min(92vw,420px)] max-w-[420px] gap-0 overflow-hidden rounded-[24px] border border-sidebar-border bg-card p-0 text-card-foreground sm:max-w-[420px]"
+        className="w-[min(92vw,420px)] max-w-[420px] gap-0 overflow-hidden rounded-[var(--radius-2xl)] border border-sidebar-border bg-card p-0 text-card-foreground sm:max-w-[420px]"
         showCloseButton={false}
       >
         <div className="relative flex flex-col gap-4 px-5 py-4">
