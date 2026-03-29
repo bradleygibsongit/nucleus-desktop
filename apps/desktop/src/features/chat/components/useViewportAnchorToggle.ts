@@ -3,42 +3,36 @@ import { useStickToBottomContext } from "use-stick-to-bottom"
 
 export function useViewportAnchorToggle() {
   const stickToBottom = useStickToBottomContext()
-  const releaseTimeoutRef = useRef<number | null>(null)
+  const settleFrameRef = useRef<number | null>(null)
 
   return useCallback(
-    (anchor: HTMLElement | null, toggle: () => void) => {
+    (_anchor: HTMLElement | null, toggle: () => void) => {
       const scrollElement = stickToBottom.scrollRef.current
-      if (!anchor || !scrollElement) {
+      if (!scrollElement) {
         toggle()
         return
       }
 
-      const topBefore = anchor.getBoundingClientRect().top
-      const previousTargetScrollTop = stickToBottom.targetScrollTop
+      const scrollTopBefore = scrollElement.scrollTop
 
-      // For the immediate resize caused by this toggle, anchor the clicked
-      // control in place and let StickToBottom own the actual scroll update.
-      stickToBottom.targetScrollTop = (_targetScrollTop, { scrollElement }) => {
-        const drift = anchor.getBoundingClientRect().top - topBefore
-        return scrollElement.scrollTop + drift
+      if (settleFrameRef.current != null) {
+        window.cancelAnimationFrame(settleFrameRef.current)
+        settleFrameRef.current = null
       }
 
-      if (releaseTimeoutRef.current != null) {
-        window.clearTimeout(releaseTimeoutRef.current)
-        releaseTimeoutRef.current = null
-      }
+      // User-triggered expansion should keep the current viewport stable,
+      // not remain locked to the chat bottom during the resulting resize.
+      stickToBottom.stopScroll()
+      stickToBottom.state.animation = undefined
 
       toggle()
 
-      releaseTimeoutRef.current = window.setTimeout(() => {
-        releaseTimeoutRef.current = null
-        requestAnimationFrame(() => {
-          const currentScrollTop = scrollElement.scrollTop
-          stickToBottom.state.lastScrollTop = currentScrollTop
-          stickToBottom.state.ignoreScrollToTop = currentScrollTop
-          stickToBottom.targetScrollTop = previousTargetScrollTop ?? null
-        })
-      }, 0)
+      settleFrameRef.current = window.requestAnimationFrame(() => {
+        settleFrameRef.current = null
+
+        stickToBottom.state.scrollTop = scrollTopBefore
+        stickToBottom.state.lastScrollTop = stickToBottom.state.scrollTop
+      })
     },
     [stickToBottom]
   )

@@ -162,10 +162,24 @@ function getCommandLabel(command: unknown): string {
   return normalized || raw
 }
 
-function renderInlineCode(value: string) {
+function truncateInlineSummary(value: string, maxLength = 52): string {
+  if (value.length <= maxLength) {
+    return value
+  }
+
+  return `${value.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`
+}
+
+function renderInlineCode(value: string, title?: string, className?: string) {
   return (
-    <code className="inline-flex items-center rounded-[0.75rem] bg-muted/80 px-2 py-0.5 align-middle font-mono text-[0.95em] leading-tight text-foreground/92">
-      {value}
+    <code
+      title={title}
+      className={cn(
+        "inline-flex min-w-0 max-w-full items-center overflow-hidden whitespace-nowrap rounded-[0.75rem] bg-muted/80 px-2 py-0.5 align-middle font-mono text-[0.95em] leading-tight text-foreground/92",
+        className
+      )}
+    >
+      <span className="block min-w-0 truncate">{value}</span>
     </code>
   )
 }
@@ -226,10 +240,16 @@ function prettyValue(value: unknown): string {
 function renderCommandSummary(toolPart: RuntimeToolPart) {
   const input = toolPart.state.input
   const commandLabel = getCommandLabel(input.command ?? toolPart.state.title)
+  const displayCommandLabel = truncateInlineSummary(commandLabel)
 
   return (
-    <span>
-      Bash {renderInlineCode(commandLabel)}
+    <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
+      <span className="shrink-0">Bash</span>
+      {renderInlineCode(
+        displayCommandLabel,
+        commandLabel,
+        "max-w-[180px] sm:max-w-[220px] md:max-w-[280px]"
+      )}
     </span>
   )
 }
@@ -519,7 +539,7 @@ function InlineActivityRow({
               )}
             />
           ) : null}
-          <span className="min-w-0">{summary}</span>
+          <span className="min-w-0 flex-1">{summary}</span>
           <span
             className={cn(
               "shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100",
@@ -540,7 +560,7 @@ function InlineActivityRow({
               )}
             />
           ) : null}
-          <span className="min-w-0">{summary}</span>
+          <span className="min-w-0 flex-1">{summary}</span>
         </span>
       )}
       {canExpand && isOpen ? (
