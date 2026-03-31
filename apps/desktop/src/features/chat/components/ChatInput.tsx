@@ -229,7 +229,7 @@ export function ChatInput({
   onAnswerPrompt,
   onDismissPrompt,
 }: ChatInputProps) {
-  const { selectedProjectId } = useProjectStore()
+  const focusedProjectId = useProjectStore((state) => state.focusedProjectId)
   const getProjectChat = useChatStore((state) => state.getProjectChat)
   const [isImeComposing, setIsImeComposing] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -264,7 +264,7 @@ export function ChatInput({
   const { commands, isLoading: isLoadingCommands } = useCommands()
   const { agents, isLoading: isLoadingAgents } = useAgents()
   const { results: fileResults, isLoading: isLoadingFiles, search: searchFiles, clear: clearFiles } = useFileSearch()
-  const selectedHarnessId = selectedProjectId ? getProjectChat(selectedProjectId).selectedHarnessId : null
+  const selectedHarnessId = focusedProjectId ? getProjectChat(focusedProjectId).selectedHarnessId : null
   const selectedModel = useMemo(
     () => availableModels.find((model) => model.id === selectedModelId) ?? null,
     [availableModels, selectedModelId]

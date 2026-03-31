@@ -33,6 +33,7 @@ export interface GitBranchesResponse {
   currentBranch: string
   upstreamBranch: string | null
   branches: string[]
+  remoteNames: string[]
   workingTreeSummary: GitWorkingTreeSummary
   aheadCount: number
   behindCount: number
@@ -89,6 +90,7 @@ export interface GitRunStackedActionInput {
   featureBranch?: boolean
   filePaths?: string[]
   generationModel?: string | null
+  remoteName?: string | null
 }
 
 export interface GitRunStackedActionResult {
@@ -142,6 +144,10 @@ export interface ProjectFileSystemEvent {
 export interface TerminalStartResponse {
   initialData: string
   shellKind: "posix" | "cmd" | "powershell"
+}
+
+export interface TerminalCreateSessionEnvironment {
+  [key: string]: string
 }
 
 export interface TerminalDataEvent {

@@ -189,8 +189,9 @@ function registerIpcHandlers(storeService: JsonStoreService): void {
       cwd: string,
       cols: number,
       rows: number,
-      initialCommand?: string
-    ) => terminalService.createSession(sessionId, cwd, cols, rows, initialCommand)
+      initialCommand?: string,
+      environment?: Record<string, string>
+    ) => terminalService.createSession(sessionId, cwd, cols, rows, initialCommand, environment)
   )
   ipcMain.handle(IPC_CHANNELS.terminalWrite, (_event, sessionId: string, data: string) =>
     terminalService.write(sessionId, data)

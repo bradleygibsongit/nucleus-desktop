@@ -6,9 +6,13 @@ import { SettingsPage } from "@/features/settings/components/SettingsPage"
 import { useTabStore } from "@/features/editor/store"
 import { useCurrentProjectWorktree } from "@/features/shared/hooks"
 import { useChatStore } from "@/features/chat/store"
+import { Button } from "@/features/shared/components/ui/button"
+import { useProjectStore } from "@/features/workspace/store"
 import type { Tab } from "@/features/chat/types"
 import type { SettingsSectionId } from "@/features/settings/config"
 import { UpdateBanner } from "@/features/updates/components/UpdateBanner"
+
+const OPEN_PROJECT_SETTINGS_EVENT = "nucleus:open-project-settings"
 
 interface DiffTabContentProps {
   tab: Tab
@@ -47,9 +51,51 @@ interface MainContentProps {
   activeSettingsSection: SettingsSectionId
 }
 
+function NoWorkspaceSelectedState({
+  projectId,
+  onCreateWorkspace,
+}: {
+  projectId: string
+  onCreateWorkspace: () => void
+}) {
+  return (
+    <div className="flex h-full items-center justify-center px-6 py-10">
+      <div className="w-full max-w-xl rounded-[28px] border border-border/70 bg-card/95 px-8 py-10 text-center shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
+        <div className="mx-auto mb-6 flex size-14 items-center justify-center rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-muted/70 text-lg font-semibold text-foreground shadow-sm">
+          N
+        </div>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">No workspace selected</h1>
+        <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-muted-foreground">
+          This project does not have a workspace yet. Create one to start chat, files, changes,
+          and terminal workflows.
+        </p>
+        <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          <Button type="button" onClick={onCreateWorkspace}>
+            Create workspace
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() =>
+              window.dispatchEvent(
+                new CustomEvent(OPEN_PROJECT_SETTINGS_EVENT, {
+                  detail: { projectId },
+                })
+              )
+            }
+          >
+            Project settings
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function MainContent({ activeView, activeSettingsSection }: MainContentProps) {
-  const { selectedProjectId, selectedWorktreeId, selectedWorktreePath } = useCurrentProjectWorktree()
-  const { getProjectChat, openDraftSession, selectSession } = useChatStore()
+  const { focusedProjectId, activeWorktreeId, activeWorktreePath } = useCurrentProjectWorktree()
+  const { getProjectChat, openDraftSession, createOptimisticSession, selectSession } = useChatStore()
+  const createWorktree = useProjectStore((state) => state.createWorktree)
   const {
     initialize,
     isInitialized,
@@ -73,17 +119,17 @@ export function MainContent({ activeView, activeSettingsSection }: MainContentPr
       return
     }
 
-    switchProject(selectedWorktreeId)
-  }, [isInitialized, selectedWorktreeId, switchProject])
+    switchProject(activeWorktreeId)
+  }, [activeWorktreeId, isInitialized, switchProject])
 
   useEffect(() => {
-    if (!isInitialized || !selectedProjectId || !selectedWorktreePath) {
+    if (!isInitialized || !focusedProjectId || !activeWorktreePath) {
       lastInitializedWorktreeIdRef.current = null
       lastOpenedSessionIdRef.current = null
       return
     }
 
-    const worktreeChat = getProjectChat(selectedProjectId)
+    const worktreeChat = getProjectChat(focusedProjectId)
     const currentTabs = useTabStore.getState().tabs
     const activeSession =
       worktreeChat.sessions.find((session) => session.id === worktreeChat.activeSessionId) ??
@@ -94,12 +140,23 @@ export function MainContent({ activeView, activeSettingsSection }: MainContentPr
       .getState()
       .tabs.find((tab) => tab.type === "chat-session" && tab.sessionId === activeSession?.id)
 
-    if (lastInitializedWorktreeIdRef.current !== selectedWorktreeId) {
-      lastInitializedWorktreeIdRef.current = selectedWorktreeId
+    if (lastInitializedWorktreeIdRef.current !== activeWorktreeId) {
+      lastInitializedWorktreeIdRef.current = activeWorktreeId
       lastOpenedSessionIdRef.current = activeSession?.id ?? null
 
-      if (!currentTabs.length && activeSession && !activeChatTab) {
-        openChatSession(activeSession.id, activeSession.title)
+      if (!currentTabs.length) {
+        if (activeSession && !activeChatTab) {
+          openChatSession(activeSession.id, activeSession.title)
+          return
+        }
+
+        if (!activeSession) {
+          const optimisticSession = createOptimisticSession(focusedProjectId, activeWorktreePath)
+          if (optimisticSession) {
+            lastOpenedSessionIdRef.current = optimisticSession.id
+            openChatSession(optimisticSession.id, optimisticSession.title)
+          }
+        }
       }
       return
     }
@@ -129,9 +186,10 @@ export function MainContent({ activeView, activeSettingsSection }: MainContentPr
     getProjectChat,
     isInitialized,
     openChatSession,
-    selectedProjectId,
-    selectedWorktreePath,
-    selectedWorktreeId,
+    createOptimisticSession,
+    focusedProjectId,
+    activeWorktreePath,
+    activeWorktreeId,
     tabs,
     updateChatSessionTitle,
   ])
@@ -142,19 +200,19 @@ export function MainContent({ activeView, activeSettingsSection }: MainContentPr
   )
 
   useEffect(() => {
-    if (!selectedProjectId || activeTab?.type !== "chat-session" || !activeTab.sessionId) {
+    if (!focusedProjectId || activeTab?.type !== "chat-session" || !activeTab.sessionId) {
       return
     }
 
-    void selectSession(selectedProjectId, activeTab.sessionId)
-  }, [activeTab, selectSession, selectedProjectId])
+    void selectSession(focusedProjectId, activeTab.sessionId)
+  }, [activeTab, focusedProjectId, selectSession])
 
   const handleTabClose = (tabId: string) => {
     const closingTab = tabs.find((tab) => tab.id === tabId)
     const remainingTabs = tabs.filter((tab) => tab.id !== tabId)
     closeTab(tabId)
 
-    if (!selectedProjectId || !selectedWorktreePath || closingTab?.type !== "chat-session") {
+    if (!focusedProjectId || !activeWorktreePath || closingTab?.type !== "chat-session") {
       return
     }
 
@@ -164,11 +222,19 @@ export function MainContent({ activeView, activeSettingsSection }: MainContentPr
 
     const nextActiveTab = remainingTabs[remainingTabs.length - 1] ?? null
     if (nextActiveTab?.type === "chat-session" && nextActiveTab.sessionId) {
-      void selectSession(selectedProjectId, nextActiveTab.sessionId)
+      void selectSession(focusedProjectId, nextActiveTab.sessionId)
       return
     }
 
-    void openDraftSession(selectedProjectId, selectedWorktreePath)
+    if (!nextActiveTab) {
+      const optimisticSession = createOptimisticSession(focusedProjectId, activeWorktreePath)
+      if (optimisticSession) {
+        openChatSession(optimisticSession.id, optimisticSession.title)
+        return
+      }
+    }
+
+    void openDraftSession(focusedProjectId, activeWorktreePath)
   }
 
   if (activeView === "settings") {
@@ -188,6 +254,21 @@ export function MainContent({ activeView, activeSettingsSection }: MainContentPr
       </main>
     )
   }
+
+  if (focusedProjectId && activeWorktreeId == null) {
+    return (
+      <main className="flex-1 min-w-80 bg-main-content text-main-content-foreground overflow-hidden flex flex-col">
+        <UpdateBanner />
+        <NoWorkspaceSelectedState
+          projectId={focusedProjectId}
+          onCreateWorkspace={() => {
+            void createWorktree(focusedProjectId)
+          }}
+        />
+      </main>
+    )
+  }
+
   return (
     <main className="flex-1 min-w-80 bg-main-content text-main-content-foreground overflow-hidden flex flex-col">
       <UpdateBanner />

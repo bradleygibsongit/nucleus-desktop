@@ -43,27 +43,27 @@ export function RemoveWorktreeModal({
   const copy = useMemo(() => {
     if (isLastWorktree) {
       return {
-        title: "Remove project?",
-        action: "Remove project",
+        title: "Remove last workspace?",
+        action: "Remove workspace",
         description:
-          "This is the last worktree in the project. Removing it will remove the project from Nucleus Desktop. The local folder and files stay on disk.",
+          "This only removes the workspace from Nucleus. The folder, files, Git worktree, and any local changes stay on disk. The project will remain in Nucleus, but it will not have any workspaces until you create a new one.",
       }
     }
 
     if (isRootWorktree) {
       return {
-        title: "Remove root worktree?",
-        action: "Remove root worktree",
+        title: "Remove root workspace?",
+        action: "Remove root workspace",
         description:
-          "This will remove the root worktree from Nucleus Desktop and promote another worktree in its place. The main checkout stays on disk because Git does not allow deleting the main working tree automatically.",
+          "This only removes the root workspace from Nucleus and promotes another workspace in its place. The folder, files, Git worktree, and any local changes stay on disk.",
       }
     }
 
     return {
-      title: "Remove worktree?",
-      action: "Remove worktree",
+      title: "Remove workspace?",
+      action: "Remove workspace",
       description:
-        "This deletes the worktree checkout from disk but keeps its branch. The worktree must be clean before it can be removed.",
+        "This only removes the workspace from Nucleus. The folder, files, Git worktree, and any local changes stay on disk.",
     }
   }, [isLastWorktree, isRootWorktree])
 
@@ -87,7 +87,7 @@ export function RemoveWorktreeModal({
       onOpenChange(false)
     } catch (error) {
       console.error("Failed to remove worktree:", error)
-      setErrorMessage(error instanceof Error ? error.message : "Couldn't remove this worktree.")
+      setErrorMessage(error instanceof Error ? error.message : "Couldn't remove this workspace.")
     } finally {
       setIsRemoving(false)
     }
@@ -102,7 +102,7 @@ export function RemoveWorktreeModal({
           </AlertDialogMedia>
           <AlertDialogTitle>{copy.title}</AlertDialogTitle>
           <AlertDialogDescription>
-            {worktree?.name ?? "This worktree"} will be removed.
+            {worktree?.name ?? "This workspace"} will be removed.
             {" "}
             {copy.description}
             {errorMessage ? ` ${errorMessage}` : ""}

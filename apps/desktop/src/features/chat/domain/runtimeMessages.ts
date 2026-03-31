@@ -106,6 +106,11 @@ export function dedupeMessages(messages: MessageWithParts[]): MessageWithParts[]
   const deduped: MessageWithParts[] = []
 
   for (const message of dedupedById) {
+    if (message.info.role !== "assistant") {
+      deduped.push(message)
+      continue
+    }
+
     const semanticKey = [
       message.info.role,
       message.info.itemType ?? "",
@@ -130,12 +135,19 @@ export function dedupeMessages(messages: MessageWithParts[]): MessageWithParts[]
     }
 
     const existing = deduped[existingIndex]
-    const shouldReplaceExisting =
-      isProvisionalMessageId(existing.info.id) && !isProvisionalMessageId(message.info.id)
+    const existingIsProvisional = isProvisionalMessageId(existing.info.id)
+    const messageIsProvisional = isProvisionalMessageId(message.info.id)
 
-    if (shouldReplaceExisting) {
+    if (existingIsProvisional && !messageIsProvisional) {
       deduped[existingIndex] = message
+      continue
     }
+
+    if (!existingIsProvisional && messageIsProvisional) {
+      continue
+    }
+
+    deduped.push(message)
   }
 
   return deduped

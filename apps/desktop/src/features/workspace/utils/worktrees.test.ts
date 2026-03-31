@@ -2,8 +2,11 @@ import { describe, expect, test } from "bun:test"
 
 import {
   buildManagedWorktreePath,
+  getDefaultProjectWorkspacesPath,
+  getProjectWorkspacesPath,
   getSelectedWorktree,
   isWorktreeReady,
+  normalizeProjectWorkspacesPath,
   resolveRepoRootPath,
 } from "./worktrees"
 
@@ -36,6 +39,29 @@ describe("worktree utils", () => {
     )
 
     expect(managedWorktreePath).toBe("/tmp/.nucleus-worktrees/repo-project-123/kolkata")
+  })
+
+  test("resolves the default workspaces path from the repo root", () => {
+    expect(
+      getDefaultProjectWorkspacesPath({
+        id: "project-123",
+        repoRootPath: "/tmp/repo",
+      })
+    ).toBe("/tmp/.nucleus-worktrees/repo-project-123")
+  })
+
+  test("prefers a stored custom workspaces path when present", () => {
+    expect(
+      getProjectWorkspacesPath({
+        id: "project-123",
+        repoRootPath: "/tmp/repo",
+        workspacesPath: "/tmp/conductor/workspaces/repo ",
+      })
+    ).toBe("/tmp/conductor/workspaces/repo")
+  })
+
+  test("normalizes empty custom workspaces paths to null", () => {
+    expect(normalizeProjectWorkspacesPath("   ")).toBeNull()
   })
 
   test("falls back to the first ready worktree when the stored root is hidden", () => {

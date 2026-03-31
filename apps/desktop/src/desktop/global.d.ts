@@ -17,6 +17,7 @@ import type {
   GitWorktreeSummary,
   ProjectFileSystemEvent,
   SkillsSyncResponse,
+  TerminalCreateSessionEnvironment,
   TerminalDataEvent,
   TerminalExitEvent,
   TerminalStartResponse,
@@ -79,7 +80,8 @@ declare global {
           cwd: string,
           cols: number,
           rows: number,
-          initialCommand?: string
+          initialCommand?: string,
+          environment?: TerminalCreateSessionEnvironment
         ) => Promise<TerminalStartResponse>
         write: (sessionId: string, data: string) => Promise<void>
         resize: (sessionId: string, cols: number, rows: number) => Promise<void>

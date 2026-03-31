@@ -24,10 +24,27 @@ export interface GitQuickAction {
   hint?: string
 }
 
+function hasConfiguredRemote(
+  branchData: GitBranchesResponse,
+  preferredRemoteName?: string | null
+): boolean {
+  const normalizedRemoteName = preferredRemoteName?.trim()
+  if (normalizedRemoteName) {
+    return branchData.remoteNames.includes(normalizedRemoteName)
+  }
+
+  if (branchData.hasOriginRemote) {
+    return true
+  }
+
+  return branchData.remoteNames.length > 0
+}
+
 export function buildMenuItems(
   branchData: GitBranchesResponse | null,
   hasChanges: boolean,
-  isBusy: boolean
+  isBusy: boolean,
+  preferredRemoteName?: string | null
 ): GitActionMenuItem[] {
   if (!branchData) {
     return []
@@ -36,7 +53,8 @@ export function buildMenuItems(
   const hasBranch = !branchData.isDetached
   const hasOpenPr = branchData.openPullRequest?.state === "open"
   const isBehind = branchData.behindCount > 0
-  const canPushWithoutUpstream = branchData.hasOriginRemote && !branchData.hasUpstream
+  const canPushWithoutUpstream =
+    hasConfiguredRemote(branchData, preferredRemoteName) && !branchData.hasUpstream
   const canCommit = !isBusy && hasChanges
   const canPush =
     !isBusy &&
@@ -92,7 +110,8 @@ export function buildMenuItems(
 export function resolveQuickAction(
   branchData: GitBranchesResponse | null,
   hasChanges: boolean,
-  isBusy: boolean
+  isBusy: boolean,
+  preferredRemoteName?: string | null
 ): GitQuickAction {
   if (isBusy) {
     return {
@@ -117,6 +136,7 @@ export function resolveQuickAction(
   const isAhead = branchData.aheadCount > 0
   const isBehind = branchData.behindCount > 0
   const isDiverged = isAhead && isBehind
+  const hasConfiguredPreferredRemote = hasConfiguredRemote(branchData, preferredRemoteName)
 
   if (!hasBranch) {
     return {
@@ -128,7 +148,7 @@ export function resolveQuickAction(
   }
 
   if (hasChanges) {
-    if (!branchData.hasUpstream && !branchData.hasOriginRemote) {
+    if (!branchData.hasUpstream && !hasConfiguredPreferredRemote) {
       return { label: "Commit", disabled: false, kind: "run_action", action: "commit" }
     }
     if (hasOpenPr || branchData.isDefaultBranch) {
@@ -148,7 +168,7 @@ export function resolveQuickAction(
   }
 
   if (!branchData.hasUpstream) {
-    if (!branchData.hasOriginRemote) {
+    if (!hasConfiguredPreferredRemote) {
       if (hasOpenPr && !isAhead) {
         return { label: "View PR", disabled: false, kind: "open_pr" }
       }
@@ -156,7 +176,9 @@ export function resolveQuickAction(
         label: "Push",
         disabled: true,
         kind: "show_hint",
-        hint: 'Add an "origin" remote before pushing or creating a PR.',
+        hint: preferredRemoteName?.trim()
+          ? `Configure the "${preferredRemoteName.trim()}" remote before pushing or creating a PR.`
+          : "Add a remote before pushing or creating a PR.",
       }
     }
 

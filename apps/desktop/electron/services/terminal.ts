@@ -59,7 +59,8 @@ export class TerminalService {
     cwd: string,
     cols: number,
     rows: number,
-    initialCommand?: string
+    initialCommand?: string,
+    environment?: Record<string, string>
   ): Promise<TerminalStartResponse> {
     if (!sessionId.trim()) {
       throw new Error("Terminal session id is required")
@@ -94,7 +95,7 @@ export class TerminalService {
       cols: Math.max(1, cols),
       rows: Math.max(1, rows),
       cwd: trimmedCwd,
-      env: { ...process.env, HOME: os.homedir() },
+      env: { ...process.env, HOME: os.homedir(), ...environment },
     })
 
     const session: TerminalSession = {

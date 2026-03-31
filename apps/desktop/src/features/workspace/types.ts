@@ -40,9 +40,12 @@ export interface Project {
   iconPath?: string | null
   path: string       // Full filesystem path
   repoRootPath: string
-  rootWorktreeId: string
+  workspacesPath?: string | null
+  rootWorktreeId: string | null
   selectedWorktreeId: string | null
   targetBranch: string | null
+  remoteName?: string | null
+  setupScript?: string | null
   hiddenWorktreePaths?: string[]
   worktrees: ProjectWorktree[]
   addedAt: number    // Timestamp when added (for ordering)

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { desktop } from "@/desktop/client"
 import { CaretDown, PencilSimple, Plus } from "@/components/icons"
 import {
   formatShortcutBinding,
@@ -16,7 +15,7 @@ import {
 import { useRightSidebar } from "@/features/shared/components/layout/useRightSidebar"
 import { useCurrentProjectWorktree } from "@/features/shared/hooks"
 import { Button } from "@/features/shared/components/ui/button"
-import { useTerminalStore } from "@/features/terminal/store/terminalStore"
+import { runCommandInProjectTerminal } from "@/features/terminal/utils/projectTerminal"
 import { useProjectStore } from "@/features/workspace/store"
 import type { ProjectAction } from "@/features/workspace/types"
 import {
@@ -27,14 +26,8 @@ import { ProjectActionIcon } from "@/features/workspace/components/ProjectAction
 import { AddProjectActionModal } from "@/features/workspace/components/modals/AddProjectActionModal"
 import { cn } from "@/lib/utils"
 
-const ACTION_TERMINAL_COLS = 120
-const ACTION_TERMINAL_ROWS = 32
-
 export function ProjectActionsControl() {
   const { setPrimaryAction } = useProjectStore()
-  const getOrCreateActiveTabId = useTerminalStore((state) => state.getOrCreateActiveTabId)
-  const selectTerminal = useTerminalStore((state) => state.selectTerminal)
-  const setProjectCollapsed = useTerminalStore((state) => state.setProjectCollapsed)
   const { expand } = useRightSidebar()
   const { selectedProject, selectedWorktreeId, selectedWorktreePath } =
     useCurrentProjectWorktree()
@@ -58,26 +51,19 @@ export function ProjectActionsControl() {
 
     setRunningActionId(action.id)
     expand()
-    setProjectCollapsed(selectedWorktreeId, false)
 
     try {
-      const tabId = getOrCreateActiveTabId(selectedWorktreeId)
-      const sessionId = `project-terminal:${tabId}`
       const commandLines = getProjectActionCommands(action.command)
 
       if (commandLines.length === 0) {
         return
       }
 
-      selectTerminal(selectedWorktreeId, tabId)
-
-      await desktop.terminal.createSession(
-        sessionId,
-        selectedWorktreePath,
-        ACTION_TERMINAL_COLS,
-        ACTION_TERMINAL_ROWS,
-      )
-      await desktop.terminal.write(sessionId, `${commandLines.join("\n")}\n`)
+      await runCommandInProjectTerminal({
+        projectId: selectedWorktreeId,
+        cwd: selectedWorktreePath,
+        command: commandLines.join("\n"),
+      })
 
       if (promote && selectedProject.primaryActionId !== action.id) {
         await setPrimaryAction(selectedProject.id, action.id)
@@ -87,7 +73,7 @@ export function ProjectActionsControl() {
     } finally {
       setRunningActionId((current) => (current === action.id ? null : current))
     }
-  }, [expand, getOrCreateActiveTabId, selectTerminal, selectedProject, selectedWorktreeId, selectedWorktreePath, setPrimaryAction, setProjectCollapsed])
+  }, [expand, selectedProject, selectedWorktreeId, selectedWorktreePath, setPrimaryAction])
 
   useEffect(() => {
     if (!selectedProject || actions.length === 0 || isModalOpen) {

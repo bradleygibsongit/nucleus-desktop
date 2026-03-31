@@ -27,10 +27,12 @@ import {
 } from "@/features/workspace/components/modals"
 import { ProjectIcon } from "@/features/workspace/components/ProjectIcon"
 import { useProjectStore } from "@/features/workspace/store"
-import { useChatStore, type Session } from "@/features/chat/store"
 import { useProjectGitStore } from "@/features/shared/hooks/projectGitStore"
 import { openFolderPicker } from "@/features/workspace/utils/folderDialog"
+import { runCommandInProjectTerminal } from "@/features/terminal/utils/projectTerminal"
+import { buildWorkspaceSetupScriptEnvironment } from "@/features/workspace/utils/setupScript"
 import { useSidebar } from "./useSidebar"
+import { useRightSidebar } from "./useRightSidebar"
 import { SidebarShell } from "./SidebarShell"
 import { Button } from "@/features/shared/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -41,6 +43,8 @@ import {
   type SettingsSectionId,
 } from "@/features/settings/config"
 import { isWorktreeReady } from "@/features/workspace/utils/worktrees"
+
+const OPEN_PROJECT_SETTINGS_EVENT = "nucleus:open-project-settings"
 
 interface LeftSidebarProps {
   activeView?: "chat" | "settings" | "automations"
@@ -61,38 +65,14 @@ function haveProjectIdsChangedOrder(nextProjectIds: string[], currentProjects: P
 
 function getWorktreeRemovalDisabledReason({
   worktree,
-  isChangesLoading,
-  hasLoadedChanges,
-  changesError,
-  changeCount,
 }: {
   worktree: ProjectWorktree
-  isChangesLoading: boolean
-  hasLoadedChanges: boolean
-  changesError: string | null
-  changeCount: number
 }) {
   if (worktree.status !== "ready") {
-    return "This worktree isn't ready to remove yet."
-  }
-
-  if (isChangesLoading || !hasLoadedChanges) {
-    return "Checking for uncommitted changes..."
-  }
-
-  if (changesError) {
-    return "Couldn't verify whether this worktree is clean yet."
-  }
-
-  if (changeCount > 0) {
-    return "This worktree has uncommitted changes. Commit or discard them before removing it."
+    return "This workspace isn't ready to remove yet."
   }
 
   return null
-}
-
-function formatSessionTitle(session: Session): string {
-  return session.title?.trim() || "New chat"
 }
 
 function ProjectReorderHandle({
@@ -186,9 +166,11 @@ export function LeftSidebar({
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>([])
   const { isCollapsed, width, setWidth, toggle } = useSidebar()
+  const { expand: expandRightSidebar } = useRightSidebar()
   const {
     projects,
-    selectedProjectId,
+    focusedProjectId,
+    activeWorktreeId,
     isLoading,
     loadProjects,
     addProject,
@@ -197,8 +179,6 @@ export function LeftSidebar({
     createWorktree,
     setProjectOrder,
   } = useProjectStore()
-  const getProjectChat = useChatStore((state) => state.getProjectChat)
-  const selectSession = useChatStore((state) => state.selectSession)
   const requestGitRefresh = useProjectGitStore((state) => state.requestRefresh)
   const ensureGitEntry = useProjectGitStore((state) => state.ensureEntry)
   const gitEntriesByProjectPath = useProjectGitStore((state) => state.entriesByProjectPath)
@@ -249,6 +229,23 @@ export function LeftSidebar({
   )
   const orderedProjectIds = projectOrderPreview ?? projects.map((project) => project.id)
 
+  useEffect(() => {
+    const handleOpenProjectSettings = (event: Event) => {
+      const projectId = (event as CustomEvent<{ projectId?: string }>).detail?.projectId
+      if (!projectId) {
+        return
+      }
+
+      const project = projectById.get(projectId) ?? null
+      if (project) {
+        setProjectSettingsProject(project)
+      }
+    }
+
+    window.addEventListener(OPEN_PROJECT_SETTINGS_EVENT, handleOpenProjectSettings)
+    return () => window.removeEventListener(OPEN_PROJECT_SETTINGS_EVENT, handleOpenProjectSettings)
+  }, [projectById])
+
   const handleToggleProjectExpanded = (project: Project) => {
     const isExpanded = expandedProjectIds.includes(project.id)
 
@@ -263,7 +260,25 @@ export function LeftSidebar({
     event.stopPropagation()
     onOpenChat?.()
     await selectProject(project.id)
-    await createWorktree(project.id)
+    const readyWorktree = await createWorktree(project.id)
+    const setupEnvironment = buildWorkspaceSetupScriptEnvironment(project, readyWorktree)
+    const setupScript = project.setupScript?.trim()
+
+    if (!setupScript) {
+      return
+    }
+
+    try {
+      expandRightSidebar()
+      await runCommandInProjectTerminal({
+        projectId: readyWorktree.id,
+        cwd: readyWorktree.path,
+        command: project.setupScript ?? "",
+        environment: setupEnvironment,
+      })
+    } catch (error) {
+      console.error(`Failed to run setup script for workspace "${readyWorktree.name}":`, error)
+    }
   }
 
   const handleSelectWorktree = async (project: Project, worktree: ProjectWorktree) => {
@@ -278,12 +293,6 @@ export function LeftSidebar({
 
   const handleRemoveWorktree = (project: Project, worktree: ProjectWorktree) => {
     setWorktreePendingRemoval({ project, worktree })
-  }
-
-  const handleSelectProjectSession = async (project: Project, sessionId: string) => {
-    onOpenChat?.()
-    await selectProject(project.id)
-    await selectSession(project.id, sessionId)
   }
 
   useEffect(() => {
@@ -364,14 +373,6 @@ export function LeftSidebar({
   }
 
   const renderProjectRow = (project: Project) => {
-    const projectChat = getProjectChat(project.id)
-    const archivedSessionIds = new Set(projectChat.archivedSessionIds ?? [])
-    const projectSessions = projectChat.sessions.filter(
-      (session): session is Session =>
-        session != null &&
-        typeof session.id === "string" &&
-        !archivedSessionIds.has(session.id)
-    )
     const isExpanded = expandedProjectIds.includes(project.id)
     const isProjectMenuOpen = openMenuId === project.id
     const isDraggingProject = draggedProjectId === project.id
@@ -381,7 +382,7 @@ export function LeftSidebar({
         <div className="group/project-row relative">
           <button
             type="button"
-            onClick={() => void handleToggleProjectExpanded(project)}
+            onClick={() => handleToggleProjectExpanded(project)}
             className={cn(
               "group/project flex h-8 w-full min-w-0 items-center gap-2 rounded-md pl-8 pr-16 text-left",
               "text-sidebar-foreground/72 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground/92",
@@ -411,7 +412,7 @@ export function LeftSidebar({
               "right-8",
               "opacity-0 group-hover/project-row:opacity-100 focus-visible:opacity-100",
             )}
-            aria-label={`New worktree in ${project.name}`}
+            aria-label={`Create workspace in ${project.name}`}
           >
             <Plus size={14} />
           </button>
@@ -452,7 +453,7 @@ export function LeftSidebar({
             return (
               <div>
                 <div className="px-8 py-1.5 text-[13px] text-sidebar-foreground/36">
-                  No worktrees yet.
+                  No workspaces yet.
                 </div>
               </div>
             )
@@ -462,16 +463,11 @@ export function LeftSidebar({
             <div className="space-y-0.5">
               {project.worktrees.map((worktree) => {
                 const isSelectedWorktree =
-                  selectedProjectId === project.id && project.selectedWorktreeId === worktree.id
+                  focusedProjectId === project.id && activeWorktreeId === worktree.id
                 const isWorktreeMenuOpen = openMenuId === worktree.id
-                const worktreeGitEntry = gitEntriesByProjectPath[worktree.path]
                 const isWorktreeReadyForSelection = isWorktreeReady(worktree)
                 const removeWorktreeDisabledReason = getWorktreeRemovalDisabledReason({
                   worktree,
-                  isChangesLoading: worktreeGitEntry?.isChangesLoading ?? false,
-                  hasLoadedChanges: worktreeGitEntry != null,
-                  changesError: worktreeGitEntry?.changesError ?? null,
-                  changeCount: worktreeGitEntry?.changes.length ?? 0,
                 })
 
                 return (
@@ -517,18 +513,12 @@ export function LeftSidebar({
                         <DotsThree size={14} />
                       </DropdownMenuTrigger>
                       <DropdownMenuContent side="bottom" align="end" className="w-44">
-                        <DropdownMenuItem
-                          onClick={() => void handleSelectWorktree(project, worktree)}
-                          disabled={!isWorktreeReadyForSelection}
-                        >
-                          <span>Open worktree</span>
-                        </DropdownMenuItem>
                         {removeWorktreeDisabledReason ? (
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <div className="block">
                                 <DropdownMenuItem variant="destructive" disabled>
-                                  <span>Remove worktree</span>
+                                  <span>Remove workspace</span>
                                 </DropdownMenuItem>
                               </div>
                             </TooltipTrigger>
@@ -545,7 +535,7 @@ export function LeftSidebar({
                             variant="destructive"
                             onClick={() => void handleRemoveWorktree(project, worktree)}
                           >
-                            <span>Remove worktree</span>
+                              <span>Remove workspace</span>
                           </DropdownMenuItem>
                         )}
                       </DropdownMenuContent>
@@ -553,39 +543,6 @@ export function LeftSidebar({
                   </div>
                 )
               })}
-
-              <div className="px-8 pt-2 pb-1 text-[11px] font-medium uppercase tracking-[0.08em] text-sidebar-foreground/32">
-                Threads
-              </div>
-
-              {projectSessions.length === 0 ? (
-                <div className="px-8 py-1.5 text-[13px] text-sidebar-foreground/36">
-                  No threads yet.
-                </div>
-              ) : (
-                projectSessions.map((session) => {
-                  const isActiveSession =
-                    selectedProjectId === project.id && projectChat.activeSessionId === session.id
-
-                  return (
-                    <button
-                      key={session.id}
-                      type="button"
-                      onClick={() => void handleSelectProjectSession(project, session.id)}
-                      className={cn(
-                        "flex h-8 w-full min-w-0 items-center gap-2 rounded-md pl-8 pr-3 text-left",
-                        "text-sidebar-foreground/48 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground/72",
-                        isActiveSession && "bg-[var(--sidebar-item-active)] text-sidebar-accent-foreground",
-                      )}
-                    >
-                      <span className="h-4 w-4 shrink-0" />
-                      <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-none">
-                        {formatSessionTitle(session)}
-                      </span>
-                    </button>
-                  )
-                })
-              )}
             </div>
           )
         })()}

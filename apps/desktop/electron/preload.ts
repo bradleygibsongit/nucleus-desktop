@@ -18,6 +18,7 @@ import type {
   GitWorktreeSummary,
   ProjectFileSystemEvent,
   SkillsSyncResponse,
+  TerminalCreateSessionEnvironment,
   TerminalDataEvent,
   TerminalExitEvent,
   TerminalStartResponse,
@@ -113,7 +114,8 @@ contextBridge.exposeInMainWorld("nucleus", {
       cwd: string,
       cols: number,
       rows: number,
-      initialCommand?: string
+      initialCommand?: string,
+      environment?: TerminalCreateSessionEnvironment
     ) =>
       ipcRenderer.invoke(
         IPC_CHANNELS.terminalCreateSession,
@@ -121,7 +123,8 @@ contextBridge.exposeInMainWorld("nucleus", {
         cwd,
         cols,
         rows,
-        initialCommand
+        initialCommand,
+        environment
       ) as Promise<TerminalStartResponse>,
     write: (sessionId: string, data: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.terminalWrite, sessionId, data) as Promise<void>,

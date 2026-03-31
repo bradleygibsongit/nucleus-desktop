@@ -22,6 +22,24 @@ function createAssistantTextMessage(id: string, text: string): MessageWithParts 
   }
 }
 
+function createUserTextMessage(id: string, text: string): MessageWithParts {
+  return {
+    info: {
+      id,
+      sessionId: "session-1",
+      role: "user",
+      createdAt: 1,
+    },
+    parts: [
+      {
+        id: `${id}:text`,
+        type: "text",
+        text,
+      },
+    ],
+  }
+}
+
 describe("dedupeMessages", () => {
   test("replaces earlier streamed chunks when the same message id grows", () => {
     const messages = dedupeMessages([
@@ -47,5 +65,18 @@ describe("dedupeMessages", () => {
 
     expect(messages).toHaveLength(1)
     expect(messages[0]?.info.id).toBe("msg_abc123")
+  })
+
+  test("keeps repeated user messages even when the text is identical", () => {
+    const messages = dedupeMessages([
+      createUserTextMessage("msg-user-1", "test"),
+      createUserTextMessage("msg-user-2", "test"),
+    ])
+
+    expect(messages).toHaveLength(2)
+    expect(messages.map((message) => message.info.id)).toEqual([
+      "msg-user-1",
+      "msg-user-2",
+    ])
   })
 })

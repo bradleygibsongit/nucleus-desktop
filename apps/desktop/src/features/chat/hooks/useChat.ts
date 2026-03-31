@@ -94,7 +94,7 @@ export function useChatTimelineState(activeSessionId: string | null): {
   const isResolvedActiveSession = activeSessionId != null && currentSessionId === activeSessionId
 
   return {
-    messages: isResolvedActiveSession ? messages : EMPTY_MESSAGES,
+    messages,
     childSessions: isResolvedActiveSession ? childSessions : undefined,
     status: isResolvedActiveSession ? getUiStatus(status) : "idle",
     activePromptState: isResolvedActiveSession ? activePromptState : null,

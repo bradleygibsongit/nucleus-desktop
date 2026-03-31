@@ -17,6 +17,7 @@ import type {
   GitWorktreeSummary,
   ProjectFileSystemEvent,
   SkillsSyncResponse,
+  TerminalCreateSessionEnvironment,
   TerminalDataEvent,
   TerminalExitEvent,
   TerminalStartResponse,
@@ -105,8 +106,9 @@ export const desktop = {
       cwd: string,
       cols: number,
       rows: number,
-      initialCommand?: string
-    ) => window.nucleus.terminal.createSession(sessionId, cwd, cols, rows, initialCommand),
+      initialCommand?: string,
+      environment?: TerminalCreateSessionEnvironment
+    ) => window.nucleus.terminal.createSession(sessionId, cwd, cols, rows, initialCommand, environment),
     write: (sessionId: string, data: string) => window.nucleus.terminal.write(sessionId, data),
     resize: (sessionId: string, cols: number, rows: number) =>
       window.nucleus.terminal.resize(sessionId, cols, rows),
@@ -159,6 +161,7 @@ export type {
   GitWorktreeSummary,
   ProjectFileSystemEvent,
   SkillsSyncResponse,
+  TerminalCreateSessionEnvironment,
   TerminalDataEvent,
   TerminalExitEvent,
   TerminalStartResponse,

@@ -72,6 +72,29 @@ export function buildManagedWorktreePath(project: Pick<Project, "id" | "repoRoot
   return `${repoParentPath}/.nucleus-worktrees/${repoName}-${project.id}/${slug}`
 }
 
+export function getDefaultProjectWorkspacesPath(
+  project: Pick<Project, "id" | "repoRootPath">
+): string {
+  const repoRootPath = project.repoRootPath || ""
+  const repoParentPath = getDirname(repoRootPath)
+  const repoName = getBasename(repoRootPath)
+  return `${repoParentPath}/.nucleus-worktrees/${repoName}-${project.id}`
+}
+
+export function getProjectWorkspacesPath(
+  project: Pick<Project, "id" | "repoRootPath" | "workspacesPath">
+): string {
+  const customPath = project.workspacesPath?.trim().replace(/\/+$/, "")
+  return customPath || getDefaultProjectWorkspacesPath(project)
+}
+
+export function normalizeProjectWorkspacesPath(
+  workspacesPath: string | null | undefined
+): string | null {
+  const normalized = workspacesPath?.trim().replace(/\/+$/, "")
+  return normalized || null
+}
+
 export function resolveRepoRootPath(
   projectPath: string,
   discoveredWorktrees: Pick<GitWorktreeSummary, "path" | "isMain">[]
@@ -123,8 +146,25 @@ export function getWorktreeById(
   return project.worktrees.find((worktree) => worktree.id === worktreeId) ?? null
 }
 
+export function getActiveWorktree(
+  project: Pick<Project, "selectedWorktreeId" | "rootWorktreeId" | "worktrees"> | null | undefined,
+  activeWorktreeId: string | null | undefined
+): ProjectWorktree | null {
+  const activeWorktree = getWorktreeById(project, activeWorktreeId)
+  if (isWorktreeReady(activeWorktree)) {
+    return activeWorktree
+  }
+
+  const selectedWorktree = getSelectedWorktree(project)
+  if (isWorktreeReady(selectedWorktree)) {
+    return selectedWorktree
+  }
+
+  return project?.worktrees.find((worktree) => isWorktreeReady(worktree)) ?? null
+}
+
 export function generateManagedWorktreeIdentity(
-  project: Pick<Project, "id" | "repoRootPath" | "worktrees">
+  project: Pick<Project, "id" | "repoRootPath" | "workspacesPath" | "worktrees">
 ): { name: string; slug: string; branchName: string; path: string } {
   const usedNames = new Set(project.worktrees.map((worktree) => worktree.name.toLowerCase()))
   const usedSlugs = new Set(project.worktrees.map((worktree) => createSlug(worktree.branchName)))
@@ -148,6 +188,6 @@ export function generateManagedWorktreeIdentity(
     name,
     slug,
     branchName: slug,
-    path: buildManagedWorktreePath(project, slug),
+    path: `${getProjectWorkspacesPath(project)}/${slug}`,
   }
 }

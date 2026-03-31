@@ -972,6 +972,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
               activeSessionId: sessionId,
             },
           },
+          currentSessionId: sessionId,
         }
       })
     }
