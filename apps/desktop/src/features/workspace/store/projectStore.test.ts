@@ -27,10 +27,20 @@ let createWorktreeImpl = async (
     path: options.targetPath,
   },
 })
+let renameWorktreeImpl = async (
+  _repoRootPath: string,
+  options: { worktreePath: string; branchName: string; targetPath?: string | null }
+) => ({
+  worktree: {
+    branchName: options.branchName,
+    path: options.targetPath ?? options.worktreePath,
+  },
+})
 let removeWorktreeImpl = async () => {}
 let getChangesImpl = async () => [] as Array<unknown>
 let pathExists = true
 let removeWorktreeCallCount = 0
+let renameWorktreeCallCount = 0
 let getChangesCallCount = 0
 
 mock.module("@/desktop/client", () => ({
@@ -46,6 +56,13 @@ mock.module("@/desktop/client", () => ({
         repoRootPath: string,
         options: { branchName: string; targetPath: string }
       ) => createWorktreeImpl(repoRootPath, options),
+      renameWorktree: async (
+        repoRootPath: string,
+        options: { worktreePath: string; branchName: string; targetPath?: string | null }
+      ) => {
+        renameWorktreeCallCount += 1
+        return renameWorktreeImpl(repoRootPath, options)
+      },
       removeWorktree: async (repoRootPath: string, options: { worktreePath: string }) => {
         removeWorktreeCallCount += 1
         return removeWorktreeImpl(repoRootPath, options)
@@ -71,6 +88,7 @@ function createRootWorktree(overrides: Partial<ProjectWorktree> = {}): ProjectWo
     updatedAt: 1,
     source: "root",
     status: "ready",
+    intentStatus: "configured",
     ...overrides,
   }
 }
@@ -85,6 +103,7 @@ function createManagedWorktree(overrides: Partial<ProjectWorktree> = {}): Projec
     updatedAt: 2,
     source: "managed",
     status: "ready",
+    intentStatus: "configured",
     ...overrides,
   }
 }
@@ -143,10 +162,17 @@ describe("projectStore", () => {
         path: options.targetPath,
       },
     })
+    renameWorktreeImpl = async (_repoRootPath, options) => ({
+      worktree: {
+        branchName: options.branchName,
+        path: options.targetPath ?? options.worktreePath,
+      },
+    })
     removeWorktreeImpl = async () => {}
     getChangesImpl = async () => []
     pathExists = true
     removeWorktreeCallCount = 0
+    renameWorktreeCallCount = 0
     getChangesCallCount = 0
     resetStoreState()
   })
@@ -334,6 +360,84 @@ describe("projectStore", () => {
     expect(state.projects[0]?.selectedWorktreeId).toBe("managed-worktree")
     expect(state.focusedProjectId).toBe("project-1")
     expect(state.activeWorktreeId).toBe("managed-worktree")
+  })
+
+  test("renameWorktreeFromIntent renames a pending managed worktree and marks it configured", async () => {
+    useProjectStore.setState({
+      projects: [
+        createProject({
+          worktrees: [
+            createRootWorktree(),
+            createManagedWorktree({
+              intentStatus: "pending",
+            }),
+          ],
+          selectedWorktreeId: "managed-worktree",
+        }),
+      ],
+      focusedProjectId: "project-1",
+      activeWorktreeId: "managed-worktree",
+      isLoading: false,
+    })
+
+    const renamedWorktree = await useProjectStore.getState().renameWorktreeFromIntent(
+      "project-1",
+      "managed-worktree",
+      {
+        branchName: "fix-first-turn-setup",
+        name: "Fix first turn setup",
+      }
+    )
+
+    expect(renameWorktreeCallCount).toBe(1)
+    expect(renamedWorktree.branchName).toBe("fix-first-turn-setup")
+    expect(renamedWorktree.path).toBe("/tmp/.nucleus-worktrees/repo-project-1/fix-first-turn-setup")
+    expect(renamedWorktree.name).toBe("Fix first turn setup")
+    expect(renamedWorktree.intentStatus).toBe("configured")
+  })
+
+  test("renameWorktreeFromIntent adds entropy when the target workspace path is already taken", async () => {
+    useProjectStore.setState({
+      projects: [
+        createProject({
+          worktrees: [
+            createRootWorktree(),
+            createManagedWorktree({
+              id: "managed-worktree",
+              intentStatus: "pending",
+              path: "/tmp/.nucleus-worktrees/repo-project-1/kolkata",
+            }),
+            createManagedWorktree({
+              id: "existing-worktree",
+              name: "Fix first turn setup",
+              branchName: "feature/fix-first-turn-setup",
+              path: "/tmp/.nucleus-worktrees/repo-project-1/fix-first-turn-setup",
+              createdAt: 3,
+              updatedAt: 3,
+            }),
+          ],
+          selectedWorktreeId: "managed-worktree",
+        }),
+      ],
+      focusedProjectId: "project-1",
+      activeWorktreeId: "managed-worktree",
+      isLoading: false,
+    })
+
+    const renamedWorktree = await useProjectStore.getState().renameWorktreeFromIntent(
+      "project-1",
+      "managed-worktree",
+      {
+        branchName: "fix-first-turn-setup",
+        name: "Fix first turn setup",
+      }
+    )
+
+    expect(renameWorktreeCallCount).toBe(1)
+    expect(renamedWorktree.branchName).toBe("fix-first-turn-setup-2")
+    expect(renamedWorktree.path).toBe("/tmp/.nucleus-worktrees/repo-project-1/fix-first-turn-setup-2")
+    expect(renamedWorktree.name).toBe("Fix first turn setup 2")
+    expect(renamedWorktree.intentStatus).toBe("configured")
   })
 
   test("removing a managed workspace with changes only hides it from the app", async () => {

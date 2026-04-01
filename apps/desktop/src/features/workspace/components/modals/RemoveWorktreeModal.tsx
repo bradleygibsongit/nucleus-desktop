@@ -12,6 +12,7 @@ import {
   AlertDialogMedia,
   AlertDialogTitle,
 } from "@/features/shared/components/ui/alert-dialog"
+import { useChatStore } from "@/features/chat/store"
 import { useTabStore } from "@/features/editor/store"
 import { useTerminalStore } from "@/features/terminal/store/terminalStore"
 import { useProjectStore } from "@/features/workspace/store"
@@ -31,6 +32,7 @@ export function RemoveWorktreeModal({
   onOpenChange,
 }: RemoveWorktreeModalProps) {
   const removeWorktree = useProjectStore((state) => state.removeWorktree)
+  const removeWorktreeData = useChatStore((state) => state.removeWorktreeData)
   const removeWorktreeTabs = useTabStore((state) => state.removeWorktreeTabs)
   const removeTerminalProject = useTerminalStore((state) => state.removeProject)
   const terminalStateByProject = useTerminalStore((state) => state.terminalStateByProject)
@@ -84,6 +86,13 @@ export function RemoveWorktreeModal({
       await removeWorktree(project.id, worktree.id)
       removeWorktreeTabs(worktree.id)
       removeTerminalProject(worktree.id)
+
+      try {
+        await removeWorktreeData(worktree.id)
+      } catch (cleanupError) {
+        console.warn("Failed to clean up removed worktree chat state:", cleanupError)
+      }
+
       onOpenChange(false)
     } catch (error) {
       console.error("Failed to remove worktree:", error)

@@ -4,14 +4,14 @@ import { useChatStore } from "../store/chatStore"
 import type { RuntimeModel } from "../types"
 
 export function useModels() {
-  const { selectedProjectId } = useCurrentProjectWorktree()
+  const { selectedWorktreeId } = useCurrentProjectWorktree()
   const listModels = useChatStore((state) => state.listModels)
   const [models, setModels] = useState<RuntimeModel[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const fetchModels = useCallback(async () => {
-    if (!selectedProjectId) {
+    if (!selectedWorktreeId) {
       setModels([])
       return
     }
@@ -20,7 +20,7 @@ export function useModels() {
     setError(null)
 
     try {
-      const response = await listModels(selectedProjectId)
+      const response = await listModels(selectedWorktreeId)
       setModels(response)
     } catch (err) {
       console.error("[useModels] Failed to fetch models:", err)
@@ -29,7 +29,7 @@ export function useModels() {
     } finally {
       setIsLoading(false)
     }
-  }, [listModels, selectedProjectId])
+  }, [listModels, selectedWorktreeId])
 
   useEffect(() => {
     fetchModels()

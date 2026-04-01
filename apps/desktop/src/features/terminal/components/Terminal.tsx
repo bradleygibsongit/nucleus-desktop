@@ -62,6 +62,7 @@ export function Terminal({
   const fitAddonRef = useRef<FitAddon | null>(null)
   const sessionIdRef = useRef<string | null>(null)
   const isSessionReadyRef = useRef(false)
+  const lastSyncedSizeRef = useRef<{ cols: number; rows: number } | null>(null)
   const [connectionError, setConnectionError] = useState<string | null>(null)
 
   const updateTheme = useCallback(() => {
@@ -81,20 +82,44 @@ export function Terminal({
     }
   }, [])
 
-  const syncTerminalSize = useCallback(() => {
-    const fitAddon = fitAddonRef.current
+  const pushTerminalSize = useCallback((cols: number, rows: number) => {
     const term = xtermRef.current
     const sessionId = sessionIdRef.current
 
-    if (!fitAddon || !term || !sessionId || !isSessionReadyRef.current) {
+    if (!term || !sessionId || !isSessionReadyRef.current) {
+      return
+    }
+
+    const nextCols = Math.max(1, cols)
+    const nextRows = Math.max(1, rows)
+    const lastSyncedSize = lastSyncedSizeRef.current
+
+    if (
+      lastSyncedSize &&
+      lastSyncedSize.cols === nextCols &&
+      lastSyncedSize.rows === nextRows
+    ) {
+      return
+    }
+
+    lastSyncedSizeRef.current = { cols: nextCols, rows: nextRows }
+    void desktop.terminal.resize(sessionId, nextCols, nextRows).catch((error) => {
+      lastSyncedSizeRef.current = null
+      console.error("Failed to resize terminal session:", error)
+    })
+  }, [])
+
+  const fitTerminal = useCallback(() => {
+    const fitAddon = fitAddonRef.current
+    const term = xtermRef.current
+
+    if (!fitAddon || !term) {
       return
     }
 
     fitAddon.fit()
-    void desktop.terminal.resize(sessionId, term.cols, term.rows).catch((error) => {
-      console.error("Failed to resize terminal session:", error)
-    })
-  }, [])
+    pushTerminalSize(term.cols, term.rows)
+  }, [pushTerminalSize])
 
   useEffect(() => {
     if (!terminalRef.current || xtermRef.current) return
@@ -129,12 +154,12 @@ export function Terminal({
       })
     })
 
-    const terminalResizeDisposable = term.onResize(() => {
-      syncTerminalSize()
+    const terminalResizeDisposable = term.onResize(({ cols, rows }) => {
+      pushTerminalSize(cols, rows)
     })
 
     const resizeObserver = new ResizeObserver(() => {
-      syncTerminalSize()
+      fitTerminal()
     })
     resizeObserver.observe(terminalRef.current)
 
@@ -146,7 +171,7 @@ export function Terminal({
       xtermRef.current = null
       fitAddonRef.current = null
     }
-  }, [syncTerminalSize])
+  }, [fitTerminal, pushTerminalSize])
 
   useEffect(() => {
     const observer = new MutationObserver((mutations) => {
@@ -177,12 +202,14 @@ export function Terminal({
       if (!sessionId || !cwd) {
         sessionIdRef.current = null
         isSessionReadyRef.current = false
+        lastSyncedSizeRef.current = null
         term.writeln(emptyStateMessage)
         return
       }
 
       sessionIdRef.current = sessionId
       isSessionReadyRef.current = false
+      lastSyncedSizeRef.current = null
 
       try {
         const response = await desktop.terminal.createSession(
@@ -201,7 +228,7 @@ export function Terminal({
           term.write(response.initialData)
         }
         isSessionReadyRef.current = true
-        syncTerminalSize()
+        fitTerminal()
       } catch (error) {
         if (!isActive || sessionIdRef.current !== sessionId) {
           return
@@ -210,6 +237,7 @@ export function Terminal({
         const message = error instanceof Error ? error.message : String(error)
         setConnectionError(message)
         isSessionReadyRef.current = false
+        lastSyncedSizeRef.current = null
         term.reset()
         term.writeln("\x1b[31mUnable to start terminal session.\x1b[0m")
         term.writeln(`\x1b[90m${message}\x1b[0m`)
@@ -221,8 +249,9 @@ export function Terminal({
     return () => {
       isActive = false
       isSessionReadyRef.current = false
+      lastSyncedSizeRef.current = null
     }
-  }, [cwd, emptyStateMessage, sessionId, syncTerminalSize])
+  }, [cwd, emptyStateMessage, fitTerminal, sessionId])
 
   useEffect(() => {
     let isDisposed = false

@@ -104,6 +104,7 @@ describe("worktree utils", () => {
           updatedAt: 1,
           source: "managed",
           status: "creating",
+          intentStatus: "pending",
         },
         {
           id: "ready",
@@ -114,6 +115,7 @@ describe("worktree utils", () => {
           updatedAt: 2,
           source: "managed",
           status: "ready",
+          intentStatus: "configured",
         },
       ],
     })

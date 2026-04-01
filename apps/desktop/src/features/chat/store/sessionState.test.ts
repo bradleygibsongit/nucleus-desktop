@@ -14,7 +14,7 @@ function createProjectChat(overrides: Partial<ProjectChatState> = {}): ProjectCh
       },
     ],
     activeSessionId: "session-1",
-    projectPath: "/tmp/agent",
+    worktreePath: "/tmp/agent",
     archivedSessionIds: [],
     selectedHarnessId: "codex",
     ...overrides,

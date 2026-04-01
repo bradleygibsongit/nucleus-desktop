@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { existsSync } from "node:fs"
-import { appendFile, mkdtemp, realpath, rm, writeFile } from "node:fs/promises"
+import { appendFile, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { promisify } from "node:util"
@@ -182,6 +182,114 @@ describe("GitService worktrees", () => {
 
       expect(created.worktree.branchName).toBe("fresh")
       expect(await git(freshWorktreeDir, ["branch", "--show-current"])).toBe("fresh")
+    } finally {
+      await rm(repoDir, { recursive: true, force: true })
+      await rm(path.join(repoDir, "..", ".nucleus-worktrees-test"), { recursive: true, force: true })
+    }
+  })
+
+  test("creates a unique branch when the requested worktree branch already exists", async () => {
+    const repoDir = await createRepository()
+    const worktreesRoot = path.join(repoDir, "..", ".nucleus-worktrees", path.basename(repoDir))
+
+    try {
+      await git(repoDir, ["branch", "hobart"])
+
+      const service = new GitService()
+      const created = await service.createWorktree(repoDir, {
+        name: "Hobart",
+        branchName: "hobart",
+        baseBranch: "main",
+      })
+
+      expect(created.worktree.branchName).toBe("hobart-2")
+      expect(created.worktree.path).toBe(await realpath(path.join(worktreesRoot, "hobart-2")))
+      expect(await git(created.worktree.path, ["branch", "--show-current"])).toBe("hobart-2")
+    } finally {
+      await rm(repoDir, { recursive: true, force: true })
+      await rm(path.join(repoDir, "..", ".nucleus-worktrees"), { recursive: true, force: true })
+    }
+  })
+
+  test("preserves slash-separated branch names when creating a worktree", async () => {
+    const repoDir = await createRepository()
+    const worktreeDir = path.join(repoDir, "..", ".nucleus-worktrees-test", "feature-foo")
+
+    try {
+      const service = new GitService()
+      const created = await service.createWorktree(repoDir, {
+        name: "Feature foo",
+        branchName: "feature/foo",
+        baseBranch: "main",
+        targetPath: worktreeDir,
+      })
+
+      expect(created.worktree.branchName).toBe("feature/foo")
+      expect(await git(worktreeDir, ["branch", "--show-current"])).toBe("feature/foo")
+    } finally {
+      await rm(repoDir, { recursive: true, force: true })
+      await rm(path.join(repoDir, "..", ".nucleus-worktrees-test"), { recursive: true, force: true })
+    }
+  })
+
+  test("renames a managed worktree branch and path", async () => {
+    const repoDir = await createRepository()
+    const originalWorktreeDir = path.join(repoDir, "..", ".nucleus-worktrees-test", "draft-task")
+    const renamedWorktreeDir = path.join(repoDir, "..", ".nucleus-worktrees-test", "fix-first-turn")
+
+    try {
+      const service = new GitService()
+      await service.createWorktree(repoDir, {
+        name: "Draft task",
+        branchName: "draft-task",
+        baseBranch: "main",
+        targetPath: originalWorktreeDir,
+      })
+      const resolvedOriginalWorktreeDir = await realpath(originalWorktreeDir)
+
+      const renamed = await service.renameWorktree(repoDir, {
+        worktreePath: originalWorktreeDir,
+        branchName: "fix-first-turn",
+        targetPath: renamedWorktreeDir,
+      })
+
+      expect(renamed.previousBranchName).toBe("draft-task")
+      expect(renamed.previousPath).toBe(resolvedOriginalWorktreeDir)
+      expect(renamed.worktree.branchName).toBe("fix-first-turn")
+      expect(renamed.worktree.path).toBe(await realpath(renamedWorktreeDir))
+      expect(await git(renamedWorktreeDir, ["branch", "--show-current"])).toBe("fix-first-turn")
+      expect(existsSync(originalWorktreeDir)).toBe(false)
+    } finally {
+      await rm(repoDir, { recursive: true, force: true })
+      await rm(path.join(repoDir, "..", ".nucleus-worktrees-test"), { recursive: true, force: true })
+    }
+  })
+
+  test("does not rename the branch when the destination path is unavailable", async () => {
+    const repoDir = await createRepository()
+    const originalWorktreeDir = path.join(repoDir, "..", ".nucleus-worktrees-test", "draft-task")
+    const blockedWorktreeDir = path.join(repoDir, "..", ".nucleus-worktrees-test", "blocked")
+
+    try {
+      const service = new GitService()
+      await service.createWorktree(repoDir, {
+        name: "Draft task",
+        branchName: "draft-task",
+        baseBranch: "main",
+        targetPath: originalWorktreeDir,
+      })
+
+      await mkdir(blockedWorktreeDir, { recursive: true })
+
+      await expect(
+        service.renameWorktree(repoDir, {
+          worktreePath: originalWorktreeDir,
+          branchName: "fix-first-turn",
+          targetPath: blockedWorktreeDir,
+        })
+      ).rejects.toThrow('already exists')
+
+      expect(await git(originalWorktreeDir, ["branch", "--show-current"])).toBe("draft-task")
     } finally {
       await rm(repoDir, { recursive: true, force: true })
       await rm(path.join(repoDir, "..", ".nucleus-worktrees-test"), { recursive: true, force: true })

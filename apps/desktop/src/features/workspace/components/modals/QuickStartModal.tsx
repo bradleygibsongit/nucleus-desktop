@@ -185,7 +185,11 @@ export function QuickStartModal({ open, onOpenChange }: QuickStartModalProps) {
     const rootWorktreePath =
       project.worktrees.find((candidate) => candidate.id === project.rootWorktreeId)?.path ??
       project.repoRootPath
-    await openDraftSession(project.id, rootWorktreePath)
+    const rootWorktreeId =
+      project.rootWorktreeId ?? project.worktrees.find((candidate) => candidate.path === rootWorktreePath)?.id
+    if (rootWorktreeId) {
+      await openDraftSession(rootWorktreeId, rootWorktreePath)
+    }
 
     setActiveRun(null)
     setStep("configure")

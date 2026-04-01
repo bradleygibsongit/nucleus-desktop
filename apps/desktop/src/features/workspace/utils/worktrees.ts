@@ -147,15 +147,29 @@ export function createSlug(value: string): string {
   return slug || "worktree"
 }
 
-function createCandidateName(baseName: string, suffix: number): string {
-  return suffix <= 1 ? baseName : `${baseName} ${suffix}`
+export function getWorkspaceSlugFromBranchName(branchName: string): string {
+  const leaf = branchName
+    .trim()
+    .split("/")
+    .filter(Boolean)
+    .pop()
+
+  return createSlug(leaf || branchName)
 }
 
-export function buildManagedWorktreePath(project: Pick<Project, "id" | "repoRootPath">, slug: string): string {
-  const repoRootPath = project.repoRootPath || ""
-  const repoParentPath = getDirname(repoRootPath)
-  const repoName = getBasename(repoRootPath)
-  return joinPaths(repoParentPath, ".nucleus-worktrees", `${repoName}-${project.id}`, slug)
+export function createWorkspaceDisplayName(value: string): string {
+  return value
+    .trim()
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
+}
+
+function createCandidateName(baseName: string, suffix: number): string {
+  return suffix <= 1 ? baseName : `${baseName} ${suffix}`
 }
 
 export function getDefaultProjectWorkspacesPath(
@@ -172,6 +186,13 @@ export function getProjectWorkspacesPath(
 ): string {
   const customPath = project.workspacesPath?.trim().replace(/[\\/]+$/, "")
   return customPath || getDefaultProjectWorkspacesPath(project)
+}
+
+export function buildManagedWorktreePath(
+  project: Pick<Project, "id" | "repoRootPath" | "workspacesPath">,
+  slug: string
+): string {
+  return joinPaths(getProjectWorkspacesPath(project), slug)
 }
 
 export function normalizeProjectWorkspacesPath(

@@ -15,6 +15,8 @@ import type {
   GitFileStatus,
   GitPullRequest,
   GitPullResult,
+  GitRenameWorktreeInput,
+  GitRenameWorktreeResult,
   GitRemoveWorktreeInput,
   GitRemoveWorktreeResult,
   GitRunStackedActionInput,
@@ -990,8 +992,31 @@ function sanitizeBranchName(value: string): string {
     .slice(0, 48)
 }
 
-function ensureUniqueBranchName(base: string, existingBranches: string[]): string {
-  const normalizedBase = sanitizeBranchName(base) || "update-changes"
+function normalizeStructuredBranchName(value: string): string {
+  return value
+    .trim()
+    .replace(/\/{2,}/g, "/")
+    .replace(/^\/+|\/+$/g, "")
+}
+
+function appendStructuredBranchSuffix(branchName: string, suffix: number | string): string {
+  const segments = normalizeStructuredBranchName(branchName)
+    .split("/")
+    .filter(Boolean)
+
+  const leaf = segments.pop() ?? "update-changes"
+  return [...segments, `${leaf}-${suffix}`].join("/")
+}
+
+function ensureUniqueBranchName(
+  base: string,
+  existingBranches: string[],
+  options?: { sanitize?: boolean }
+): string {
+  const shouldSanitize = options?.sanitize ?? true
+  const normalizedBase =
+    (shouldSanitize ? sanitizeBranchName(base) : normalizeStructuredBranchName(base)) ||
+    "update-changes"
   const existing = new Set(existingBranches)
 
   if (!existing.has(normalizedBase)) {
@@ -999,13 +1024,17 @@ function ensureUniqueBranchName(base: string, existingBranches: string[]): strin
   }
 
   for (let attempt = 2; attempt < 100; attempt += 1) {
-    const candidate = `${normalizedBase}-${attempt}`
+    const candidate = shouldSanitize
+      ? `${normalizedBase}-${attempt}`
+      : appendStructuredBranchSuffix(normalizedBase, attempt)
     if (!existing.has(candidate)) {
       return candidate
     }
   }
 
-  return `${normalizedBase}-${Date.now().toString(36)}`
+  return shouldSanitize
+    ? `${normalizedBase}-${Date.now().toString(36)}`
+    : appendStructuredBranchSuffix(normalizedBase, Date.now().toString(36))
 }
 
 async function prepareCommitContext(
@@ -1485,22 +1514,30 @@ export class GitService {
   ): Promise<GitCreateWorktreeResult> {
     const trimmedPath = ensureGitProjectPath(projectPath)
     const repoRoot = await runGitCommand(trimmedPath, ["rev-parse", "--show-toplevel"])
-    const branchName = input.branchName.trim()
+    const requestedBranchName = input.branchName.trim()
     const baseBranch = input.baseBranch.trim()
-    const worktreePath =
-      input.targetPath?.trim() || resolveDefaultManagedWorktreePath(repoRoot, branchName)
+    const requestedTargetPath = input.targetPath?.trim() || null
 
     if (!input.name.trim()) {
       throw new Error("Worktree name is required.")
     }
-    if (!branchName) {
+    if (!requestedBranchName) {
       throw new Error("Worktree branch name is required.")
     }
     if (!baseBranch) {
       throw new Error("A base branch is required to create a worktree.")
     }
 
-    await runGitCommand(trimmedPath, ["check-ref-format", "--branch", branchName])
+    await runGitCommand(trimmedPath, ["check-ref-format", "--branch", requestedBranchName])
+    const existingBranches = await listLocalBranchNames(repoRoot)
+    const branchName = ensureUniqueBranchName(requestedBranchName, existingBranches, {
+      sanitize: false,
+    })
+    const requestedDefaultPath = resolveDefaultManagedWorktreePath(repoRoot, requestedBranchName)
+    const worktreePath =
+      !requestedTargetPath || path.resolve(requestedTargetPath) === path.resolve(requestedDefaultPath)
+        ? resolveDefaultManagedWorktreePath(repoRoot, branchName)
+        : requestedTargetPath
     await mkdir(path.dirname(worktreePath), { recursive: true })
     await runGitCommand(repoRoot, ["worktree", "add", "-b", branchName, worktreePath, baseBranch])
 
@@ -1539,6 +1576,95 @@ export class GitService {
 
     return {
       worktreePath: resolvedWorktreePath,
+    }
+  }
+
+  async renameWorktree(
+    projectPath: string,
+    input: GitRenameWorktreeInput
+  ): Promise<GitRenameWorktreeResult> {
+    const trimmedPath = ensureGitProjectPath(projectPath)
+    const repoRoot = await runGitCommand(trimmedPath, ["rev-parse", "--show-toplevel"])
+    const resolvedRepoRoot = realpathSync(repoRoot)
+    const worktreePath = ensureGitProjectPath(input.worktreePath)
+    const resolvedWorktreePath = realpathSync(worktreePath)
+    const nextBranchName = input.branchName.trim()
+    const targetPath = input.targetPath?.trim() || null
+
+    if (resolvedWorktreePath === resolvedRepoRoot) {
+      throw new Error("The root worktree cannot be renamed.")
+    }
+
+    if (!nextBranchName) {
+      throw new Error("A renamed worktree must have a branch name.")
+    }
+
+    await assertWorktreeIsClean(resolvedWorktreePath)
+    await runGitCommand(trimmedPath, ["check-ref-format", "--branch", nextBranchName])
+
+    const currentBranchName = await runGitCommand(resolvedWorktreePath, ["branch", "--show-current"])
+    if (!currentBranchName) {
+      throw new Error("Only branch-based worktrees can be renamed.")
+    }
+
+    const existingBranches = await listLocalBranchNames(repoRoot)
+    const finalBranchName =
+      currentBranchName === nextBranchName
+        ? currentBranchName
+        : ensureUniqueBranchName(
+            nextBranchName,
+            existingBranches.filter((branch) => branch !== currentBranchName),
+            { sanitize: false }
+          )
+
+    const normalizedTargetPath = targetPath ? path.resolve(targetPath) : resolvedWorktreePath
+    const shouldMoveWorktree = normalizedTargetPath !== path.resolve(resolvedWorktreePath)
+
+    if (shouldMoveWorktree && existsSync(normalizedTargetPath)) {
+      throw new Error(`The worktree destination "${normalizedTargetPath}" already exists.`)
+    }
+
+    let resolvedTargetPath = resolvedWorktreePath
+
+    if (shouldMoveWorktree) {
+      await mkdir(path.dirname(normalizedTargetPath), { recursive: true })
+      await runGitCommand(repoRoot, ["worktree", "move", resolvedWorktreePath, normalizedTargetPath])
+      resolvedTargetPath = realpathSync(normalizedTargetPath)
+    }
+
+    try {
+      if (currentBranchName !== finalBranchName) {
+        await runGitCommand(resolvedTargetPath, ["branch", "-m", finalBranchName])
+      }
+    } catch (error) {
+      if (shouldMoveWorktree) {
+        try {
+          await runGitCommand(repoRoot, ["worktree", "move", resolvedTargetPath, resolvedWorktreePath])
+          resolvedTargetPath = resolvedWorktreePath
+        } catch (rollbackError) {
+          console.warn("[git] Failed to roll back worktree move after branch rename failure:", rollbackError)
+        }
+      }
+
+      throw error
+    }
+
+    const renamedWorktree =
+      (await listGitWorktrees(resolvedTargetPath)).find(
+        (worktree) => worktree.path === resolvedTargetPath
+      ) ?? {
+        path: resolvedTargetPath,
+        branchName: finalBranchName,
+        head: null,
+        isDetached: false,
+        isCurrent: false,
+        isMain: false,
+      }
+
+    return {
+      worktree: renamedWorktree,
+      previousBranchName: currentBranchName,
+      previousPath: resolvedWorktreePath,
     }
   }
 

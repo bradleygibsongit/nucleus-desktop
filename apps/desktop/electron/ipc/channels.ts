@@ -28,6 +28,7 @@ export const IPC_CHANNELS = {
   gitListWorktrees: "git:listWorktrees",
   gitCreateWorktree: "git:createWorktree",
   gitRemoveWorktree: "git:removeWorktree",
+  gitRenameWorktree: "git:renameWorktree",
   gitGetFileDiff: "git:getFileDiff",
   gitCheckoutBranch: "git:checkoutBranch",
   gitCreateAndCheckoutBranch: "git:createAndCheckoutBranch",

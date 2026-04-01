@@ -10,6 +10,8 @@ import type {
   GitFileChange,
   GitFileDiff,
   GitPullResult,
+  GitRenameWorktreeInput,
+  GitRenameWorktreeResult,
   GitRemoveWorktreeInput,
   GitRemoveWorktreeResult,
   GitRunStackedActionInput,
@@ -101,6 +103,10 @@ declare global {
           projectPath: string,
           input: GitRemoveWorktreeInput
         ) => Promise<GitRemoveWorktreeResult>
+        renameWorktree: (
+          projectPath: string,
+          input: GitRenameWorktreeInput
+        ) => Promise<GitRenameWorktreeResult>
         getFileDiff: (
           projectPath: string,
           filePath: string,

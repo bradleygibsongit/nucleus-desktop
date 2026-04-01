@@ -123,13 +123,13 @@ export function MainContent({ activeView, activeSettingsSection }: MainContentPr
   }, [activeWorktreeId, isInitialized, switchProject])
 
   useEffect(() => {
-    if (!isInitialized || !focusedProjectId || !activeWorktreePath) {
+    if (!isInitialized || !focusedProjectId || !activeWorktreeId || !activeWorktreePath) {
       lastInitializedWorktreeIdRef.current = null
       lastOpenedSessionIdRef.current = null
       return
     }
 
-    const worktreeChat = getProjectChat(focusedProjectId)
+    const worktreeChat = getProjectChat(activeWorktreeId)
     const currentTabs = useTabStore.getState().tabs
     const activeSession =
       worktreeChat.sessions.find((session) => session.id === worktreeChat.activeSessionId) ??
@@ -151,7 +151,7 @@ export function MainContent({ activeView, activeSettingsSection }: MainContentPr
         }
 
         if (!activeSession) {
-          const optimisticSession = createOptimisticSession(focusedProjectId, activeWorktreePath)
+          const optimisticSession = createOptimisticSession(activeWorktreeId, activeWorktreePath)
           if (optimisticSession) {
             lastOpenedSessionIdRef.current = optimisticSession.id
             openChatSession(optimisticSession.id, optimisticSession.title)
@@ -200,19 +200,19 @@ export function MainContent({ activeView, activeSettingsSection }: MainContentPr
   )
 
   useEffect(() => {
-    if (!focusedProjectId || activeTab?.type !== "chat-session" || !activeTab.sessionId) {
+    if (!activeWorktreeId || activeTab?.type !== "chat-session" || !activeTab.sessionId) {
       return
     }
 
-    void selectSession(focusedProjectId, activeTab.sessionId)
-  }, [activeTab, focusedProjectId, selectSession])
+    void selectSession(activeWorktreeId, activeTab.sessionId)
+  }, [activeTab, activeWorktreeId, selectSession])
 
   const handleTabClose = (tabId: string) => {
     const closingTab = tabs.find((tab) => tab.id === tabId)
     const remainingTabs = tabs.filter((tab) => tab.id !== tabId)
     closeTab(tabId)
 
-    if (!focusedProjectId || !activeWorktreePath || closingTab?.type !== "chat-session") {
+    if (!focusedProjectId || !activeWorktreeId || !activeWorktreePath || closingTab?.type !== "chat-session") {
       return
     }
 
@@ -222,19 +222,19 @@ export function MainContent({ activeView, activeSettingsSection }: MainContentPr
 
     const nextActiveTab = remainingTabs[remainingTabs.length - 1] ?? null
     if (nextActiveTab?.type === "chat-session" && nextActiveTab.sessionId) {
-      void selectSession(focusedProjectId, nextActiveTab.sessionId)
+      void selectSession(activeWorktreeId, nextActiveTab.sessionId)
       return
     }
 
     if (!nextActiveTab) {
-      const optimisticSession = createOptimisticSession(focusedProjectId, activeWorktreePath)
+      const optimisticSession = createOptimisticSession(activeWorktreeId, activeWorktreePath)
       if (optimisticSession) {
         openChatSession(optimisticSession.id, optimisticSession.title)
         return
       }
     }
 
-    void openDraftSession(focusedProjectId, activeWorktreePath)
+    void openDraftSession(activeWorktreeId, activeWorktreePath)
   }
 
   if (activeView === "settings") {

@@ -10,14 +10,14 @@ export interface NormalizedAgent {
 }
 
 export function useAgents() {
-  const { selectedProjectId } = useCurrentProjectWorktree()
+  const { selectedWorktreeId } = useCurrentProjectWorktree()
   const listAgents = useChatStore((state) => state.listAgents)
   const [agents, setAgents] = useState<NormalizedAgent[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const fetchAgents = useCallback(async () => {
-    if (!selectedProjectId) {
+    if (!selectedWorktreeId) {
       setAgents([])
       return
     }
@@ -26,7 +26,7 @@ export function useAgents() {
     setError(null)
 
     try {
-      const rawAgents = await listAgents(selectedProjectId)
+      const rawAgents = await listAgents(selectedWorktreeId)
 
       const normalized: NormalizedAgent[] = rawAgents
         .filter((agent) => agent.mode === "subagent" || agent.mode === "all")
@@ -52,7 +52,7 @@ export function useAgents() {
     } finally {
       setIsLoading(false)
     }
-  }, [listAgents, selectedProjectId])
+  }, [listAgents, selectedWorktreeId])
 
   useEffect(() => {
     fetchAgents()
