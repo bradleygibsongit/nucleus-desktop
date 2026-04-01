@@ -82,6 +82,18 @@ export interface GitRemoveWorktreeResult {
   worktreePath: string
 }
 
+export interface GitRenameWorktreeInput {
+  worktreePath: string
+  branchName: string
+  targetPath?: string | null
+}
+
+export interface GitRenameWorktreeResult {
+  worktree: GitWorktreeSummary
+  previousBranchName: string
+  previousPath: string
+}
+
 export type GitStackedAction = "commit" | "commit_push" | "commit_push_pr"
 
 export interface GitRunStackedActionInput {

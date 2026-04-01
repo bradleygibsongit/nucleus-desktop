@@ -17,6 +17,7 @@ interface ComposerEditorSurfaceProps {
     onError: (error: Error) => void
     editorState: () => void
   }
+  isLocked: boolean
   isStreaming: boolean
   onChange: (editorState: EditorState) => void
   onKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => void

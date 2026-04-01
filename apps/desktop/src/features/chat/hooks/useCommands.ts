@@ -32,14 +32,14 @@ const BUILTIN_PREVIEW_COMMANDS: NormalizedCommand[] = [
 ]
 
 export function useCommands() {
-  const { selectedProjectId } = useCurrentProjectWorktree()
+  const { selectedWorktreeId } = useCurrentProjectWorktree()
   const listCommands = useChatStore((state) => state.listCommands)
   const [commands, setCommands] = useState<NormalizedCommand[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const fetchCommands = useCallback(async () => {
-    if (!selectedProjectId) {
+    if (!selectedWorktreeId) {
       setCommands([])
       return
     }
@@ -49,7 +49,7 @@ export function useCommands() {
 
     try {
       const [rawCommands, installedSkillsResponse] = await Promise.all([
-        listCommands(selectedProjectId),
+        listCommands(selectedWorktreeId),
         desktop.skills.list().catch(() => null as SkillsSyncResponse | null),
       ])
       const installedSkillCommands: NormalizedCommand[] =
@@ -107,7 +107,7 @@ export function useCommands() {
     } finally {
       setIsLoading(false)
     }
-  }, [listCommands, selectedProjectId])
+  }, [listCommands, selectedWorktreeId])
 
   useEffect(() => {
     fetchCommands()

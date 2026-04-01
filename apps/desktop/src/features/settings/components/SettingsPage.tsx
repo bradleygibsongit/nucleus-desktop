@@ -24,9 +24,12 @@ const SECTION_COPY: Record<SettingsSectionId, { title: string }> = {
 
 function GitSettingsSection() {
   const gitGenerationModel = useSettingsStore((state) => state.gitGenerationModel)
+  const workspaceSetupModel = useSettingsStore((state) => state.workspaceSetupModel)
   const initialize = useSettingsStore((state) => state.initialize)
   const setGitGenerationModel = useSettingsStore((state) => state.setGitGenerationModel)
   const resetGitGenerationModel = useSettingsStore((state) => state.resetGitGenerationModel)
+  const setWorkspaceSetupModel = useSettingsStore((state) => state.setWorkspaceSetupModel)
+  const resetWorkspaceSetupModel = useSettingsStore((state) => state.resetWorkspaceSetupModel)
   const [availableModels, setAvailableModels] = useState<RuntimeModel[]>([])
   const [isLoadingModels, setIsLoadingModels] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -77,13 +80,33 @@ function GitSettingsSection() {
       opts.unshift({ value: gitGenerationModel, label: gitGenerationModel })
     }
 
+    if (workspaceSetupModel && !opts.some((o) => o.value === workspaceSetupModel)) {
+      opts.unshift({ value: workspaceSetupModel, label: workspaceSetupModel })
+    }
+
     return opts
-  }, [availableModels, gitGenerationModel])
+  }, [availableModels, gitGenerationModel, workspaceSetupModel])
 
   return (
     <section className="rounded-xl border border-border/80 bg-card text-card-foreground shadow-sm">
       <div className="px-4 py-4">
         <FieldGroup className="gap-3">
+          <Field>
+            <FieldTitle>Workspace setup model</FieldTitle>
+            <SearchableSelect
+              value={workspaceSetupModel || null}
+              onValueChange={setWorkspaceSetupModel}
+              options={modelOptions}
+              placeholder={defaultModel ? defaultModel.id : "Select a model"}
+              searchPlaceholder="Search models"
+              emptyMessage="No matching models found."
+              disabled={isLoadingModels}
+              className="mt-2"
+              errorMessage={loadError}
+              statusMessage={isLoadingModels ? "Loading models…" : null}
+            />
+          </Field>
+
           <Field>
             <FieldTitle>Generation model</FieldTitle>
             <SearchableSelect
@@ -101,9 +124,12 @@ function GitSettingsSection() {
           </Field>
         </FieldGroup>
 
-        <div className="mt-3 flex justify-end">
+        <div className="mt-3 flex justify-end gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={resetWorkspaceSetupModel}>
+            Reset setup model
+          </Button>
           <Button type="button" variant="outline" size="sm" onClick={resetGitGenerationModel}>
-            Use default
+            Reset generation model
           </Button>
         </div>
       </div>

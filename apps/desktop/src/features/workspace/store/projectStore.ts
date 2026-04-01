@@ -10,8 +10,11 @@ import type { Project, ProjectAction, ProjectWorktree } from "../types"
 import { normalizeProjectIconPath } from "../utils/projectIcon"
 import { normalizeProjectActionIconName } from "../utils/projectActionIcons"
 import {
+  buildManagedWorktreePath,
+  createWorkspaceDisplayName,
   getActiveWorktree,
   generateManagedWorktreeIdentity,
+  getWorkspaceSlugFromBranchName,
   isWorktreeReady,
   normalizeProjectWorkspacesPath,
   resolveRepoRootPath,
@@ -43,6 +46,11 @@ interface ProjectState {
   selectProject: (id: string) => Promise<void>
   selectWorktree: (projectId: string, worktreeId: string) => Promise<void>
   createWorktree: (projectId: string) => Promise<ProjectWorktree>
+  renameWorktreeFromIntent: (
+    projectId: string,
+    worktreeId: string,
+    updates: { branchName: string; name?: string | null }
+  ) => Promise<ProjectWorktree>
   removeWorktree: (projectId: string, worktreeId: string) => Promise<void>
   updateProject: (
     id: string,
@@ -90,6 +98,7 @@ function normalizeWorktree(
     path: worktree.path?.trim() || fallback.path,
     source: worktree.source ?? fallback.source,
     status: worktree.status ?? "ready",
+    intentStatus: worktree.intentStatus ?? "configured",
     createdAt: worktree.createdAt ?? fallback.createdAt,
     updatedAt: worktree.updatedAt ?? Date.now(),
   }
@@ -109,6 +118,58 @@ function sortWorktrees(worktrees: ProjectWorktree[]): ProjectWorktree[] {
 
 function normalizeComparablePath(filePath: string | null | undefined): string {
   return filePath?.trim().replace(/\/+$/, "") ?? ""
+}
+
+function appendBranchCollisionSuffix(branchName: string, collisionIndex: number): string {
+  if (collisionIndex <= 1) {
+    return branchName.trim()
+  }
+
+  const segments = branchName
+    .trim()
+    .split("/")
+    .filter(Boolean)
+  const leaf = segments.pop() ?? branchName.trim()
+
+  return [...segments, `${leaf}-${collisionIndex}`].join("/")
+}
+
+function resolveManagedRenameTarget(params: {
+  project: Pick<Project, "id" | "repoRootPath" | "workspacesPath" | "worktrees" | "hiddenWorktreePaths">
+  currentWorktreeId: string
+  branchName: string
+  preferredName?: string | null
+}): { branchName: string; path: string; name: string; collisionIndex: number } {
+  const baseSlug = getWorkspaceSlugFromBranchName(params.branchName)
+  const baseName =
+    params.preferredName?.trim() || createWorkspaceDisplayName(baseSlug)
+  const reservedPaths = new Set(
+    [
+      ...params.project.worktrees
+        .filter((worktree) => worktree.id !== params.currentWorktreeId)
+        .map((worktree) => normalizeComparablePath(worktree.path)),
+      ...(params.project.hiddenWorktreePaths ?? []).map((worktreePath) =>
+        normalizeComparablePath(worktreePath)
+      ),
+    ].filter(Boolean)
+  )
+
+  let collisionIndex = 1
+  let candidateSlug = baseSlug
+  let candidatePath = buildManagedWorktreePath(params.project, candidateSlug)
+
+  while (reservedPaths.has(normalizeComparablePath(candidatePath))) {
+    collisionIndex += 1
+    candidateSlug = `${baseSlug}-${collisionIndex}`
+    candidatePath = buildManagedWorktreePath(params.project, candidateSlug)
+  }
+
+  return {
+    branchName: appendBranchCollisionSuffix(params.branchName, collisionIndex),
+    path: candidatePath,
+    name: collisionIndex > 1 ? `${baseName} ${collisionIndex}` : baseName,
+    collisionIndex,
+  }
 }
 
 function normalizeProjectRemoteName(remoteName: string | null | undefined): string | null {
@@ -537,6 +598,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       updatedAt: Date.now(),
       source: "managed",
       status: "creating",
+      intentStatus: "pending",
     }
 
     const provisionalProject = {
@@ -614,6 +676,79 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       })
       throw error
     }
+  },
+
+  renameWorktreeFromIntent: async (projectId, worktreeId, updates) => {
+    const project = get().projects.find((candidate) => candidate.id === projectId)
+    const worktree = project?.worktrees.find((candidate) => candidate.id === worktreeId) ?? null
+
+    if (!project || !worktree) {
+      throw new Error(`Unknown worktree: ${projectId}/${worktreeId}`)
+    }
+
+    if (worktree.source !== "managed") {
+      throw new Error("Only managed worktrees can be renamed from intent.")
+    }
+
+    if (!isWorktreeReady(worktree)) {
+      throw new Error("Only ready worktrees can be renamed from intent.")
+    }
+
+    const requestedBranchName = updates.branchName.trim()
+    if (!requestedBranchName) {
+      throw new Error("A branch name is required to configure the workspace.")
+    }
+
+    const renameTarget = resolveManagedRenameTarget({
+      project,
+      currentWorktreeId: worktreeId,
+      branchName: requestedBranchName,
+      preferredName: updates.name,
+    })
+    const nextBranchName = renameTarget.branchName
+    const nextName = renameTarget.name
+    const nextPath = renameTarget.path
+    const shouldRenameGit = nextBranchName !== worktree.branchName || nextPath !== worktree.path
+
+    const renamedWorktree = shouldRenameGit
+      ? await desktop.git.renameWorktree(project.repoRootPath, {
+          worktreePath: worktree.path,
+          branchName: nextBranchName,
+          targetPath: nextPath,
+        })
+      : {
+          worktree: {
+            path: worktree.path,
+            branchName: worktree.branchName,
+            head: null,
+            isDetached: false,
+            isCurrent: false,
+            isMain: false,
+          },
+        }
+
+    const nextProject = {
+      ...project,
+      worktrees: sortWorktrees(
+        project.worktrees.map((candidate) =>
+          candidate.id === worktreeId
+            ? {
+                ...candidate,
+                name: nextName,
+                branchName: renamedWorktree.worktree.branchName,
+                path: renamedWorktree.worktree.path,
+                updatedAt: Date.now(),
+                intentStatus: "configured" as const,
+              }
+            : candidate
+        )
+      ),
+    }
+    const nextProjects = replaceProject(get().projects, nextProject)
+    await persistProjects(nextProjects, get().focusedProjectId, get().activeWorktreeId)
+    set({ projects: nextProjects })
+
+    return nextProject.worktrees.find((candidate) => candidate.id === worktreeId) ?? worktree
   },
 
   removeWorktree: async (projectId, worktreeId) => {

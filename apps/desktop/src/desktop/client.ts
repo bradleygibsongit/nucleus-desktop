@@ -10,6 +10,8 @@ import type {
   GitFileChange,
   GitFileDiff,
   GitPullResult,
+  GitRenameWorktreeInput,
+  GitRenameWorktreeResult,
   GitRemoveWorktreeInput,
   GitRemoveWorktreeResult,
   GitRunStackedActionInput,
@@ -126,6 +128,8 @@ export const desktop = {
       window.nucleus.git.createWorktree(projectPath, input),
     removeWorktree: (projectPath: string, input: GitRemoveWorktreeInput) =>
       window.nucleus.git.removeWorktree(projectPath, input),
+    renameWorktree: (projectPath: string, input: GitRenameWorktreeInput) =>
+      window.nucleus.git.renameWorktree(projectPath, input),
     getFileDiff: (projectPath: string, filePath: string, previousPath?: string | null) =>
       window.nucleus.git.getFileDiff(projectPath, filePath, previousPath),
     checkoutBranch: (projectPath: string, branchName: string) =>
@@ -154,6 +158,8 @@ export type {
   GitFileChange,
   GitFileDiff,
   GitPullResult,
+  GitRenameWorktreeInput,
+  GitRenameWorktreeResult,
   GitRemoveWorktreeInput,
   GitRemoveWorktreeResult,
   GitRunStackedActionInput,

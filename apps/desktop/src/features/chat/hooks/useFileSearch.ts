@@ -8,7 +8,7 @@ export interface FileSearchResult {
 }
 
 export function useFileSearch() {
-  const { selectedProjectId } = useCurrentProjectWorktree()
+  const { selectedWorktreeId } = useCurrentProjectWorktree()
   const searchFiles = useChatStore((state) => state.searchFiles)
   const [results, setResults] = useState<FileSearchResult[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -16,7 +16,7 @@ export function useFileSearch() {
 
   const search = useCallback(
     async (query: string, directory?: string) => {
-      if (!selectedProjectId || !query.trim()) {
+      if (!selectedWorktreeId || !query.trim()) {
         setResults([])
         return
       }
@@ -25,7 +25,7 @@ export function useFileSearch() {
       setError(null)
 
       try {
-        const response = await searchFiles(selectedProjectId, query.trim(), directory)
+        const response = await searchFiles(selectedWorktreeId, query.trim(), directory)
 
         const normalized: FileSearchResult[] = response.map((result) => ({
           path: result.path,
@@ -41,7 +41,7 @@ export function useFileSearch() {
         setIsLoading(false)
       }
     },
-    [searchFiles, selectedProjectId]
+    [searchFiles, selectedWorktreeId]
   )
 
   const clear = useCallback(() => {

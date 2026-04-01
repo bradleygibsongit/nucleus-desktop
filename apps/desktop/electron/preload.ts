@@ -11,6 +11,8 @@ import type {
   GitFileChange,
   GitFileDiff,
   GitPullResult,
+  GitRenameWorktreeInput,
+  GitRenameWorktreeResult,
   GitRemoveWorktreeInput,
   GitRemoveWorktreeResult,
   GitRunStackedActionInput,
@@ -156,6 +158,12 @@ contextBridge.exposeInMainWorld("nucleus", {
         projectPath,
         input
       ) as Promise<GitRemoveWorktreeResult>,
+    renameWorktree: (projectPath: string, input: GitRenameWorktreeInput) =>
+      ipcRenderer.invoke(
+        IPC_CHANNELS.gitRenameWorktree,
+        projectPath,
+        input
+      ) as Promise<GitRenameWorktreeResult>,
     getFileDiff: (projectPath: string, filePath: string, previousPath?: string | null) =>
       ipcRenderer.invoke(
         IPC_CHANNELS.gitGetFileDiff,

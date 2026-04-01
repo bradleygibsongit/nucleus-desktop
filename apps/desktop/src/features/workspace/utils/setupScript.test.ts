@@ -25,6 +25,7 @@ describe("buildWorkspaceSetupScriptEnvironment", () => {
             updatedAt: 1,
             source: "root",
             status: "ready",
+            intentStatus: "configured",
           },
           {
             id: "source-2",
@@ -35,6 +36,7 @@ describe("buildWorkspaceSetupScriptEnvironment", () => {
             updatedAt: 2,
             source: "managed",
             status: "ready",
+            intentStatus: "configured",
           },
         ],
       },

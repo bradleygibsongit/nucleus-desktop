@@ -22,6 +22,7 @@ export interface Repository {
 export type ProjectWorktreeSource = "root" | "managed"
 
 export type ProjectWorktreeStatus = "ready" | "creating" | "error"
+export type ProjectWorktreeIntentStatus = "pending" | "configured"
 
 export interface ProjectWorktree {
   id: string
@@ -32,6 +33,7 @@ export interface ProjectWorktree {
   updatedAt: number
   source: ProjectWorktreeSource
   status: ProjectWorktreeStatus
+  intentStatus: ProjectWorktreeIntentStatus
 }
 
 export interface Project {

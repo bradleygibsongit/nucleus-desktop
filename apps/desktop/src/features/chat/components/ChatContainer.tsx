@@ -12,11 +12,13 @@ function ChatTimelinePane({
   activeSessionId,
   selectedProject,
   showInlineIntro,
+  workspaceSetupState,
 }: {
   threadKey: string
   activeSessionId: string | null
   selectedProject: ReturnType<typeof useChatProjectState>["selectedProject"]
   showInlineIntro: boolean
+  workspaceSetupState: ReturnType<typeof useChatProjectState>["workspaceSetupState"]
 }) {
   const { messages, childSessions, status, activePromptState } =
     useChatTimelineState(activeSessionId)
@@ -30,6 +32,7 @@ function ChatTimelinePane({
       selectedProject={selectedProject}
       childSessions={childSessions}
       showInlineIntro={showInlineIntro}
+      workspaceSetupState={workspaceSetupState}
     />
   )
 }
@@ -38,11 +41,17 @@ function ChatComposerPane({
   activeSessionId,
   selectedProjectId,
   selectedWorktreePath,
+  selectedWorktreeId,
+  selectedWorktree,
+  isWorkspaceSetupRunning,
   onTurnStarted,
 }: {
   activeSessionId: string | null
   selectedProjectId: string | null
   selectedWorktreePath?: string | null
+  selectedWorktreeId: string | null
+  selectedWorktree: ReturnType<typeof useChatProjectState>["selectedWorktree"]
+  isWorkspaceSetupRunning: boolean
   onTurnStarted: () => void
 }) {
   const {
@@ -58,6 +67,8 @@ function ChatComposerPane({
   } = useChatComposerState({
     selectedProjectId,
     selectedWorktreePath,
+    selectedWorktreeId,
+    selectedWorktree,
     activeSessionId,
   })
 
@@ -65,19 +76,9 @@ function ChatComposerPane({
     <ChatInput
       input={input}
       setInput={setInput}
+      isLocked={isWorkspaceSetupRunning}
       onSubmit={async (text, options) => {
-        if (
-          text.trim() &&
-          status !== "streaming" &&
-          (activeSessionId != null || (selectedProjectId != null && selectedWorktreePath))
-        ) {
-          onTurnStarted()
-        }
-
-        const didSubmit = await submit(text, options)
-        if (didSubmit) {
-          onTurnStarted()
-        }
+        await submit(text, options)
       }}
       prompt={activePrompt}
       onAnswerPrompt={answerPrompt}
@@ -102,7 +103,14 @@ function ChatComposerPane({
 }
 
 export function ChatContainer() {
-  const { selectedProject, selectedProjectId, selectedWorktreeId, selectedWorktree, activeSessionId } = useChatProjectState()
+  const {
+    selectedProject,
+    selectedProjectId,
+    selectedWorktreeId,
+    selectedWorktree,
+    activeSessionId,
+    workspaceSetupState,
+  } = useChatProjectState()
   const { messages, childSessions, status, activePromptState } = useChatTimelineState(activeSessionId)
   const threadKey = `${selectedWorktreeId ?? selectedProject?.id ?? "no-project"}:${activeSessionId ?? "draft"}`
   const shouldShowDraftIntro =
@@ -125,6 +133,7 @@ export function ChatContainer() {
           activeSessionId={activeSessionId}
           selectedProject={selectedProject}
           showInlineIntro={showInlineIntro}
+          workspaceSetupState={workspaceSetupState}
         />
       </div>
       <div className="flex-shrink-0 flex justify-center">
@@ -133,6 +142,9 @@ export function ChatContainer() {
             activeSessionId={activeSessionId}
             selectedProjectId={selectedProjectId}
             selectedWorktreePath={selectedWorktree?.path ?? null}
+            selectedWorktreeId={selectedWorktreeId}
+            selectedWorktree={selectedWorktree}
+            isWorkspaceSetupRunning={workspaceSetupState?.status === "running"}
             onTurnStarted={() => setShowInlineIntro(false)}
           />
         </div>

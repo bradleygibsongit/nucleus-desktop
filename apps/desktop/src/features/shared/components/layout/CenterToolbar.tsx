@@ -26,11 +26,11 @@ export function CenterToolbar({ activeView = "chat", onOpenChat }: CenterToolbar
   const selectProject = useProjectStore((state) => state.selectProject)
   const { createOptimisticSession, getProjectChat } = useChatStore()
   const openChatSession = useTabStore((state) => state.openChatSession)
-  const { focusedProject, focusedProjectId, activeWorktreePath, targetBranch } =
+  const { focusedProject, focusedProjectId, activeWorktreeId, activeWorktreePath, targetBranch } =
     useCurrentProjectWorktree()
 
   // Session title needed for mobile collapsed view
-  const projectChat = focusedProjectId ? getProjectChat(focusedProjectId) : null
+  const projectChat = activeWorktreeId ? getProjectChat(activeWorktreeId) : null
   const activeSession =
     projectChat?.sessions.find((session) => session.id === projectChat.activeSessionId) ?? null
   const activeSessionTitle = activeSession?.title?.trim() || ""
@@ -42,13 +42,13 @@ export function CenterToolbar({ activeView = "chat", onOpenChat }: CenterToolbar
       : 0
 
   const handleCreateThread = async () => {
-    if (!focusedProject || !focusedProjectId || !activeWorktreePath) {
+    if (!focusedProject || !focusedProjectId || !activeWorktreeId || !activeWorktreePath) {
       return
     }
 
     onOpenChat?.()
     await selectProject(focusedProject.id)
-    const session = createOptimisticSession(focusedProjectId, activeWorktreePath)
+    const session = createOptimisticSession(activeWorktreeId, activeWorktreePath)
     if (session) {
       openChatSession(session.id, session.title)
     }
@@ -83,7 +83,7 @@ export function CenterToolbar({ activeView = "chat", onOpenChat }: CenterToolbar
               variant="ghost"
               size="icon-sm"
               onClick={() => void handleCreateThread()}
-              disabled={!focusedProject || !focusedProjectId || !activeWorktreePath}
+              disabled={!focusedProject || !focusedProjectId || !activeWorktreeId || !activeWorktreePath}
               className="text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
               aria-label="New thread"
             >
@@ -147,7 +147,7 @@ export function CenterToolbar({ activeView = "chat", onOpenChat }: CenterToolbar
               onClick={() => void handleCreateThread()}
               variant="ghost"
               size="icon-sm"
-              disabled={!focusedProject || !focusedProjectId || !activeWorktreePath}
+              disabled={!focusedProject || !focusedProjectId || !activeWorktreeId || !activeWorktreePath}
               className="shrink-0 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
               aria-label="New thread"
             >

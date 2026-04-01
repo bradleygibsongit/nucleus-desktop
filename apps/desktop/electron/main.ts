@@ -223,6 +223,11 @@ function registerIpcHandlers(storeService: JsonStoreService): void {
       gitService.removeWorktree(projectPath, input)
   )
   ipcMain.handle(
+    IPC_CHANNELS.gitRenameWorktree,
+    (_event, projectPath: string, input: Parameters<GitService["renameWorktree"]>[1]) =>
+      gitService.renameWorktree(projectPath, input)
+  )
+  ipcMain.handle(
     IPC_CHANNELS.gitGetFileDiff,
     (_event, projectPath: string, filePath: string, previousPath?: string | null) =>
       gitService.getFileDiff(projectPath, filePath, previousPath)

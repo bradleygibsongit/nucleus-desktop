@@ -26,3 +26,8 @@ export interface FileChangeEvent {
   file: string
   event: "add" | "change" | "unlink"
 }
+
+export interface WorkspaceSetupState {
+  status: "running" | "error"
+  message: string
+}

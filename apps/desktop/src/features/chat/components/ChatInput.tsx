@@ -26,6 +26,7 @@ import {
   isRuntimeQuestionPrompt,
 } from "../domain/runtimePrompts"
 import { populateComposerFromSerializedValue, serializeComposerState } from "./composer/composerSerialization"
+import { Loader } from "./ai-elements/loader"
 import { ComposerEditorSurface } from "./composer/ComposerEditorSurface"
 import { ApprovalPromptSurface } from "./composer/ApprovalPromptSurface"
 import { StructuredPromptSurface } from "./composer/StructuredPromptSurface"
@@ -55,7 +56,7 @@ import {
 } from "lexical"
 import { $createSkillChipNode, $isSkillChipNode, SkillChipNode } from "./SkillChipNode"
 import { cn } from "@/lib/utils"
-import { useProjectStore } from "@/features/workspace/store"
+import { useCurrentProjectWorktree } from "@/features/shared/hooks"
 import { useChatStore } from "../store"
 import {
   formatShortcutBinding,
@@ -68,6 +69,7 @@ import openAiSymbolDarkUrl from "@/assets/brands/openai-symbol-dark.svg"
 interface ChatInputProps {
   input: string
   setInput: (value: string) => void
+  isLocked?: boolean
   onSubmit: (
     text: string,
     options?: {
@@ -220,6 +222,7 @@ function formatReasoningEffortLabel(value: string): string {
 export function ChatInput({
   input,
   setInput,
+  isLocked = false,
   onSubmit,
   onAbort,
   onExecuteCommand,
@@ -229,7 +232,7 @@ export function ChatInput({
   onAnswerPrompt,
   onDismissPrompt,
 }: ChatInputProps) {
-  const focusedProjectId = useProjectStore((state) => state.focusedProjectId)
+  const { selectedWorktreeId } = useCurrentProjectWorktree()
   const getProjectChat = useChatStore((state) => state.getProjectChat)
   const [isImeComposing, setIsImeComposing] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -264,7 +267,9 @@ export function ChatInput({
   const { commands, isLoading: isLoadingCommands } = useCommands()
   const { agents, isLoading: isLoadingAgents } = useAgents()
   const { results: fileResults, isLoading: isLoadingFiles, search: searchFiles, clear: clearFiles } = useFileSearch()
-  const selectedHarnessId = focusedProjectId ? getProjectChat(focusedProjectId).selectedHarnessId : null
+  const selectedHarnessId = selectedWorktreeId
+    ? getProjectChat(selectedWorktreeId).selectedHarnessId
+    : null
   const selectedModel = useMemo(
     () => availableModels.find((model) => model.id === selectedModelId) ?? null,
     [availableModels, selectedModelId]
@@ -334,6 +339,7 @@ export function ChatInput({
 
   const isStreaming = status === "streaming"
   const isPromptActive = !!prompt
+  const isComposerLocked = isLocked && !isPromptActive
   const activeQuestionPrompt = isRuntimeQuestionPrompt(prompt) ? prompt : null
   const activeApprovalPrompt = isRuntimeApprovalPrompt(prompt) ? prompt : null
   const isApprovalComposerState = !!activeApprovalPrompt
@@ -350,15 +356,20 @@ export function ChatInput({
     : false
 
   const atMenuKey = input.startsWith("@") ? `at:${input}` : null
-  const showSlashMenu = !isPromptActive && isSlashMenuOpen && !isStreaming
+  const showSlashMenu = !isPromptActive && !isComposerLocked && isSlashMenuOpen && !isStreaming
 
-  const showAtMenu = !isPromptActive && input.startsWith("@") && !isStreaming && dismissedMenuKey !== atMenuKey
+  const showAtMenu =
+    !isPromptActive &&
+    !isComposerLocked &&
+    input.startsWith("@") &&
+    !isStreaming &&
+    dismissedMenuKey !== atMenuKey
   const atQuery = showAtMenu ? input.slice(1) : ""
   const canSubmit = activeQuestionPrompt
     ? !!currentPromptQuestion && currentPromptQuestionAnswered
     : activeApprovalPrompt
       ? false
-    : input.trim().length > 0 && !isStreaming
+    : input.trim().length > 0 && !isStreaming && !isComposerLocked
 
   useEffect(() => {
     setPromptAnswers({})
@@ -432,6 +443,22 @@ export function ChatInput({
       setSlashQuery("")
     }
   }, [isPromptActive])
+
+  useEffect(() => {
+    if (!isComposerLocked) {
+      return
+    }
+
+    setIsSlashMenuOpen(false)
+    setSlashQuery("")
+    setDismissedMenuKey(null)
+    setIsImeComposing(false)
+    editorRef.current?.blur()
+
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur()
+    }
+  }, [isComposerLocked])
 
   useEffect(() => {
     if (
@@ -870,6 +897,10 @@ export function ChatInput({
     (e?: FormEvent) => {
       e?.preventDefault()
 
+      if (isComposerLocked) {
+        return
+      }
+
       if (activeApprovalPrompt) {
         return
       }
@@ -971,11 +1002,17 @@ export function ChatInput({
       filteredFiles,
       handleSelectAgent,
       handleSelectFile,
+      isComposerLocked,
     ]
   )
 
   const handleKeyDown = useCallback(
     (e: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (isComposerLocked) {
+        e.preventDefault()
+        return
+      }
+
       if (isPromptActive) {
         return
       }
@@ -1110,6 +1147,7 @@ export function ChatInput({
     [
       handleSubmit,
       isImeComposing,
+      isComposerLocked,
       isPromptActive,
       showSlashMenu,
       slashQuery.length,
@@ -1154,7 +1192,11 @@ export function ChatInput({
   )
 
   return (
-    <form onSubmit={handleSubmit} className="bg-main-content px-10 pb-3">
+    <form
+      onSubmit={handleSubmit}
+      className="bg-main-content px-10 pb-3"
+      aria-busy={isComposerLocked}
+    >
       <div
         className={cn(
           "relative overflow-hidden rounded-2xl border bg-card shadow-sm",
@@ -1228,7 +1270,12 @@ export function ChatInput({
             "relative px-4 pt-4 pb-4"
           )}
         >
-          {isPromptActive && prompt ? (
+          {isComposerLocked ? (
+            <div className="flex items-center gap-3 py-2 px-1">
+              <Loader size={14} className="text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">Setting up workspace…</span>
+            </div>
+          ) : isPromptActive && prompt ? (
             activeApprovalPrompt ? (
               <ApprovalPromptSurface
                 prompt={activeApprovalPrompt}
@@ -1259,6 +1306,7 @@ export function ChatInput({
               <ComposerEditorSurface
                 editorRef={editorRef}
                 initialConfig={composerInitialConfig}
+                isLocked={isComposerLocked}
                 isStreaming={isStreaming}
                 onChange={handleComposerChange}
                 onKeyDown={handleKeyDown}
@@ -1297,7 +1345,7 @@ export function ChatInput({
             </>
           )}
 
-          {!isPromptActive && (
+          {!isPromptActive && !isComposerLocked && (
             <div className="mt-4 flex items-center gap-2">
               {selectorsRow && <DropdownMenu>
               <DropdownMenuTrigger className="inline-flex h-8 items-center gap-2 px-1 text-sm text-muted-foreground transition-colors hover:text-foreground cursor-pointer">

@@ -1,10 +1,13 @@
 import { useState, useCallback, useEffect } from "react"
 import { useShallow } from "zustand/react/shallow"
 import { useCurrentProjectWorktree } from "@/features/shared/hooks"
+import { useSettingsStore } from "@/features/settings/store/settingsStore"
 import type { Project, ProjectWorktree } from "@/features/workspace/types"
+import { useProjectStore } from "@/features/workspace/store"
+import { suggestWorkspaceSetup } from "@/features/workspace/utils/workspaceSetup"
 import { useChatStore, type ChildSessionState, type MessageWithParts } from "../store"
 import { hasProjectChatSession } from "../store/sessionState"
-import type { ProjectChatState } from "../store/storeTypes"
+import type { ProjectChatState, WorkspaceSetupState } from "../store/storeTypes"
 import type {
   ChatStatus,
   CollaborationModeKind,
@@ -36,6 +39,7 @@ export function useChatProjectState(): {
   selectedWorktreeId: string | null
   selectedWorktree: ProjectWorktree | null
   activeSessionId: string | null
+  workspaceSetupState: WorkspaceSetupState | null
 } {
   const {
     selectedProjectId,
@@ -52,7 +56,10 @@ export function useChatProjectState(): {
     }))
   )
   const projectChat = useChatStore((state) =>
-    selectedProjectId ? state.chatByProject[selectedProjectId] ?? null : null
+    selectedWorktreeId ? state.chatByWorktree[selectedWorktreeId] ?? null : null
+  )
+  const workspaceSetupState = useChatStore((state) =>
+    selectedWorktreeId ? state.workspaceSetupByWorktree[selectedWorktreeId] ?? null : null
   )
   const activeSessionId = getActiveSessionId(projectChat)
 
@@ -61,10 +68,10 @@ export function useChatProjectState(): {
   }, [initialize])
 
   useEffect(() => {
-    if (selectedProjectId && selectedWorktreePath && isInitialized) {
-      loadSessionsForProject(selectedProjectId, selectedWorktreePath)
+    if (selectedWorktreeId && selectedWorktreePath && isInitialized) {
+      loadSessionsForProject(selectedWorktreeId, selectedWorktreePath)
     }
-  }, [selectedProjectId, selectedWorktreePath, isInitialized, loadSessionsForProject])
+  }, [selectedWorktreeId, selectedWorktreePath, isInitialized, loadSessionsForProject])
 
   return {
     selectedProjectId,
@@ -72,6 +79,7 @@ export function useChatProjectState(): {
     selectedWorktreeId,
     selectedWorktree,
     activeSessionId,
+    workspaceSetupState,
   }
 }
 
@@ -104,10 +112,14 @@ export function useChatTimelineState(activeSessionId: string | null): {
 export function useChatComposerState({
   selectedProjectId,
   selectedWorktreePath,
+  selectedWorktreeId,
+  selectedWorktree,
   activeSessionId,
 }: {
   selectedProjectId: string | null
   selectedWorktreePath?: string | null
+  selectedWorktreeId: string | null
+  selectedWorktree: ProjectWorktree | null
   activeSessionId: string | null
 }): {
   input: string
@@ -129,12 +141,15 @@ export function useChatComposerState({
   ) => Promise<boolean>
 } {
   const [draftInputsBySessionKey, setDraftInputsBySessionKey] = useState<Record<string, string>>({})
+  const workspaceSetupModel = useSettingsStore((state) => state.workspaceSetupModel)
   const {
     currentSessionId,
     status,
     activePromptBySession,
     createSession,
     createOptimisticSession,
+    loadSessionsForProject,
+    setWorkspaceSetupState,
     answerPrompt,
     dismissPrompt,
     sendMessage,
@@ -147,6 +162,8 @@ export function useChatComposerState({
       activePromptBySession: state.activePromptBySession,
       createSession: state.createSession,
       createOptimisticSession: state.createOptimisticSession,
+      loadSessionsForProject: state.loadSessionsForProject,
+      setWorkspaceSetupState: state.setWorkspaceSetupState,
       answerPrompt: state.answerPrompt,
       dismissPrompt: state.dismissPrompt,
       sendMessage: state.sendMessage,
@@ -156,10 +173,13 @@ export function useChatComposerState({
   )
 
   const draftSessionKey =
-    activeSessionId ?? (selectedProjectId ? `draft:${selectedProjectId}` : "draft:no-project")
+    activeSessionId ?? (selectedWorktreeId ? `draft:${selectedWorktreeId}` : "draft:no-project")
   const input = draftInputsBySessionKey[draftSessionKey] ?? ""
   const activePromptState: RuntimePromptState | null =
     activeSessionId ? activePromptBySession[activeSessionId] ?? null : null
+  const activeSessionMessages = useChatStore((state) =>
+    activeSessionId ? state.messagesBySession[activeSessionId] ?? EMPTY_MESSAGES : EMPTY_MESSAGES
+  )
   const activePrompt = activePromptState?.status === "active" ? activePromptState.prompt : null
   const isResolvedActiveSession = activeSessionId != null && currentSessionId === activeSessionId
   const uiStatus = isResolvedActiveSession ? getUiStatus(status) : "idle"
@@ -201,15 +221,63 @@ export function useChatComposerState({
       }
 
       let targetSessionId = activeSessionId
+      const isFreshDraftSession =
+        targetSessionId != null &&
+        targetSessionId.startsWith("draft-") &&
+        activeSessionMessages.length === 0
 
-      if (!targetSessionId) {
-        if (!selectedProjectId || !selectedWorktreePath) {
+      if (!selectedProjectId || !selectedWorktreePath || !selectedWorktreeId || !selectedWorktree) {
+        return false
+      }
+
+      let nextProjectPath = selectedWorktreePath
+
+      if (
+        selectedWorktree.source === "managed" &&
+        selectedWorktree.intentStatus === "pending" &&
+        (!targetSessionId || isFreshDraftSession)
+      ) {
+        setWorkspaceSetupState(selectedWorktreeId, {
+          status: "running",
+          message: "Setting up workspace...",
+        })
+
+        try {
+          const suggestion = await suggestWorkspaceSetup({
+            projectPath: selectedWorktreePath,
+            currentBranchName: selectedWorktree.branchName,
+            prompt: text,
+            model: workspaceSetupModel,
+          })
+          const renamedWorktree = await useProjectStore.getState().renameWorktreeFromIntent(
+            selectedProjectId,
+            selectedWorktreeId,
+            {
+              branchName: suggestion.branchName,
+              name: suggestion.workspaceName,
+            }
+          )
+
+          nextProjectPath = renamedWorktree.path
+          await loadSessionsForProject(selectedWorktreeId, renamedWorktree.path)
+          setWorkspaceSetupState(selectedWorktreeId, null)
+        } catch (error) {
+          console.error("[useChat] Failed to set up workspace before first turn:", error)
+          setWorkspaceSetupState(selectedWorktreeId, {
+            status: "error",
+            message:
+              error instanceof Error
+                ? `Workspace setup failed: ${error.message}`
+                : "Workspace setup failed.",
+          })
           return false
         }
+      }
 
+      if (!targetSessionId) {
         setInput("")
 
-        const session = createOptimisticSession(selectedProjectId, selectedWorktreePath)
+        const session = createOptimisticSession(selectedWorktreeId, nextProjectPath)
         if (!session) {
           return false
         }
@@ -225,11 +293,17 @@ export function useChatComposerState({
       activeSessionId,
       clearDraftInput,
       createOptimisticSession,
+      loadSessionsForProject,
       selectedProjectId,
+      selectedWorktree,
+      selectedWorktreeId,
       selectedWorktreePath,
       sendMessage,
+      setWorkspaceSetupState,
       setInput,
       uiStatus,
+      workspaceSetupModel,
+      activeSessionMessages.length,
     ]
   )
 
@@ -269,7 +343,7 @@ export function useChatComposerState({
           return false
         }
 
-        const session = await createSession(selectedProjectId, selectedWorktreePath)
+        const session = await createSession(selectedWorktreeId, selectedWorktreePath)
         if (!session) {
           return false
         }

@@ -17,11 +17,13 @@ import { useStickToBottomContext } from "use-stick-to-bottom"
 import { ChatTimelineItem, InlineSubagentActivity } from "./ChatTimelineItem"
 import { formatElapsedDuration, useElapsedDuration } from "./workDuration"
 import { TurnStepsDropdown } from "./TurnStepsDropdown"
+import { Loader } from "./ai-elements/loader"
 import {
   buildChatTimelineViewModel,
   type TimelineFileChangeSummary,
 } from "./timelineViewModel"
 import type { TimelineBlock } from "./timelineActivity"
+import type { WorkspaceSetupState } from "../store/storeTypes"
 
 interface ChatMessagesProps {
   threadKey: string
@@ -31,6 +33,7 @@ interface ChatMessagesProps {
   selectedProject?: Project | null
   childSessions?: Map<string, ChildSessionState>
   showInlineIntro?: boolean
+  workspaceSetupState?: WorkspaceSetupState | null
 }
 
 interface LatestTurnDropdownBlock {
@@ -193,7 +196,14 @@ function getDisplayBlockRole(block: DisplayBlock): "user" | "assistant" | null {
   return "assistant"
 }
 
-function ChatEmptyState() {
+function ChatEmptyState({
+  workspaceSetupState,
+}: {
+  workspaceSetupState?: WorkspaceSetupState | null
+}) {
+  const setupStatus = workspaceSetupState?.status ?? null
+  const setupMessage = workspaceSetupState?.message?.trim() ?? ""
+
   return (
     <div className="flex h-full w-full flex-col items-center justify-center">
       <div className="flex flex-col items-center gap-6">
@@ -205,6 +215,17 @@ function ChatEmptyState() {
         >
           Build cool sh*t
         </h2>
+
+        {setupMessage ? (
+          <div
+            className={`inline-flex items-center gap-2 text-sm ${
+              setupStatus === "error" ? "text-destructive" : "text-muted-foreground"
+            }`}
+          >
+            {setupStatus === "running" ? <Loader size={14} /> : null}
+            <span>{setupMessage}</span>
+          </div>
+        ) : null}
       </div>
     </div>
   )
@@ -219,6 +240,7 @@ export function ChatMessages({
   selectedProject: _selectedProject,
   childSessions,
   showInlineIntro = false,
+  workspaceSetupState = null,
 }: ChatMessagesProps) {
   const timelineViewModel = useMemo(
     () =>
@@ -322,12 +344,15 @@ export function ChatMessages({
     }
 
     return (
-      <StaticConversation resetKey={_selectedProject?.id ?? "empty-chat"}>
-        <div className="flex min-h-full w-full items-center justify-center">
-          <ChatEmptyState key={_selectedProject?.id ?? "empty-chat"} />
-        </div>
-      </StaticConversation>
-    )
+        <StaticConversation resetKey={_selectedProject?.id ?? "empty-chat"}>
+          <div className="flex min-h-full w-full items-center justify-center">
+            <ChatEmptyState
+              key={_selectedProject?.id ?? "empty-chat"}
+              workspaceSetupState={workspaceSetupState}
+            />
+          </div>
+        </StaticConversation>
+      )
   }
 
   return (
@@ -343,7 +368,7 @@ export function ChatMessages({
       />
       <ConversationContent className="mx-auto flex w-full max-w-[803px] flex-col gap-0 px-10 pb-10">
         <>
-          {showInlineIntro ? <ChatEmptyState /> : null}
+          {showInlineIntro ? <ChatEmptyState workspaceSetupState={workspaceSetupState} /> : null}
           {displayBlocks.map((block, blockIndex) => {
             const previousBlock =
               blockIndex > 0 ? displayBlocks[blockIndex - 1] : null

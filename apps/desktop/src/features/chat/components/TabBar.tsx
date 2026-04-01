@@ -14,7 +14,7 @@ interface TabBarProps {
 }
 
 export function TabBar({ tabs, activeTabId, onTabChange, onTabClose }: TabBarProps) {
-  const { selectedProjectId, selectedWorktreePath } = useCurrentProjectWorktree()
+  const { selectedWorktreeId, selectedWorktreePath } = useCurrentProjectWorktree()
   const createOptimisticSession = useChatStore((state) => state.createOptimisticSession)
   const openChatSession = useTabStore((state) => state.openChatSession)
 
@@ -40,13 +40,13 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose }: TabBarPro
       <button
         type="button"
         aria-label="Add new tab"
-        disabled={!selectedProjectId || !selectedWorktreePath}
+        disabled={!selectedWorktreeId || !selectedWorktreePath}
         onClick={() => {
-          if (!selectedProjectId || !selectedWorktreePath) {
+          if (!selectedWorktreeId || !selectedWorktreePath) {
             return
           }
 
-          const session = createOptimisticSession(selectedProjectId, selectedWorktreePath)
+          const session = createOptimisticSession(selectedWorktreeId, selectedWorktreePath)
           if (session) {
             openChatSession(session.id, session.title)
           }
