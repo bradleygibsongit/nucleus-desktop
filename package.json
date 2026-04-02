@@ -13,11 +13,17 @@
     "desktop:preview": "bun run --cwd apps/desktop preview",
     "desktop:build": "bun run --cwd apps/desktop build",
     "desktop:dist": "bun run --cwd apps/desktop dist",
+    "desktop:dist:local": "bun run --cwd apps/desktop dist:local",
     "desktop:release": "bun run --cwd apps/desktop release",
     "desktop:cli": "bun run --cwd apps/desktop cli",
     "desktop:typecheck": "bun run --cwd apps/desktop typecheck",
     "site:dev": "bun run --cwd apps/site dev",
     "site:build": "bun run --cwd apps/site build",
     "site:preview": "bun run --cwd apps/site preview"
+  },
+  "dependencies": {
+    "@types/three": "^0.183.1",
+    "postprocessing": "^6.39.0",
+    "three": "^0.183.2"
   }
 }

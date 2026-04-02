@@ -359,15 +359,26 @@
 }
 
 [data-streamdown="code-block"] {
-  @apply my-4 overflow-hidden border border-border bg-card;
+  @apply my-3 overflow-hidden rounded-lg border border-border bg-card relative;
 }
 
 [data-streamdown="code-block-header"] {
-  @apply border-b border-border bg-muted/70 text-muted-foreground;
+  @apply absolute top-0 right-0 z-10 border-none bg-transparent text-muted-foreground/60 px-2 py-1.5;
+  @apply opacity-0 transition-opacity duration-150;
+}
+
+[data-streamdown="code-block"]:hover [data-streamdown="code-block-header"] {
+  @apply opacity-100;
+}
+
+/* Hide language label and download button in header */
+[data-streamdown="code-block-header"] > span,
+[data-streamdown="code-block-header"] button[title="Download file"] {
+  @apply hidden;
 }
 
 [data-streamdown="code-block-body"] {
-  @apply overflow-x-auto bg-card p-4 text-sm leading-6;
+  @apply overflow-x-auto bg-card px-3 py-2.5 text-sm leading-relaxed border-t-0;
   background-color: var(--shiki-light-bg, color-mix(in oklab, var(--color-card) 94%, white 6%)) !important;
   color: var(--shiki-light, var(--color-foreground)) !important;
 }

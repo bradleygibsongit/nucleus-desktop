@@ -328,7 +328,8 @@ export function ChatMessages({
     [renderedMessages, status]
   )
   const displayBlocks = useMemo(
-    () => buildDisplayBlocks(timelineBlocks, collapsedMessagesByFooterId),
+    () => buildDisplayBlocks(timelineBlocks, collapsedMessagesByFooterId)
+      .filter((block) => block.type !== "message" || hasRenderableMessageContent(block.message)),
     [collapsedMessagesByFooterId, timelineBlocks]
   )
   const [preparedThreadKey, setPreparedThreadKey] = useState(threadKey)
