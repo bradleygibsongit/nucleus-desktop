@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { useShallow } from "zustand/react/shallow"
 import { useCurrentProjectWorktree } from "@/features/shared/hooks"
 import { useSettingsStore } from "@/features/settings/store/settingsStore"
@@ -395,12 +395,29 @@ export function useNewWorkspaceSetupState(): {
     })
   }, [])
 
+  const workspaceSetupRunIdRef = useRef(0)
+
+  const invalidateWorkspaceSetupRun = useCallback(() => {
+    workspaceSetupRunIdRef.current += 1
+  }, [])
+
+  const isWorkspaceSetupRunCurrent = useCallback((runId: number, projectId: string) => {
+    const { focusedProjectId, newWorkspaceSetupProjectId } = useProjectStore.getState()
+
+    return (
+      workspaceSetupRunIdRef.current === runId &&
+      focusedProjectId === projectId &&
+      newWorkspaceSetupProjectId === projectId
+    )
+  }, [])
+
   const cancel = useCallback(() => {
+    invalidateWorkspaceSetupRun()
     cancelNewWorkspaceSetup()
     if (selectedProjectId) {
       setWorkspaceSetupState(selectedProjectId, null)
     }
-  }, [cancelNewWorkspaceSetup, selectedProjectId, setWorkspaceSetupState])
+  }, [cancelNewWorkspaceSetup, invalidateWorkspaceSetupRun, selectedProjectId, setWorkspaceSetupState])
 
   const submit = useCallback(
     async (
@@ -416,48 +433,69 @@ export function useNewWorkspaceSetupState(): {
         return false
       }
 
-      const sourceProjectPath = selectedWorktreePath ?? selectedProject.repoRootPath
-      const sourceBranchName =
-        selectedProject.targetBranch?.trim() || selectedWorktree?.branchName || "main"
+      const setupRunId = workspaceSetupRunIdRef.current + 1
+      workspaceSetupRunIdRef.current = setupRunId
+
+      const setupProjectId = selectedProjectId
+      const setupProject = selectedProject
+      const setupSourceProjectPath = selectedWorktreePath ?? setupProject.repoRootPath
+      const setupSourceBranchName =
+        setupProject.targetBranch?.trim() || selectedWorktree?.branchName || "main"
+      const setupDraftProjectKey = draftProjectKey
       let failedStepId: WorkspaceSetupStepId = "generate-workspace-name"
 
       setWorkspaceSetupState(
-        selectedProjectId,
+        setupProjectId,
         createWorkspaceSetupState("generate-workspace-name")
       )
 
       try {
         const suggestion = await suggestWorkspaceSetup({
-          projectPath: sourceProjectPath,
-          currentBranchName: sourceBranchName,
+          projectPath: setupSourceProjectPath,
+          currentBranchName: setupSourceBranchName,
           prompt: text,
           model: workspaceSetupModel,
         })
+        if (!isWorkspaceSetupRunCurrent(setupRunId, setupProjectId)) {
+          return false
+        }
 
         failedStepId = "create-workspace"
         setWorkspaceSetupState(
-          selectedProjectId,
+          setupProjectId,
           createWorkspaceSetupState("create-workspace", {
             detail: suggestion.workspaceName,
           })
         )
 
         const createdWorktree = await useProjectStore.getState().createWorktreeFromIntent(
-          selectedProjectId,
+          setupProjectId,
           {
             branchName: suggestion.branchName,
             name: suggestion.workspaceName,
+          },
+          {
+            activateOnSuccess: false,
           }
         )
+        if (!isWorkspaceSetupRunCurrent(setupRunId, setupProjectId)) {
+          return false
+        }
 
-        const setupScript = selectedProject.setupScript?.trim()
+        await useProjectStore.getState().selectProject(setupProjectId)
+        await useProjectStore.getState().selectWorktree(setupProjectId, createdWorktree.id)
+        if (!isWorkspaceSetupRunCurrent(setupRunId, setupProjectId)) {
+          return false
+        }
+
+        const setupScript = setupProject.setupScript?.trim()
         if (setupScript) {
           try {
             await runCommandInProjectTerminal({
               projectId: createdWorktree.id,
               cwd: createdWorktree.path,
               command: setupScript,
-              environment: buildWorkspaceSetupScriptEnvironment(selectedProject, createdWorktree),
+              environment: buildWorkspaceSetupScriptEnvironment(setupProject, createdWorktree),
             })
           } catch (error) {
             console.error(
@@ -466,30 +504,43 @@ export function useNewWorkspaceSetupState(): {
             )
           }
         }
+        if (!isWorkspaceSetupRunCurrent(setupRunId, setupProjectId)) {
+          return false
+        }
 
         failedStepId = "prepare-chat-session"
         setWorkspaceSetupState(
-          selectedProjectId,
+          setupProjectId,
           createWorkspaceSetupState("prepare-chat-session", {
             detail: createdWorktree.name,
           })
         )
 
         await loadSessionsForProject(createdWorktree.id, createdWorktree.path)
+        if (!isWorkspaceSetupRunCurrent(setupRunId, setupProjectId)) {
+          return false
+        }
         const session = createOptimisticSession(createdWorktree.id, createdWorktree.path)
         if (!session) {
           throw new Error("Failed to prepare a chat session for the new workspace.")
         }
+        if (!isWorkspaceSetupRunCurrent(setupRunId, setupProjectId)) {
+          return false
+        }
 
-        clearDraftInput(draftProjectKey)
-        setWorkspaceSetupState(selectedProjectId, null)
+        clearDraftInput(setupDraftProjectKey)
+        setWorkspaceSetupState(setupProjectId, null)
         cancelNewWorkspaceSetup()
         await sendMessage(session.id, text, options)
         return true
       } catch (error) {
+        if (!isWorkspaceSetupRunCurrent(setupRunId, setupProjectId)) {
+          return false
+        }
+
         console.error("[useChat] Failed to create a workspace from the first prompt:", error)
         setWorkspaceSetupState(
-          selectedProjectId,
+          setupProjectId,
           createWorkspaceSetupState(failedStepId, {
             status: "error",
             errorMessage:
@@ -504,6 +555,8 @@ export function useNewWorkspaceSetupState(): {
       clearDraftInput,
       createOptimisticSession,
       draftProjectKey,
+      invalidateWorkspaceSetupRun,
+      isWorkspaceSetupRunCurrent,
       isActive,
       loadSessionsForProject,
       selectedProject,

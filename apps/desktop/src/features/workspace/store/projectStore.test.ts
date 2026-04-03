@@ -438,6 +438,64 @@ describe("projectStore", () => {
     expect(createdWorktree.name).toBe("Fix first turn setup 2")
   })
 
+  test("createWorktreeFromIntent adds entropy when an existing worktree already uses the branch name", async () => {
+    useProjectStore.setState({
+      projects: [
+        createProject({
+          worktrees: [
+            createRootWorktree(),
+            createManagedWorktree({
+              id: "manual-worktree",
+              name: "Manual setup branch",
+              branchName: "feature/fix-first-turn-setup",
+              path: "/tmp/manual-worktrees/fix-first-turn-setup",
+            }),
+          ],
+        }),
+      ],
+      focusedProjectId: "project-1",
+      activeWorktreeId: "root-worktree",
+      isLoading: false,
+    })
+
+    const createdWorktree = await useProjectStore.getState().createWorktreeFromIntent("project-1", {
+      branchName: "feature/fix-first-turn-setup",
+      name: "Fix first turn setup",
+    })
+
+    expect(createdWorktree.branchName).toBe("feature/fix-first-turn-setup-2")
+    expect(createdWorktree.path).toBe("/tmp/.nucleus-worktrees/repo-project-1/fix-first-turn-setup-2")
+    expect(createdWorktree.name).toBe("Fix first turn setup 2")
+  })
+
+  test("createWorktreeFromIntent can create without activating the new workspace", async () => {
+    useProjectStore.setState({
+      projects: [createProject()],
+      focusedProjectId: "project-1",
+      activeWorktreeId: "root-worktree",
+      isLoading: false,
+    })
+
+    const createdWorktree = await useProjectStore.getState().createWorktreeFromIntent(
+      "project-1",
+      {
+        branchName: "feature/fix-first-turn-setup",
+        name: "Fix first turn setup",
+      },
+      {
+        activateOnSuccess: false,
+      }
+    )
+
+    const state = useProjectStore.getState()
+    const project = state.projects[0]
+
+    expect(createdWorktree.branchName).toBe("feature/fix-first-turn-setup")
+    expect(project?.selectedWorktreeId).toBe("root-worktree")
+    expect(state.activeWorktreeId).toBe("root-worktree")
+    expect(state.focusedProjectId).toBe("project-1")
+  })
+
   test("selectWorktree updates project-local selection and global active state", async () => {
     useProjectStore.setState({
       projects: [

@@ -51,7 +51,8 @@ interface ProjectState {
   createWorktree: (projectId: string) => Promise<ProjectWorktree>
   createWorktreeFromIntent: (
     projectId: string,
-    updates: { branchName: string; name?: string | null }
+    updates: { branchName: string; name?: string | null },
+    options?: { activateOnSuccess?: boolean }
   ) => Promise<ProjectWorktree>
   renameWorktreeFromIntent: (
     projectId: string,
@@ -127,6 +128,10 @@ function normalizeComparablePath(filePath: string | null | undefined): string {
   return filePath?.trim().replace(/\/+$/, "") ?? ""
 }
 
+function normalizeComparableBranchName(branchName: string | null | undefined): string {
+  return branchName?.trim() ?? ""
+}
+
 function appendBranchCollisionSuffix(branchName: string, collisionIndex: number): string {
   if (collisionIndex <= 1) {
     return branchName.trim()
@@ -141,42 +146,66 @@ function appendBranchCollisionSuffix(branchName: string, collisionIndex: number)
   return [...segments, `${leaf}-${collisionIndex}`].join("/")
 }
 
+function resolveManagedTarget(params: {
+  project: Pick<Project, "id" | "repoRootPath" | "workspacesPath" | "worktrees" | "hiddenWorktreePaths">
+  branchName: string
+  preferredName?: string | null
+  excludedWorktreeId?: string
+}): { branchName: string; path: string; name: string; collisionIndex: number } {
+  const baseSlug = getWorkspaceSlugFromBranchName(params.branchName)
+  const baseName =
+    params.preferredName?.trim() || createWorkspaceDisplayName(baseSlug)
+  const relevantWorktrees = params.project.worktrees.filter(
+    (worktree) => worktree.id !== params.excludedWorktreeId
+  )
+  const reservedPaths = new Set(
+    [
+      ...relevantWorktrees.map((worktree) => normalizeComparablePath(worktree.path)),
+      ...(params.project.hiddenWorktreePaths ?? []).map((worktreePath) =>
+        normalizeComparablePath(worktreePath)
+      ),
+    ].filter(Boolean)
+  )
+  const reservedBranchNames = new Set(
+    relevantWorktrees
+      .map((worktree) => normalizeComparableBranchName(worktree.branchName))
+      .filter(Boolean)
+  )
+
+  let collisionIndex = 1
+  while (true) {
+    const candidateBranchName = appendBranchCollisionSuffix(params.branchName, collisionIndex)
+    const candidateSlug = collisionIndex > 1 ? `${baseSlug}-${collisionIndex}` : baseSlug
+    const candidatePath = buildManagedWorktreePath(params.project, candidateSlug)
+
+    if (
+      !reservedPaths.has(normalizeComparablePath(candidatePath)) &&
+      !reservedBranchNames.has(normalizeComparableBranchName(candidateBranchName))
+    ) {
+      return {
+        branchName: candidateBranchName,
+        path: candidatePath,
+        name: collisionIndex > 1 ? `${baseName} ${collisionIndex}` : baseName,
+        collisionIndex,
+      }
+    }
+
+    collisionIndex += 1
+  }
+}
+
 function resolveManagedRenameTarget(params: {
   project: Pick<Project, "id" | "repoRootPath" | "workspacesPath" | "worktrees" | "hiddenWorktreePaths">
   currentWorktreeId: string
   branchName: string
   preferredName?: string | null
 }): { branchName: string; path: string; name: string; collisionIndex: number } {
-  const baseSlug = getWorkspaceSlugFromBranchName(params.branchName)
-  const baseName =
-    params.preferredName?.trim() || createWorkspaceDisplayName(baseSlug)
-  const reservedPaths = new Set(
-    [
-      ...params.project.worktrees
-        .filter((worktree) => worktree.id !== params.currentWorktreeId)
-        .map((worktree) => normalizeComparablePath(worktree.path)),
-      ...(params.project.hiddenWorktreePaths ?? []).map((worktreePath) =>
-        normalizeComparablePath(worktreePath)
-      ),
-    ].filter(Boolean)
-  )
-
-  let collisionIndex = 1
-  let candidateSlug = baseSlug
-  let candidatePath = buildManagedWorktreePath(params.project, candidateSlug)
-
-  while (reservedPaths.has(normalizeComparablePath(candidatePath))) {
-    collisionIndex += 1
-    candidateSlug = `${baseSlug}-${collisionIndex}`
-    candidatePath = buildManagedWorktreePath(params.project, candidateSlug)
-  }
-
-  return {
-    branchName: appendBranchCollisionSuffix(params.branchName, collisionIndex),
-    path: candidatePath,
-    name: collisionIndex > 1 ? `${baseName} ${collisionIndex}` : baseName,
-    collisionIndex,
-  }
+  return resolveManagedTarget({
+    project: params.project,
+    branchName: params.branchName,
+    preferredName: params.preferredName,
+    excludedWorktreeId: params.currentWorktreeId,
+  })
 }
 
 function resolveManagedCreationTarget(params: {
@@ -184,34 +213,7 @@ function resolveManagedCreationTarget(params: {
   branchName: string
   preferredName?: string | null
 }): { branchName: string; path: string; name: string; collisionIndex: number } {
-  const baseSlug = getWorkspaceSlugFromBranchName(params.branchName)
-  const baseName =
-    params.preferredName?.trim() || createWorkspaceDisplayName(baseSlug)
-  const reservedPaths = new Set(
-    [
-      ...params.project.worktrees.map((worktree) => normalizeComparablePath(worktree.path)),
-      ...(params.project.hiddenWorktreePaths ?? []).map((worktreePath) =>
-        normalizeComparablePath(worktreePath)
-      ),
-    ].filter(Boolean)
-  )
-
-  let collisionIndex = 1
-  let candidateSlug = baseSlug
-  let candidatePath = buildManagedWorktreePath(params.project, candidateSlug)
-
-  while (reservedPaths.has(normalizeComparablePath(candidatePath))) {
-    collisionIndex += 1
-    candidateSlug = `${baseSlug}-${collisionIndex}`
-    candidatePath = buildManagedWorktreePath(params.project, candidateSlug)
-  }
-
-  return {
-    branchName: appendBranchCollisionSuffix(params.branchName, collisionIndex),
-    path: candidatePath,
-    name: collisionIndex > 1 ? `${baseName} ${collisionIndex}` : baseName,
-    collisionIndex,
-  }
+  return resolveManagedTarget(params)
 }
 
 function normalizeProjectRemoteName(remoteName: string | null | undefined): string | null {
@@ -748,11 +750,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
   },
 
-  createWorktreeFromIntent: async (projectId, updates) => {
+  createWorktreeFromIntent: async (projectId, updates, options) => {
     const project = get().projects.find((candidate) => candidate.id === projectId)
     if (!project) {
       throw new Error(`Unknown project: ${projectId}`)
     }
+    const activateOnSuccess = options?.activateOnSuccess ?? true
 
     const resolvedTarget = resolveManagedCreationTarget({
       project,
@@ -778,7 +781,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const provisionalProjects = replaceProject(get().projects, provisionalProject)
     set({
       projects: provisionalProjects,
-      focusedProjectId: project.id,
+      focusedProjectId: activateOnSuccess ? project.id : get().focusedProjectId,
     })
 
     try {
@@ -809,7 +812,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const readyProject = {
         ...latestProject,
         rootWorktreeId: latestProject.rootWorktreeId ?? creatingWorktree.id,
-        selectedWorktreeId: creatingWorktree.id,
+        selectedWorktreeId: activateOnSuccess
+          ? creatingWorktree.id
+          : latestProject.selectedWorktreeId,
         worktrees: sortWorktrees(
           latestProject.worktrees.map((worktree) =>
             worktree.id === creatingWorktree.id ? readyWorktree : worktree
@@ -817,11 +822,15 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         ),
       }
       const readyProjects = replaceProject(get().projects, readyProject)
-      await persistProjects(readyProjects, project.id, readyWorktree.id)
+      await persistProjects(
+        readyProjects,
+        activateOnSuccess ? project.id : get().focusedProjectId,
+        activateOnSuccess ? readyWorktree.id : get().activeWorktreeId
+      )
       set({
         projects: readyProjects,
-        focusedProjectId: project.id,
-        activeWorktreeId: readyWorktree.id,
+        focusedProjectId: activateOnSuccess ? project.id : get().focusedProjectId,
+        activeWorktreeId: activateOnSuccess ? readyWorktree.id : get().activeWorktreeId,
       })
       return readyWorktree
     } catch (error) {
