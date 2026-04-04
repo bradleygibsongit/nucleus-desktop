@@ -2,9 +2,15 @@ import { useEffect, useMemo, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 
 import { desktop } from "@/desktop/client"
-import type { GitActionStep } from "@/desktop/contracts"
+import type {
+  GitActionStep,
+  GitBranchesResponse,
+  GitRunStackedActionResult,
+} from "@/desktop/contracts"
 import {
+  Archive,
   CaretDown,
+  ChatCircle,
   CircleNotch,
   CloudUpload,
   GitCommit,
@@ -34,6 +40,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/features/shared/compo
 import { useProjectGitBranches, useProjectGitChanges } from "@/features/shared/hooks"
 import { cn } from "@/lib/utils"
 import { CommitChangesDialog } from "./CommitChangesDialog"
+import { RemoveWorktreeModal } from "@/features/workspace/components/modals"
+import { useChatStore } from "@/features/chat/store"
+import { useTabStore } from "@/features/editor/store"
 import {
   buildMenuItems,
   type GitActionIconName,
@@ -42,6 +51,7 @@ import {
   summarizeGitResult,
 } from "./gitActionsLogic"
 import { useCurrentProjectWorktree } from "@/features/shared/hooks"
+import { buildResolvePrompt } from "./gitResolve"
 
 interface SourceControlActionGroupProps {
   className?: string
@@ -60,6 +70,36 @@ const STEP_LABELS: Record<GitActionStep, string> = {
   creating_pr: "Creating PR",
 }
 
+function summarizeBranchStatusForLog(branchData: GitBranchesResponse | null) {
+  if (!branchData) {
+    return null
+  }
+
+  return {
+    currentBranch: branchData.currentBranch,
+    upstreamBranch: branchData.upstreamBranch,
+    aheadCount: branchData.aheadCount,
+    behindCount: branchData.behindCount,
+    hasUpstream: branchData.hasUpstream,
+    isDefaultBranch: branchData.isDefaultBranch,
+    isDetached: branchData.isDetached,
+    openPullRequest: branchData.openPullRequest
+      ? {
+          number: branchData.openPullRequest.number,
+          state: branchData.openPullRequest.state,
+          checksStatus: branchData.openPullRequest.checksStatus,
+          mergeStatus: branchData.openPullRequest.mergeStatus,
+          resolveReason: branchData.openPullRequest.resolveReason,
+          isMergeable: branchData.openPullRequest.isMergeable,
+          failedCheckNames: branchData.openPullRequest.failedCheckNames,
+          url: branchData.openPullRequest.url,
+          headBranch: branchData.openPullRequest.headBranch,
+          baseBranch: branchData.openPullRequest.baseBranch,
+        }
+      : null,
+  }
+}
+
 function formatGitActionError(error: unknown, fallback: string): string {
   const message = error instanceof Error ? error.message : fallback
 
@@ -70,8 +110,17 @@ function formatGitActionError(error: unknown, fallback: string): string {
 }
 
 function GitActionIcon({ icon }: { icon: GitActionIconName }) {
+  if (icon === "archive") {
+    return <Archive size={16} />
+  }
+  if (icon === "chat") {
+    return <ChatCircle size={16} />
+  }
   if (icon === "commit") {
     return <GitCommit size={16} />
+  }
+  if (icon === "pull") {
+    return <Refresh size={16} />
   }
   if (icon === "push") {
     return <CloudUpload size={16} />
@@ -86,23 +135,50 @@ export function SourceControlActionGroup({
   className,
   projectPath,
 }: SourceControlActionGroupProps) {
-  const { selectedProject, selectedWorktreePath } = useCurrentProjectWorktree()
+  const {
+    selectedProject,
+    selectedWorktree,
+    selectedWorktreeId,
+    selectedWorktreePath,
+  } = useCurrentProjectWorktree()
   const resolvedProjectPath = projectPath ?? selectedWorktreePath ?? null
   const gitGenerationModel = useSettingsStore((state) => state.gitGenerationModel)
+  const gitResolvePrompts = useSettingsStore((state) => state.gitResolvePrompts)
   const initializeSettings = useSettingsStore((state) => state.initialize)
-  const { branchData, isLoading: isBranchLoading, loadError: branchLoadError, refresh: refreshBranches } =
-    useProjectGitBranches(resolvedProjectPath, { enabled: Boolean(resolvedProjectPath) })
+  const createOptimisticSession = useChatStore((state) => state.createOptimisticSession)
+  const sendMessage = useChatStore((state) => state.sendMessage)
+  const openChatSession = useTabStore((state) => state.openChatSession)
+  const {
+    branchData,
+    isLoading: isBranchLoading,
+    loadError: branchLoadError,
+    refresh: refreshBranches,
+    setBranchData,
+  } = useProjectGitBranches(resolvedProjectPath, {
+    enabled: Boolean(resolvedProjectPath),
+    autoRefreshOnMount: false,
+    pollOpenPullRequest: false,
+    refreshOnWindowFocus: false,
+    subscribeToWatcher: false,
+  })
   const { changes, isLoading: isChangesLoading, loadError: changesLoadError, refresh: refreshChanges } =
-    useProjectGitChanges(resolvedProjectPath, { enabled: Boolean(resolvedProjectPath) })
+    useProjectGitChanges(resolvedProjectPath, {
+      enabled: Boolean(resolvedProjectPath),
+      autoRefreshOnMount: true,
+      refreshOnWindowFocus: true,
+      subscribeToWatcher: true,
+    })
 
   const [isCommitDialogOpen, setIsCommitDialogOpen] = useState(false)
   const [pendingDefaultBranchAction, setPendingDefaultBranchAction] =
     useState<PendingDefaultBranchAction | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeStep, setActiveStep] = useState<GitActionStep | null>(null)
+  const [busyLabel, setBusyLabel] = useState<string | null>(null)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null)
   const [feedbackTone, setFeedbackTone] = useState<"error" | "neutral">("neutral")
+  const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false)
 
   useEffect(() => {
     void initializeSettings()
@@ -118,6 +194,7 @@ export function SourceControlActionGroup({
   const isBusy = isSubmitting || isBranchLoading || isChangesLoading
   const branchStatus = branchData
   const preferredRemoteName = selectedProject?.remoteName ?? null
+  const canArchiveWorktree = selectedWorktree?.source === "managed"
   const effectiveRemoteName = useMemo(() => {
     if (preferredRemoteName?.trim()) {
       return preferredRemoteName.trim()
@@ -130,29 +207,118 @@ export function SourceControlActionGroup({
     return branchStatus?.remoteNames[0] ?? null
   }, [branchStatus, preferredRemoteName])
   const quickAction = useMemo(
-    () => resolveQuickAction(branchStatus, hasChanges, isBusy, effectiveRemoteName),
-    [branchStatus, effectiveRemoteName, hasChanges, isBusy]
+    () =>
+      resolveQuickAction(branchStatus, hasChanges, isBusy, {
+        preferredRemoteName: effectiveRemoteName,
+        canArchiveWorktree,
+      }),
+    [branchStatus, canArchiveWorktree, effectiveRemoteName, hasChanges, isBusy]
   )
   const menuItems = useMemo(
-    () => buildMenuItems(branchStatus, hasChanges, isBusy, effectiveRemoteName),
-    [branchStatus, effectiveRemoteName, hasChanges, isBusy]
+    () =>
+      buildMenuItems(branchStatus, hasChanges, isBusy, {
+        preferredRemoteName: effectiveRemoteName,
+        canArchiveWorktree,
+      }),
+    [branchStatus, canArchiveWorktree, effectiveRemoteName, hasChanges, isBusy]
   )
   const actionError = branchLoadError ?? changesLoadError
   const actionHint = actionError || quickAction.hint || null
+
+  useEffect(() => {
+    console.debug("[AppHeader] resolved state", {
+      projectPath: resolvedProjectPath,
+      hasChanges,
+      isBusy,
+      preferredRemoteName: effectiveRemoteName,
+      branchStatus: summarizeBranchStatusForLog(branchStatus),
+      quickAction,
+      menuItems,
+      actionError,
+      actionHint,
+    })
+  }, [
+    actionError,
+    actionHint,
+    branchStatus,
+    effectiveRemoteName,
+    hasChanges,
+    isBusy,
+    menuItems,
+    quickAction,
+    resolvedProjectPath,
+  ])
 
   if (!resolvedProjectPath) {
     return null
   }
 
   const refreshGitState = async () => {
+    console.debug("[AppHeader] refreshGitState:start", {
+      projectPath: resolvedProjectPath,
+    })
     await Promise.all([refreshBranches({ quiet: true }), refreshChanges({ quiet: true })])
+    console.debug("[AppHeader] refreshGitState:done", {
+      projectPath: resolvedProjectPath,
+    })
+  }
+
+  const seedOptimisticPullRequest = (
+    nextBranchData: GitBranchesResponse | null,
+    pr: GitRunStackedActionResult["pr"]
+  ) => {
+    console.debug("[AppHeader] seedOptimisticPullRequest:attempt", {
+      projectPath: resolvedProjectPath,
+      pr,
+      nextBranchData: summarizeBranchStatusForLog(nextBranchData),
+      previousBranchStatus: summarizeBranchStatusForLog(branchStatus),
+    })
+    if (!pr.url || !pr.number) {
+      console.debug("[AppHeader] seedOptimisticPullRequest:skipped", {
+        reason: "missing-pr-url-or-number",
+        pr,
+      })
+      return
+    }
+
+    const base = nextBranchData ?? branchStatus
+    if (!base) {
+      console.debug("[AppHeader] seedOptimisticPullRequest:skipped", {
+        reason: "missing-base-branch-data",
+        pr,
+      })
+      return
+    }
+
+    setBranchData({
+      ...base,
+      openPullRequest: {
+        number: pr.number,
+        title: pr.title ?? `PR #${pr.number}`,
+        url: pr.url,
+        state: "open",
+        baseBranch: pr.baseBranch ?? base.defaultBranch ?? "main",
+        headBranch: pr.headBranch ?? base.currentBranch,
+        checksStatus: "pending",
+        mergeStatus: "unknown",
+        isMergeable: false,
+      },
+    })
+
+    window.setTimeout(() => {
+      console.debug("[AppHeader] seedOptimisticPullRequest:scheduled-refresh", {
+        projectPath: resolvedProjectPath,
+        prNumber: pr.number,
+      })
+      void refreshBranches({ quiet: true })
+    }, 2_000)
   }
 
   const openPullRequest = async () => {
     const prUrl = branchStatus?.openPullRequest?.url
     if (!prUrl) {
       setFeedbackTone("error")
-      setFeedbackMessage("No open pull request found for this branch.")
+      setFeedbackMessage("No pull request found for this branch.")
       return
     }
 
@@ -166,6 +332,18 @@ export function SourceControlActionGroup({
     }
   }
 
+  const openArchiveModal = () => {
+    if (!selectedProject || !selectedWorktree || selectedWorktree.source !== "managed") {
+      setFeedbackTone("error")
+      setFeedbackMessage("Only managed workspaces can be archived from the header.")
+      return
+    }
+
+    setFeedbackTone("neutral")
+    setFeedbackMessage(null)
+    setIsArchiveModalOpen(true)
+  }
+
   const runGitAction = async (
     action: "commit" | "commit_push" | "commit_push_pr",
     options?: {
@@ -175,6 +353,14 @@ export function SourceControlActionGroup({
       skipDefaultBranchPrompt?: boolean
     }
   ): Promise<boolean> => {
+    console.debug("[AppHeader] runGitAction:start", {
+      projectPath: resolvedProjectPath,
+      action,
+      options,
+      branchStatus: summarizeBranchStatusForLog(branchStatus),
+      hasChanges,
+      effectiveRemoteName,
+    })
     if (
       !options?.skipDefaultBranchPrompt &&
       branchStatus &&
@@ -190,6 +376,7 @@ export function SourceControlActionGroup({
 
     setIsSubmitting(true)
     setActiveStep(options?.commitMessage ? "committing" : "generating")
+    setBusyLabel(null)
     setFeedbackMessage(null)
 
     try {
@@ -204,32 +391,65 @@ export function SourceControlActionGroup({
           : {}),
       })
 
-      await refreshGitState()
+      const [nextBranchData] = await Promise.all([
+        refreshBranches({ quiet: true }),
+        refreshChanges({ quiet: true }),
+      ])
+      console.debug("[AppHeader] runGitAction:post-refresh", {
+        projectPath: resolvedProjectPath,
+        action,
+        result,
+        nextBranchData: summarizeBranchStatusForLog(nextBranchData),
+      })
       if (result.pr.status === "created" || result.pr.status === "opened_existing") {
+        if (!nextBranchData?.openPullRequest) {
+          seedOptimisticPullRequest(nextBranchData, result.pr)
+        }
         setFeedbackTone("neutral")
         setFeedbackMessage(null)
       } else {
         setFeedbackTone("neutral")
         setFeedbackMessage(summarizeGitResult(result))
       }
+      console.debug("[AppHeader] runGitAction:success", {
+        projectPath: resolvedProjectPath,
+        action,
+        result,
+      })
       return true
     } catch (error) {
+      console.error("[AppHeader] runGitAction:error", {
+        projectPath: resolvedProjectPath,
+        action,
+        options,
+        error,
+      })
       setFeedbackTone("error")
       setFeedbackMessage(formatGitActionError(error, "Git action failed."))
       return false
     } finally {
       setIsSubmitting(false)
       setActiveStep(null)
+      setBusyLabel(null)
     }
   }
 
   const handlePull = async () => {
+    console.debug("[AppHeader] handlePull:start", {
+      projectPath: resolvedProjectPath,
+      branchStatus: summarizeBranchStatusForLog(branchStatus),
+    })
     setIsSubmitting(true)
+    setBusyLabel("Pulling")
     setFeedbackMessage(null)
 
     try {
       const result = await desktop.git.pull(resolvedProjectPath)
       await refreshGitState()
+      console.debug("[AppHeader] handlePull:success", {
+        projectPath: resolvedProjectPath,
+        result,
+      })
       setFeedbackTone("neutral")
       setFeedbackMessage(
         result.status === "pulled"
@@ -237,17 +457,134 @@ export function SourceControlActionGroup({
           : `${result.branch} is already up to date`
       )
     } catch (error) {
+      console.error("[AppHeader] handlePull:error", {
+        projectPath: resolvedProjectPath,
+        error,
+      })
       setFeedbackTone("error")
       setFeedbackMessage(formatGitActionError(error, "Pull failed."))
     } finally {
       setIsSubmitting(false)
       setActiveStep(null)
+      setBusyLabel(null)
+    }
+  }
+
+  const handleMergePullRequest = async () => {
+    console.debug("[AppHeader] handleMergePullRequest:start", {
+      projectPath: resolvedProjectPath,
+      branchStatus: summarizeBranchStatusForLog(branchStatus),
+    })
+    setIsSubmitting(true)
+    setBusyLabel("Merging")
+    setFeedbackMessage(null)
+
+    try {
+      const result = await desktop.git.mergePullRequest(resolvedProjectPath)
+      await refreshGitState()
+      console.debug("[AppHeader] handleMergePullRequest:success", {
+        projectPath: resolvedProjectPath,
+        result,
+      })
+      setFeedbackTone("neutral")
+      setFeedbackMessage(`Merged PR #${result.number}`)
+    } catch (error) {
+      console.error("[AppHeader] handleMergePullRequest:error", {
+        projectPath: resolvedProjectPath,
+        error,
+      })
+      setFeedbackTone("error")
+      setFeedbackMessage(formatGitActionError(error, "Merge failed."))
+    } finally {
+      setIsSubmitting(false)
+      setActiveStep(null)
+      setBusyLabel(null)
+    }
+  }
+
+  const handleResolvePullRequest = async () => {
+    console.debug("[AppHeader] handleResolvePullRequest:start", {
+      projectPath: resolvedProjectPath,
+      branchStatus: summarizeBranchStatusForLog(branchStatus),
+      selectedWorktreeId,
+      selectedWorktreePath,
+    })
+    if (!branchStatus?.openPullRequest?.resolveReason) {
+      setFeedbackTone("error")
+      setFeedbackMessage("No resolvable pull request state is available for this branch.")
+      return
+    }
+
+    if (!selectedWorktreeId || !resolvedProjectPath) {
+      setFeedbackTone("error")
+      setFeedbackMessage("Select a project worktree before starting a resolve chat.")
+      return
+    }
+
+    let session = createOptimisticSession(selectedWorktreeId, resolvedProjectPath)
+    if (!session) {
+      setFeedbackTone("error")
+      setFeedbackMessage("Unable to start a resolve chat for this worktree.")
+      return
+    }
+
+    const prompt = buildResolvePrompt(branchStatus, gitResolvePrompts, {
+      projectName: selectedProject?.name,
+      projectPath: selectedProject?.path,
+      worktreeName: selectedWorktree?.name,
+      worktreePath: resolvedProjectPath,
+    })
+
+    openChatSession(session.id, session.title)
+    setIsSubmitting(true)
+    setBusyLabel("Resolving")
+    setFeedbackTone("neutral")
+    setFeedbackMessage(null)
+
+    try {
+      await sendMessage(session.id, prompt)
+      console.debug("[AppHeader] handleResolvePullRequest:success", {
+        projectPath: resolvedProjectPath,
+        sessionId: session.id,
+        resolveReason: branchStatus.openPullRequest.resolveReason,
+      })
+    } catch (error) {
+      console.error("[AppHeader] handleResolvePullRequest:error", {
+        projectPath: resolvedProjectPath,
+        error,
+      })
+      setFeedbackTone("error")
+      setFeedbackMessage(formatGitActionError(error, "Unable to start a resolve chat."))
+    } finally {
+      setIsSubmitting(false)
+      setActiveStep(null)
+      setBusyLabel(null)
     }
   }
 
   const runQuickAction = async () => {
+    console.debug("[AppHeader] runQuickAction", {
+      projectPath: resolvedProjectPath,
+      quickAction,
+      branchStatus: summarizeBranchStatusForLog(branchStatus),
+    })
     if (quickAction.kind === "open_pr") {
       await openPullRequest()
+      return
+    }
+
+    if (quickAction.kind === "open_archive") {
+      openArchiveModal()
+      return
+    }
+
+    if (quickAction.kind === "merge_pr") {
+      await handleMergePullRequest()
+      return
+    }
+
+    if (quickAction.kind === "resolve_pr") {
+      await handleResolvePullRequest()
       return
     }
 
@@ -268,6 +605,11 @@ export function SourceControlActionGroup({
   }
 
   const handleMenuItem = async (item: (typeof menuItems)[number]) => {
+    console.debug("[AppHeader] handleMenuItem", {
+      projectPath: resolvedProjectPath,
+      item,
+      branchStatus: summarizeBranchStatusForLog(branchStatus),
+    })
     setIsMenuOpen(false)
 
     if (item.disabled) {
@@ -279,34 +621,29 @@ export function SourceControlActionGroup({
       return
     }
 
-    if (item.opensPr) {
+    if (item.kind === "open_archive") {
+      openArchiveModal()
+      return
+    }
+
+    if (item.kind === "open_pr") {
       await openPullRequest()
       return
     }
 
-    if (item.action) {
+    if (item.kind === "resolve_pr") {
+      await handleResolvePullRequest()
+      return
+    }
+
+    if (item.kind === "run_action" && item.action) {
       await runGitAction(item.action)
     }
   }
 
-  const quickActionIcon =
-    quickAction.kind === "run_pull" ? (
-      <Refresh size={16} />
-    ) : (
-      <GitActionIcon
-        icon={
-          quickAction.label.toLowerCase().includes("pr")
-            ? "pr"
-            : quickAction.label.toLowerCase().includes("push")
-              ? "push"
-              : quickAction.label.toLowerCase().includes("commit")
-                ? "commit"
-                : "info"
-        }
-      />
-    )
+  const quickActionIcon = <GitActionIcon icon={quickAction.icon} />
 
-  const displayLabel = isSubmitting && activeStep ? STEP_LABELS[activeStep] : quickAction.label
+  const displayLabel = busyLabel ?? (isSubmitting && activeStep ? STEP_LABELS[activeStep] : quickAction.label)
   const iconKey = isSubmitting ? "spinner" : quickAction.label
   const labelKey = displayLabel
 
@@ -322,6 +659,10 @@ export function SourceControlActionGroup({
       disabled={isBusy || quickAction.disabled}
       className={cn(
         "h-7 rounded-r-none border-r-0 shadow-none",
+        quickAction.tone === "warning" &&
+          "border-amber-500/50 bg-amber-500/10 text-amber-950 hover:bg-amber-500/15 hover:text-amber-950 dark:text-amber-100 dark:hover:bg-amber-500/20 dark:hover:text-amber-50",
+        quickAction.tone === "danger" &&
+          "border-destructive/50 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive dark:hover:bg-destructive/20",
         feedbackTone === "error" && feedbackMessage ? "border-destructive/50" : undefined,
         className
       )}
@@ -432,6 +773,15 @@ export function SourceControlActionGroup({
             setIsCommitDialogOpen(false)
           }
         }}
+      />
+
+      <RemoveWorktreeModal
+        open={isArchiveModalOpen}
+        project={selectedProject}
+        worktree={selectedWorktree}
+        intent="archive"
+        defaultDeleteFromSystem
+        onOpenChange={setIsArchiveModalOpen}
       />
 
       <AlertDialog

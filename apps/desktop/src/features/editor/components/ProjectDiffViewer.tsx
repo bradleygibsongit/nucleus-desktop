@@ -99,6 +99,7 @@ export function ProjectDiffViewer({
       filename={filename}
       original={diff.original}
       modified={diff.modified}
+      modelKey={`${projectPath ?? "project"}:${previousFilePath ?? filePath ?? filename}:${filePath ?? filename}`}
     />
   )
 }

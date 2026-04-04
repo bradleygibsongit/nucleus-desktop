@@ -6,7 +6,17 @@ import path from "node:path"
 import { promisify } from "node:util"
 import { execFile } from "node:child_process"
 
-import { GitService } from "./git"
+import {
+  GitService,
+  mapPullRequest,
+  normalizePullRequestCheckStatus,
+  normalizePullRequestMergeStatus,
+  normalizePullRequestResolveReason,
+  parseGitHubActionsCheckTarget,
+  shouldReuseExistingPullRequest,
+  summarizePullRequestChecks,
+  trimPullRequestFailureOutput,
+} from "./git"
 
 const execFileAsync = promisify(execFile)
 
@@ -294,5 +304,177 @@ describe("GitService worktrees", () => {
       await rm(repoDir, { recursive: true, force: true })
       await rm(path.join(repoDir, "..", ".nucleus-worktrees-test"), { recursive: true, force: true })
     }
+  })
+})
+
+describe("pull request metadata helpers", () => {
+  test("summarizes pending, failed, and passed checks counts", () => {
+    expect(
+      summarizePullRequestChecks([
+        { bucket: "pass", name: "lint" },
+        { bucket: "pending" },
+        { bucket: "fail", name: "test" },
+      ])
+    ).toEqual({
+      checksStatus: "failed",
+      failedChecksCount: 1,
+      failedCheckNames: ["test"],
+      pendingChecksCount: 1,
+      passedChecksCount: 1,
+    })
+  })
+
+  test("maps merge states into the desktop contract", () => {
+    expect(normalizePullRequestMergeStatus("MERGED", "MERGEABLE", "CLEAN")).toBe("merged")
+    expect(normalizePullRequestMergeStatus("OPEN", "MERGEABLE", "CLEAN")).toBe("mergeable")
+    expect(normalizePullRequestMergeStatus("OPEN", "CONFLICTING", "DIRTY")).toBe("blocked")
+    expect(normalizePullRequestMergeStatus("OPEN", "UNKNOWN", "UNKNOWN")).toBe("unknown")
+  })
+
+  test("maps detailed check buckets into renderer-friendly states", () => {
+    expect(normalizePullRequestCheckStatus("pending")).toBe("pending")
+    expect(normalizePullRequestCheckStatus("pass")).toBe("passed")
+    expect(normalizePullRequestCheckStatus("fail")).toBe("failed")
+    expect(normalizePullRequestCheckStatus("cancel")).toBe("cancelled")
+    expect(normalizePullRequestCheckStatus("skipping")).toBe("skipped")
+  })
+
+  test("parses GitHub Actions run and job ids from check links", () => {
+    expect(
+      parseGitHubActionsCheckTarget("https://github.com/example/repo/actions/runs/123456/job/789012")
+    ).toEqual({
+      runId: "123456",
+      jobId: "789012",
+    })
+    expect(
+      parseGitHubActionsCheckTarget("https://github.com/example/repo/runs/123456")
+    ).toEqual({
+      runId: "123456",
+    })
+    expect(parseGitHubActionsCheckTarget("https://example.com/checks/123")).toBeNull()
+  })
+
+  test("trims and de-ansi-fies failure output for copying", () => {
+    const output = "\u001b[31mFAIL\u001b[39m something broke"
+    expect(trimPullRequestFailureOutput(output, 32)).toBe("FAIL something broke")
+  })
+
+  test("maps resolve reasons from GitHub states with failed checks taking precedence", () => {
+    expect(
+      normalizePullRequestResolveReason({
+        state: "OPEN",
+        checksStatus: "failed",
+        mergeStatus: "blocked",
+        mergeable: "CONFLICTING",
+        mergeStateStatus: "DIRTY",
+      })
+    ).toBe("failed_checks")
+    expect(
+      normalizePullRequestResolveReason({
+        state: "OPEN",
+        checksStatus: "passed",
+        mergeStatus: "blocked",
+        mergeable: "CONFLICTING",
+        mergeStateStatus: "DIRTY",
+      })
+    ).toBe("conflicts")
+    expect(
+      normalizePullRequestResolveReason({
+        state: "OPEN",
+        checksStatus: "passed",
+        mergeStatus: "blocked",
+        mergeable: "UNKNOWN",
+        mergeStateStatus: "BEHIND",
+      })
+    ).toBe("behind")
+    expect(
+      normalizePullRequestResolveReason({
+        state: "OPEN",
+        checksStatus: "passed",
+        mergeStatus: "blocked",
+        mergeable: "UNKNOWN",
+        mergeStateStatus: "DRAFT",
+      })
+    ).toBe("draft")
+    expect(
+      normalizePullRequestResolveReason({
+        state: "OPEN",
+        checksStatus: "passed",
+        mergeStatus: "blocked",
+        mergeable: false,
+        mergeStateStatus: "BLOCKED",
+      })
+    ).toBe("blocked")
+    expect(
+      normalizePullRequestResolveReason({
+        state: "OPEN",
+        checksStatus: "passed",
+        mergeStatus: "unknown",
+        mergeable: "UNKNOWN",
+        mergeStateStatus: "UNKNOWN",
+      })
+    ).toBe("unknown")
+  })
+
+  test("only reuses open pull requests in the create flow", () => {
+    expect(shouldReuseExistingPullRequest({ state: "open" })).toBe(true)
+    expect(shouldReuseExistingPullRequest({ state: "merged" })).toBe(false)
+    expect(shouldReuseExistingPullRequest({ state: "closed" })).toBe(false)
+    expect(shouldReuseExistingPullRequest(null)).toBe(false)
+  })
+
+  test("maps a mergeable pull request with passing checks", () => {
+    const pullRequest = mapPullRequest(
+      {
+        number: 18,
+        title: "Header merge flow",
+        url: "https://example.com/pr/18",
+        state: "OPEN",
+        baseRefName: "main",
+        headRefName: "feature/header",
+        mergeable: "MERGEABLE",
+        mergeStateStatus: "CLEAN",
+      },
+      [{ bucket: "pass" }, { bucket: "pass" }]
+    )
+
+    expect(pullRequest).toMatchObject({
+      state: "open",
+      checksStatus: "passed",
+      mergeStatus: "mergeable",
+      isMergeable: true,
+      passedChecksCount: 2,
+      resolveReason: undefined,
+    })
+  })
+
+  test("maps a conflicted pull request with failed checks and check names", () => {
+    const pullRequest = mapPullRequest(
+      {
+        number: 18,
+        title: "Header resolve flow",
+        url: "https://example.com/pr/18",
+        state: "OPEN",
+        baseRefName: "main",
+        headRefName: "feature/header",
+        mergeable: "CONFLICTING",
+        mergeStateStatus: "DIRTY",
+      },
+      [
+        { bucket: "fail", name: "lint" },
+        { bucket: "pending", name: "integration" },
+      ]
+    )
+
+    expect(pullRequest).toMatchObject({
+      state: "open",
+      checksStatus: "failed",
+      mergeStatus: "blocked",
+      isMergeable: false,
+      failedChecksCount: 1,
+      failedCheckNames: ["lint"],
+      pendingChecksCount: 1,
+      resolveReason: "failed_checks",
+    })
   })
 })

@@ -45,13 +45,59 @@ export interface GitBranchesResponse {
   openPullRequest: GitPullRequest | null
 }
 
+export type GitPullRequestResolveReason =
+  | "conflicts"
+  | "behind"
+  | "failed_checks"
+  | "blocked"
+  | "draft"
+  | "unknown"
+
 export interface GitPullRequest {
   number: number
   title: string
+  description?: string | null
   url: string
   state: "open" | "closed" | "merged"
   baseBranch: string
   headBranch: string
+  checksStatus: "none" | "pending" | "passed" | "failed"
+  mergeStatus: "unknown" | "blocked" | "mergeable" | "merged"
+  isMergeable: boolean
+  resolveReason?: GitPullRequestResolveReason
+  checksError?: string | null
+  failedChecksCount?: number
+  failedCheckNames?: string[]
+  pendingChecksCount?: number
+  passedChecksCount?: number
+}
+
+export type GitPullRequestCheckStatus =
+  | "pending"
+  | "passed"
+  | "failed"
+  | "cancelled"
+  | "skipped"
+
+export interface GitPullRequestCheck {
+  id: string
+  name: string
+  workflowName?: string | null
+  description?: string | null
+  event?: string | null
+  status: GitPullRequestCheckStatus
+  startedAt?: string | null
+  completedAt?: string | null
+  detailsUrl?: string | null
+  errorText?: string
+  errorCopyText?: string
+  hasFailureDetails: boolean
+}
+
+export interface GitPullRequestChecksResponse {
+  checks: GitPullRequestCheck[]
+  pullRequestNumber: number | null
+  error?: string | null
 }
 
 export interface GitWorktreeSummary {
@@ -142,6 +188,11 @@ export interface GitPullResult {
   status: "pulled" | "skipped_up_to_date"
   branch: string
   upstreamBranch: string | null
+}
+
+export interface GitMergePullRequestResult {
+  number: number
+  url: string
 }
 
 export interface ProjectFileSystemEvent {

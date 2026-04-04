@@ -22,6 +22,7 @@ import {
   createOptimisticRuntimeSession,
   deriveSessionTitle,
   findProjectForSession,
+  hasProjectChatSession,
   normalizeProjectChat,
   replaceSession,
   sortSessions,
@@ -264,7 +265,7 @@ function getProjectSessionMatch(
   sessionId: string
 ): { projectChat: ProjectChatState; session: RuntimeSession } | null {
   const projectChat = chatByWorktree[worktreeId]
-  if (!projectChat) {
+  if (!projectChat || !hasProjectChatSession(projectChat, sessionId)) {
     return null
   }
 
@@ -646,6 +647,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
         ...chatByWorktree,
         [worktreeId]: {
           ...projectChat,
+          archivedSessionIds: (projectChat.archivedSessionIds ?? []).filter(
+            (candidateId) => candidateId !== sessionId
+          ),
           sessions: updatedSessions,
           activeSessionId: nextActiveSessionId,
         },
@@ -689,6 +693,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       },
       activePromptBySession: nextPromptState,
       currentSessionId: currentSessionId === sessionId ? nextActiveSessionId : currentSessionId,
+      childSessions: currentSessionId === sessionId ? new Map<string, ChildSessionState>() : get().childSessions,
+      status: currentSessionId === sessionId ? "idle" : get().status,
+      error: currentSessionId === sessionId ? null : get().error,
     })
 
     await get()._persistState()

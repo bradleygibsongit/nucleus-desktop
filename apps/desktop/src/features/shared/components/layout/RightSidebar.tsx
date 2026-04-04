@@ -1,10 +1,16 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { desktop } from "@/desktop/client"
 import { FileChangesList, FileChangesToolbar, FileTreeViewer, useFileChangesState } from "@/features/version-control/components"
 import { useFileTreeStore } from "@/features/workspace/store"
 import { useTabStore } from "@/features/editor/store"
 import { useCurrentProjectWorktree } from "@/features/shared/hooks"
-import { useProjectGitChanges } from "@/features/shared/hooks"
+import {
+  useProjectGitBranches,
+  useProjectGitChanges,
+  useProjectGitPullRequestChecks,
+} from "@/features/shared/hooks"
+import { PullRequestChecksPanel } from "./PullRequestChecksPanel"
+import { getChecksTabBadgeCount } from "./pullRequestChecks"
 import { useRightSidebar } from "./useRightSidebar"
 import { SidebarShell } from "./SidebarShell"
 import { SourceControlActionGroup } from "./AppHeader"
@@ -14,22 +20,21 @@ interface RightSidebarProps {
   activeView?: "chat" | "settings" | "automations"
 }
 
-type RightSidebarTab = "files" | "changes"
-
 const RIGHT_SIDEBAR_TABS: Array<{
-  key: RightSidebarTab
+  key: "files" | "changes" | "checks"
   label: string
 }> = [
   { key: "files", label: "Files" },
   { key: "changes", label: "Changes" },
+  { key: "checks", label: "Checks" },
 ]
 
 export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
   const [isInitialLoad, setIsInitialLoad] = useState(true)
-  const [activeTab, setActiveTab] = useState<RightSidebarTab>("files")
   const [fileImportError, setFileImportError] = useState<string | null>(null)
   const [isImportingFiles, setIsImportingFiles] = useState(false)
-  const { isAvailable, isCollapsed, width, setWidth } = useRightSidebar()
+  const previousPendingChecksKeyRef = useRef<string | null>(null)
+  const { isAvailable, isCollapsed, width, setWidth, activeTab, setActiveTab, expand } = useRightSidebar()
   const { selectedWorktreeId, selectedWorktree, selectedWorktreePath } = useCurrentProjectWorktree()
   const {
     activeProjectPath,
@@ -46,12 +51,23 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
     openFile,
     switchProject,
   } = useTabStore()
+  const { branchData } = useProjectGitBranches(selectedWorktreePath, { enabled: Boolean(selectedWorktreePath) })
   const {
     changes: projectChanges,
     isLoading: isChangesLoading,
     loadError: changesError,
   } = useProjectGitChanges(selectedWorktreePath, { enabled: activeTab === "changes" })
+  const openPullRequest = branchData?.openPullRequest ?? null
+  const shouldLoadChecks = openPullRequest?.state === "open"
+  const {
+    checks: pullRequestChecks,
+    isLoading: isPullRequestChecksLoading,
+    loadError: pullRequestChecksError,
+  } = useProjectGitPullRequestChecks(selectedWorktreePath, {
+    enabled: Boolean(selectedWorktreePath) && shouldLoadChecks,
+  })
   const fileChangesState = useFileChangesState(projectChanges)
+  const checksTabBadgeCount = getChecksTabBadgeCount(openPullRequest, pullRequestChecks)
 
   const fileTreeData = activeProjectPath ? (dataByProjectPath[activeProjectPath] ?? {}) : {}
   const isFileTreeLoading = activeProjectPath ? (loadingByProjectPath[activeProjectPath] ?? false) : false
@@ -85,6 +101,45 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
       setIsInitialLoad(false)
     })
   }, [selectedWorktreePath, setActiveProjectPath])
+
+  useEffect(() => {
+    const nextPendingChecksKey =
+      selectedWorktreePath &&
+      openPullRequest?.state === "open" &&
+      openPullRequest.checksStatus === "pending"
+        ? `${selectedWorktreePath}:${openPullRequest.number}`
+        : null
+
+    console.debug("[RightSidebar] checks:auto-open:evaluate", {
+      selectedWorktreePath,
+      activeTab,
+      isCollapsed,
+      pullRequestNumber: openPullRequest?.number ?? null,
+      pullRequestState: openPullRequest?.state ?? null,
+      checksStatus: openPullRequest?.checksStatus ?? null,
+      previousPendingChecksKey: previousPendingChecksKeyRef.current,
+      nextPendingChecksKey,
+    })
+
+    if (nextPendingChecksKey && previousPendingChecksKeyRef.current !== nextPendingChecksKey) {
+      console.debug("[RightSidebar] checks:auto-open:trigger", {
+        nextPendingChecksKey,
+      })
+      expand()
+      setActiveTab("checks")
+    }
+
+    previousPendingChecksKeyRef.current = nextPendingChecksKey
+  }, [
+    activeTab,
+    expand,
+    isCollapsed,
+    openPullRequest?.checksStatus,
+    openPullRequest?.number,
+    openPullRequest?.state,
+    selectedWorktreePath,
+    setActiveTab,
+  ])
 
   const handleExternalFileDrop = useCallback(
     async (sourcePaths: string[], targetDirectory: string) => {
@@ -168,6 +223,18 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
                     {projectChanges.length}
                   </span>
                 ) : null}
+                {key === "checks" && checksTabBadgeCount > 0 ? (
+                  <span
+                    className={cn(
+                      "text-[11px] leading-none",
+                      isActive
+                        ? "text-sidebar-accent-foreground/70"
+                        : "text-sidebar-foreground/40"
+                    )}
+                  >
+                    {checksTabBadgeCount}
+                  </span>
+                ) : null}
               </button>
             )
           })}
@@ -221,7 +288,7 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
                 )}
               </div>
             )
-          ) : (
+          ) : activeTab === "changes" ? (
             !selectedWorktree ? (
               <div className="flex items-center justify-center py-8">
                 <span className="text-sm text-muted-foreground">Select a worktree to view changes</span>
@@ -255,6 +322,17 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
                 />
               </div>
             )
+          ) : !selectedWorktree ? (
+            <div className="flex items-center justify-center py-8">
+              <span className="text-sm text-muted-foreground">Select a worktree to view checks</span>
+            </div>
+          ) : (
+            <PullRequestChecksPanel
+              pullRequest={openPullRequest}
+              checks={pullRequestChecks}
+              isLoading={isPullRequestChecksLoading}
+              loadError={pullRequestChecksError ?? openPullRequest?.checksError ?? null}
+            />
           )}
         </div>
       </div>

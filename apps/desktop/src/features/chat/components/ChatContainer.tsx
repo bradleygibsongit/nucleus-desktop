@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react"
+import { memo, useEffect, useRef, useState } from "react"
 import { GitBranch } from "@/components/icons"
 import { ProjectIcon } from "@/features/workspace/components/ProjectIcon"
 import {
+  useChatHasContent,
   useChatComposerState,
   useChatProjectState,
   useChatTimelineState,
@@ -86,6 +87,18 @@ function ChatComposerPane({
   )
 }
 
+const MemoizedChatComposerPane = memo(
+  ChatComposerPane,
+  (previousProps, nextProps) =>
+    previousProps.activeSessionId === nextProps.activeSessionId &&
+    previousProps.selectedProjectId === nextProps.selectedProjectId &&
+    previousProps.selectedWorktreeId === nextProps.selectedWorktreeId &&
+    previousProps.selectedWorktreePath === nextProps.selectedWorktreePath &&
+    previousProps.selectedWorktree?.id === nextProps.selectedWorktree?.id &&
+    previousProps.selectedWorktree?.path === nextProps.selectedWorktree?.path &&
+    previousProps.selectedWorktree?.branchName === nextProps.selectedWorktree?.branchName
+)
+
 export function ChatContainer() {
   const {
     selectedProject,
@@ -94,9 +107,8 @@ export function ChatContainer() {
     selectedWorktree,
     activeSessionId,
   } = useChatProjectState()
-  const { messages } = useChatTimelineState(activeSessionId)
+  const hasContent = useChatHasContent(activeSessionId)
   const threadKey = `${selectedWorktreeId ?? selectedProject?.id ?? "no-project"}:${activeSessionId ?? "draft"}`
-  const hasContent = messages.length > 0
   const prevHasContentRef = useRef(hasContent)
   const [transition, setTransition] = useState<"settle" | "rise" | null>(null)
 
@@ -137,7 +149,7 @@ export function ChatContainer() {
           ) : (
             <h3 className="text-sm font-medium text-foreground/90 px-10">New chat</h3>
           )}
-          <ChatComposerPane
+          <MemoizedChatComposerPane
             activeSessionId={activeSessionId}
             selectedProjectId={selectedProjectId}
             selectedWorktreePath={selectedWorktree?.path ?? null}
@@ -164,7 +176,7 @@ export function ChatContainer() {
         onAnimationEnd={() => setTransition(null)}
       >
         <div className="w-full max-w-[803px]">
-          <ChatComposerPane
+          <MemoizedChatComposerPane
             activeSessionId={activeSessionId}
             selectedProjectId={selectedProjectId}
             selectedWorktreePath={selectedWorktree?.path ?? null}

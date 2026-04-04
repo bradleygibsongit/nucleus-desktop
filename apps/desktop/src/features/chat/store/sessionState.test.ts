@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import type { ProjectChatState } from "./storeTypes"
-import { hasProjectChatSession, normalizeProjectChat } from "./sessionState"
+import { findProjectForSession, hasProjectChatSession, normalizeProjectChat } from "./sessionState"
 
 function createProjectChat(overrides: Partial<ProjectChatState> = {}): ProjectChatState {
   return {
@@ -46,5 +46,22 @@ describe("normalizeProjectChat", () => {
     })
 
     expect(normalizeProjectChat(projectChat).activeSessionId).toBeNull()
+  })
+})
+
+describe("findProjectForSession", () => {
+  test("ignores archived sessions", () => {
+    const projectChat = createProjectChat({
+      archivedSessionIds: ["session-1"],
+    })
+
+    expect(
+      findProjectForSession(
+        {
+          "worktree-1": projectChat,
+        },
+        "session-1"
+      )
+    ).toBeNull()
   })
 })

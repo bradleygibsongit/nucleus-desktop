@@ -1,22 +1,33 @@
 import { create } from "zustand"
-import { desktop, type GitBranchesResponse, type GitFileChange } from "@/desktop/client"
+import {
+  desktop,
+  type GitBranchesResponse,
+  type GitFileChange,
+  type GitPullRequestCheck,
+  type GitPullRequestChecksResponse,
+} from "@/desktop/client"
 
 const WATCHER_REFRESH_DEBOUNCE_MS = 120
 
 interface ProjectGitEntry {
   branchData: GitBranchesResponse | null
   changes: GitFileChange[]
+  pullRequestChecks: GitPullRequestCheck[]
   branchError: string | null
   changesError: string | null
+  pullRequestChecksError: string | null
   isBranchLoading: boolean
   isChangesLoading: boolean
+  isPullRequestChecksLoading: boolean
 }
 
 interface RefreshRequest {
   includeBranches: boolean
   includeChanges: boolean
+  includePullRequestChecks: boolean
   quietBranches: boolean
   quietChanges: boolean
+  quietPullRequestChecks: boolean
 }
 
 interface ProjectGitStoreState {
@@ -32,10 +43,13 @@ interface ProjectGitStoreState {
 const EMPTY_ENTRY: ProjectGitEntry = {
   branchData: null,
   changes: [],
+  pullRequestChecks: [],
   branchError: null,
   changesError: null,
+  pullRequestChecksError: null,
   isBranchLoading: false,
   isChangesLoading: false,
+  isPullRequestChecksLoading: false,
 }
 
 function getEntry(
@@ -45,6 +59,20 @@ function getEntry(
   return entriesByProjectPath[projectPath] ?? EMPTY_ENTRY
 }
 
+function getOpenPullRequestNumber(branchData: GitBranchesResponse | null): number | null {
+  return branchData?.openPullRequest?.state === "open" ? branchData.openPullRequest.number : null
+}
+
+function shouldRetainPullRequestChecks(
+  currentBranchData: GitBranchesResponse | null,
+  nextBranchData: GitBranchesResponse | null
+): boolean {
+  const currentPullRequestNumber = getOpenPullRequestNumber(currentBranchData)
+  const nextPullRequestNumber = getOpenPullRequestNumber(nextBranchData)
+
+  return currentPullRequestNumber != null && currentPullRequestNumber === nextPullRequestNumber
+}
+
 const pendingRefreshByProject = new Map<
   string,
   RefreshRequest & { timerId: ReturnType<typeof setTimeout> | null }
@@ -52,6 +80,10 @@ const pendingRefreshByProject = new Map<
 
 const inFlightBranchesByProject = new Map<string, Promise<GitBranchesResponse | null>>()
 const inFlightChangesByProject = new Map<string, Promise<GitFileChange[]>>()
+const inFlightPullRequestChecksByProject = new Map<
+  string,
+  Promise<GitPullRequestChecksResponse>
+>()
 
 function mergeRefreshRequest(
   current: RefreshRequest | undefined,
@@ -60,8 +92,12 @@ function mergeRefreshRequest(
   return {
     includeBranches: (current?.includeBranches ?? false) || (next.includeBranches ?? false),
     includeChanges: (current?.includeChanges ?? false) || (next.includeChanges ?? false),
+    includePullRequestChecks:
+      (current?.includePullRequestChecks ?? false) || (next.includePullRequestChecks ?? false),
     quietBranches: (current?.quietBranches ?? true) && (next.quietBranches ?? true),
     quietChanges: (current?.quietChanges ?? true) && (next.quietChanges ?? true),
+    quietPullRequestChecks:
+      (current?.quietPullRequestChecks ?? true) && (next.quietPullRequestChecks ?? true),
   }
 }
 
@@ -75,17 +111,52 @@ function formatChangesLoadError(error: unknown): string {
   return "Unable to load changes for this project."
 }
 
+function formatPullRequestChecksLoadError(error: unknown): string {
+  console.warn("[projectGitStore] Failed to load pull request checks:", error)
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim()
+  }
+
+  return "Unable to load pull request checks for this pull request."
+}
+
 async function refreshBranches(projectPath: string): Promise<GitBranchesResponse | null> {
   const existingRequest = inFlightBranchesByProject.get(projectPath)
   if (existingRequest) {
+    console.debug("[projectGitStore] refreshBranches:reuse", { projectPath })
     return existingRequest
   }
 
+  console.debug("[projectGitStore] refreshBranches:start", { projectPath })
   const request = desktop.git.getBranches(projectPath)
   inFlightBranchesByProject.set(projectPath, request)
 
   try {
-    return await request
+    const result = await request
+    console.debug("[projectGitStore] refreshBranches:success", {
+      projectPath,
+      branchData: result
+        ? {
+            currentBranch: result.currentBranch,
+            aheadCount: result.aheadCount,
+            behindCount: result.behindCount,
+            hasUpstream: result.hasUpstream,
+            openPullRequest: result.openPullRequest
+              ? {
+                  number: result.openPullRequest.number,
+                  state: result.openPullRequest.state,
+                  checksStatus: result.openPullRequest.checksStatus,
+                  mergeStatus: result.openPullRequest.mergeStatus,
+                  resolveReason: result.openPullRequest.resolveReason,
+                }
+              : null,
+          }
+        : null,
+    })
+    return result
+  } catch (error) {
+    console.error("[projectGitStore] refreshBranches:error", { projectPath, error })
+    throw error
   } finally {
     inFlightBranchesByProject.delete(projectPath)
   }
@@ -104,6 +175,39 @@ async function refreshChanges(projectPath: string): Promise<GitFileChange[]> {
     return await request
   } finally {
     inFlightChangesByProject.delete(projectPath)
+  }
+}
+
+async function refreshPullRequestChecks(projectPath: string) {
+  const existingRequest = inFlightPullRequestChecksByProject.get(projectPath)
+  if (existingRequest) {
+    console.debug("[projectGitStore] refreshPullRequestChecks:reuse", { projectPath })
+    return existingRequest
+  }
+
+  console.debug("[projectGitStore] refreshPullRequestChecks:start", { projectPath })
+  const request = desktop.git.getPullRequestChecks(projectPath)
+  inFlightPullRequestChecksByProject.set(projectPath, request)
+
+  try {
+    const result = await request
+    console.debug("[projectGitStore] refreshPullRequestChecks:success", {
+      projectPath,
+      pullRequestNumber: result.pullRequestNumber,
+      error: result.error ?? null,
+      checks: result.checks.map((check) => ({
+        id: check.id,
+        name: check.name,
+        status: check.status,
+        hasFailureDetails: check.hasFailureDetails,
+      })),
+    })
+    return result
+  } catch (error) {
+    console.error("[projectGitStore] refreshPullRequestChecks:error", { projectPath, error })
+    throw error
+  } finally {
+    inFlightPullRequestChecksByProject.delete(projectPath)
   }
 }
 
@@ -132,8 +236,26 @@ export const useProjectGitStore = create<ProjectGitStoreState>((set, get) => ({
         [projectPath]: {
           ...getEntry(state.entriesByProjectPath, projectPath),
           branchData,
+          pullRequestChecks: shouldRetainPullRequestChecks(
+            getEntry(state.entriesByProjectPath, projectPath).branchData,
+            branchData
+          )
+            ? getEntry(state.entriesByProjectPath, projectPath).pullRequestChecks
+            : [],
           branchError: null,
+          pullRequestChecksError: shouldRetainPullRequestChecks(
+            getEntry(state.entriesByProjectPath, projectPath).branchData,
+            branchData
+          )
+            ? getEntry(state.entriesByProjectPath, projectPath).pullRequestChecksError
+            : null,
           isBranchLoading: false,
+          isPullRequestChecksLoading: shouldRetainPullRequestChecks(
+            getEntry(state.entriesByProjectPath, projectPath).branchData,
+            branchData
+          )
+            ? getEntry(state.entriesByProjectPath, projectPath).isPullRequestChecksLoading
+            : false,
         },
       },
     }))
@@ -160,8 +282,10 @@ export const useProjectGitStore = create<ProjectGitStoreState>((set, get) => ({
         void get().requestRefresh(projectPath, {
           includeBranches: pending.includeBranches,
           includeChanges: pending.includeChanges,
+          includePullRequestChecks: pending.includePullRequestChecks,
           quietBranches: pending.quietBranches,
           quietChanges: pending.quietChanges,
+          quietPullRequestChecks: pending.quietPullRequestChecks,
           debounceMs: 0,
         })
       }, request.debounceMs ?? WATCHER_REFRESH_DEBOUNCE_MS)
@@ -190,6 +314,10 @@ export const useProjectGitStore = create<ProjectGitStoreState>((set, get) => ({
             request.includeChanges && !request.quietChanges
               ? true
               : getEntry(state.entriesByProjectPath, projectPath).isChangesLoading,
+          isPullRequestChecksLoading:
+            request.includePullRequestChecks && !request.quietPullRequestChecks
+              ? true
+              : getEntry(state.entriesByProjectPath, projectPath).isPullRequestChecksLoading,
         },
       },
     }))
@@ -206,8 +334,26 @@ export const useProjectGitStore = create<ProjectGitStoreState>((set, get) => ({
                 [projectPath]: {
                   ...getEntry(state.entriesByProjectPath, projectPath),
                   branchData,
+                  pullRequestChecks: shouldRetainPullRequestChecks(
+                    getEntry(state.entriesByProjectPath, projectPath).branchData,
+                    branchData
+                  )
+                    ? getEntry(state.entriesByProjectPath, projectPath).pullRequestChecks
+                    : [],
                   branchError: null,
+                  pullRequestChecksError: shouldRetainPullRequestChecks(
+                    getEntry(state.entriesByProjectPath, projectPath).branchData,
+                    branchData
+                  )
+                    ? getEntry(state.entriesByProjectPath, projectPath).pullRequestChecksError
+                    : null,
                   isBranchLoading: false,
+                  isPullRequestChecksLoading: shouldRetainPullRequestChecks(
+                    getEntry(state.entriesByProjectPath, projectPath).branchData,
+                    branchData
+                  )
+                    ? getEntry(state.entriesByProjectPath, projectPath).isPullRequestChecksLoading
+                    : false,
                 },
               },
             }))
@@ -251,6 +397,57 @@ export const useProjectGitStore = create<ProjectGitStoreState>((set, get) => ({
                   ...getEntry(state.entriesByProjectPath, projectPath),
                   changesError: formatChangesLoadError(error),
                   isChangesLoading: false,
+                },
+              },
+            }))
+          })
+      )
+    }
+
+    if (request.includePullRequestChecks) {
+      tasks.push(
+        refreshPullRequestChecks(projectPath)
+          .then((result) => {
+            set((state) => ({
+              entriesByProjectPath: (() => {
+                const currentEntry = getEntry(state.entriesByProjectPath, projectPath)
+                const currentPullRequest = currentEntry.branchData?.openPullRequest
+
+                if (
+                  !currentPullRequest ||
+                  currentPullRequest.state !== "open" ||
+                  (result.pullRequestNumber != null &&
+                    currentPullRequest.number !== result.pullRequestNumber)
+                ) {
+                  return {
+                    ...state.entriesByProjectPath,
+                    [projectPath]: {
+                      ...currentEntry,
+                      isPullRequestChecksLoading: false,
+                    },
+                  }
+                }
+
+                return {
+                  ...state.entriesByProjectPath,
+                  [projectPath]: {
+                    ...currentEntry,
+                    pullRequestChecks: result.error ? [] : result.checks,
+                    pullRequestChecksError: result.error ?? null,
+                    isPullRequestChecksLoading: false,
+                  },
+                }
+              })(),
+            }))
+          })
+          .catch((error) => {
+            set((state) => ({
+              entriesByProjectPath: {
+                ...state.entriesByProjectPath,
+                [projectPath]: {
+                  ...getEntry(state.entriesByProjectPath, projectPath),
+                  pullRequestChecksError: formatPullRequestChecksLoadError(error),
+                  isPullRequestChecksLoading: false,
                 },
               },
             }))

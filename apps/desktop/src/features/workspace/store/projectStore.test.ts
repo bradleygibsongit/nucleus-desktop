@@ -767,6 +767,32 @@ describe("projectStore", () => {
     expect(getChangesCallCount).toBe(0)
   })
 
+  test("archiving the active managed workspace clears the current selection", async () => {
+    useProjectStore.setState({
+      projects: [
+        createProject({
+          worktrees: [createRootWorktree(), createManagedWorktree()],
+          selectedWorktreeId: "managed-worktree",
+        }),
+      ],
+      focusedProjectId: "project-1",
+      activeWorktreeId: "managed-worktree",
+      isLoading: false,
+    })
+
+    await useProjectStore.getState().removeWorktree("project-1", "managed-worktree", {
+      deleteFromDisk: true,
+      clearSelection: true,
+    })
+
+    const state = useProjectStore.getState()
+    const project = state.projects[0]
+
+    expect(project?.worktrees.map((worktree) => worktree.id)).toEqual(["root-worktree"])
+    expect(state.focusedProjectId).toBeNull()
+    expect(state.activeWorktreeId).toBeNull()
+  })
+
   test("deleting the root workspace from disk is rejected", async () => {
     useProjectStore.setState({
       projects: [createProject()],
