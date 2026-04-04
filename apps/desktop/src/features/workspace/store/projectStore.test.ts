@@ -47,7 +47,6 @@ let pathExists = true
 let removeWorktreeCallCount = 0
 let renameWorktreeCallCount = 0
 let getChangesCallCount = 0
-
 mock.module("@/desktop/client", () => ({
   desktop: {
     fs: {
@@ -86,6 +85,7 @@ mock.module("@/desktop/client", () => ({
 }))
 
 const { useProjectStore } = await import("./projectStore")
+const { useTabStore } = await import("@/features/editor/store")
 
 function createRootWorktree(overrides: Partial<ProjectWorktree> = {}): ProjectWorktree {
   return {
@@ -189,6 +189,9 @@ describe("projectStore", () => {
     removeWorktreeCallCount = 0
     renameWorktreeCallCount = 0
     getChangesCallCount = 0
+    useTabStore.setState({
+      rebaseWorktreeTabPaths: mock(() => {}),
+    })
     resetStoreState()
   })
 
@@ -659,6 +662,11 @@ describe("projectStore", () => {
     expect(renamedWorktree.path).toBe("/tmp/.nucleus-worktrees/repo-project-1/fix-first-turn-setup")
     expect(renamedWorktree.name).toBe("Fix first turn setup")
     expect(renamedWorktree.intentStatus).toBe("configured")
+    expect(useTabStore.getState().rebaseWorktreeTabPaths).toHaveBeenCalledWith(
+      "managed-worktree",
+      "/tmp/.nucleus-worktrees/repo-project-1/kolkata",
+      "/tmp/.nucleus-worktrees/repo-project-1/fix-first-turn-setup",
+    )
   })
 
   test("renameWorktreeFromIntent adds entropy when the target workspace path is already taken", async () => {
@@ -730,5 +738,49 @@ describe("projectStore", () => {
     expect(state.activeWorktreeId).toBe("root-worktree")
     expect(removeWorktreeCallCount).toBe(0)
     expect(getChangesCallCount).toBe(0)
+  })
+
+  test("removing a managed workspace from disk calls git removal and does not hide its path", async () => {
+    useProjectStore.setState({
+      projects: [
+        createProject({
+          worktrees: [createRootWorktree(), createManagedWorktree()],
+          selectedWorktreeId: "managed-worktree",
+        }),
+      ],
+      focusedProjectId: "project-1",
+      activeWorktreeId: "managed-worktree",
+      isLoading: false,
+    })
+
+    await useProjectStore.getState().removeWorktree("project-1", "managed-worktree", {
+      deleteFromDisk: true,
+    })
+
+    const state = useProjectStore.getState()
+    const project = state.projects[0]
+
+    expect(project?.worktrees.map((worktree) => worktree.id)).toEqual(["root-worktree"])
+    expect(project?.hiddenWorktreePaths).not.toContain("/tmp/.nucleus-worktrees/repo-project-1/kolkata")
+    expect(state.activeWorktreeId).toBe("root-worktree")
+    expect(removeWorktreeCallCount).toBe(1)
+    expect(getChangesCallCount).toBe(0)
+  })
+
+  test("deleting the root workspace from disk is rejected", async () => {
+    useProjectStore.setState({
+      projects: [createProject()],
+      focusedProjectId: "project-1",
+      activeWorktreeId: "root-worktree",
+      isLoading: false,
+    })
+
+    await expect(
+      useProjectStore.getState().removeWorktree("project-1", "root-worktree", {
+        deleteFromDisk: true,
+      })
+    ).rejects.toThrow("root workspace cannot be deleted from disk")
+
+    expect(removeWorktreeCallCount).toBe(0)
   })
 })

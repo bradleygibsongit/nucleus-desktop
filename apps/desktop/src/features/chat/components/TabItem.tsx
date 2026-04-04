@@ -1,4 +1,4 @@
-import { GitDiff, X } from "@/components/icons"
+import { GitDiff, Terminal, X } from "@/components/icons"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/features/shared/components/ui/tooltip"
 import { getFileIcon } from "@/features/editor/utils/fileIcons"
@@ -26,6 +26,8 @@ function TabIcon({ type, title, harnessId }: { type: TabType; title: string; har
       const logoKind = harnessId ? getHarnessLogoKind(harnessId) : "default"
       return <ModelLogo kind={logoKind} className="size-4" />
     }
+    case "terminal":
+      return <Terminal size={15} />
     default:
       return null
   }

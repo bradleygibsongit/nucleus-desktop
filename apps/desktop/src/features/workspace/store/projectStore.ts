@@ -6,6 +6,7 @@ import {
   type GitBranchesResponse,
   type GitWorktreeSummary,
 } from "@/desktop/client"
+import { useTabStore } from "@/features/editor/store/tabStore"
 import type { Project, ProjectAction, ProjectWorktree } from "../types"
 import { findProjectFaviconPath, normalizeProjectIconPath } from "../utils/projectIcon"
 import { normalizeProjectActionIconName } from "../utils/projectActionIcons"
@@ -59,7 +60,11 @@ interface ProjectState {
     worktreeId: string,
     updates: { branchName: string; name?: string | null }
   ) => Promise<ProjectWorktree>
-  removeWorktree: (projectId: string, worktreeId: string) => Promise<void>
+  removeWorktree: (
+    projectId: string,
+    worktreeId: string,
+    options?: { deleteFromDisk?: boolean }
+  ) => Promise<void>
   updateProject: (
     id: string,
     updates: Partial<Pick<Project, "name" | "iconPath" | "workspacesPath" | "remoteName" | "setupScript">>
@@ -931,11 +936,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const nextProjects = replaceProject(get().projects, nextProject)
     await persistProjects(nextProjects, get().focusedProjectId, get().activeWorktreeId)
     set({ projects: nextProjects })
+    if (renamedWorktree.worktree.path !== worktree.path) {
+      useTabStore.getState().rebaseWorktreeTabPaths(
+        worktreeId,
+        worktree.path,
+        renamedWorktree.worktree.path,
+      )
+    }
 
     return nextProject.worktrees.find((candidate) => candidate.id === worktreeId) ?? worktree
   },
 
-  removeWorktree: async (projectId, worktreeId) => {
+  removeWorktree: async (projectId, worktreeId, options) => {
     const project = get().projects.find((candidate) => candidate.id === projectId)
     const worktree = project?.worktrees.find((candidate) => candidate.id === worktreeId) ?? null
 
@@ -943,11 +955,22 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       throw new Error(`Unknown worktree: ${projectId}/${worktreeId}`)
     }
 
+    const shouldDeleteFromDisk = options?.deleteFromDisk === true
+    if (shouldDeleteFromDisk) {
+      if (worktree.source !== "managed") {
+        throw new Error("The root workspace cannot be deleted from disk.")
+      }
+
+      await desktop.git.removeWorktree(project.repoRootPath, {
+        worktreePath: worktree.path,
+      })
+    }
+
     const nextWorktrees = project.worktrees.filter((candidate) => candidate.id !== worktreeId)
     const removingPrimaryWorktree = project.rootWorktreeId === worktreeId
-    const nextHiddenWorktreePaths = Array.from(
-      new Set([...(project.hiddenWorktreePaths ?? []), worktree.path])
-    )
+    const nextHiddenWorktreePaths = shouldDeleteFromDisk
+      ? [...(project.hiddenWorktreePaths ?? [])]
+      : Array.from(new Set([...(project.hiddenWorktreePaths ?? []), worktree.path]))
 
     if (nextWorktrees.length === 0) {
       const nextProject = {

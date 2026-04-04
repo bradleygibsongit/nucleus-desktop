@@ -3,7 +3,8 @@ import {
   type TerminalCreateSessionEnvironment,
   type TerminalStartResponse,
 } from "@/desktop/client"
-import { useTerminalStore } from "@/features/terminal/store/terminalStore"
+import { useTabStore } from "@/features/editor/store"
+import { getTerminalSessionId } from "./terminalTabs"
 
 const PROJECT_TERMINAL_COLS = 120
 const PROJECT_TERMINAL_ROWS = 32
@@ -16,9 +17,8 @@ interface RunCommandInProjectTerminalOptions {
 }
 
 interface ProjectTerminalStoreState {
-  getOrCreateActiveTabId: (projectId: string) => string
-  selectTerminal: (projectId: string, tabId: string) => void
-  setProjectCollapsed: (projectId: string, isCollapsed: boolean) => void
+  getOrCreateActiveTerminalTabId: (worktreeId: string) => string
+  selectTerminalTab: (worktreeId: string, tabId: string) => void
 }
 
 interface ProjectTerminalClient {
@@ -76,18 +76,32 @@ function buildEnvironmentPrefix(
   })
 }
 
+function buildChangeDirectoryCommand(
+  cwd: string,
+  shellKind: TerminalStartResponse["shellKind"],
+): string {
+  if (shellKind === "powershell") {
+    return `Set-Location -LiteralPath ${escapePowershellValue(cwd)}`
+  }
+
+  if (shellKind === "cmd") {
+    return `cd /d "${escapeCmdValue(cwd)}"`
+  }
+
+  return `cd -- ${escapePosixValue(cwd)}`
+}
+
 export async function runCommandInProjectTerminal(
   options: RunCommandInProjectTerminalOptions,
   dependencies: RunCommandInProjectTerminalDependencies = {},
 ) {
-  const terminalStore = dependencies.terminalStore ?? useTerminalStore.getState()
+  const terminalStore = dependencies.terminalStore ?? useTabStore.getState()
   const terminalClient = dependencies.terminalClient ?? desktop.terminal
-  const tabId = terminalStore.getOrCreateActiveTabId(options.projectId)
+  const tabId = terminalStore.getOrCreateActiveTerminalTabId(options.projectId)
 
-  terminalStore.selectTerminal(options.projectId, tabId)
-  terminalStore.setProjectCollapsed(options.projectId, false)
+  terminalStore.selectTerminalTab(options.projectId, tabId)
 
-  const sessionId = `project-terminal:${tabId}`
+  const sessionId = getTerminalSessionId(tabId)
   const commandToRun = options.command.trimEnd()
 
   const response = await terminalClient.createSession(
@@ -101,6 +115,7 @@ export async function runCommandInProjectTerminal(
 
   const commandLines = [
     ...buildEnvironmentPrefix(options.environment, response.shellKind),
+    buildChangeDirectoryCommand(options.cwd, response.shellKind),
     ...(commandToRun.length > 0 ? [commandToRun] : []),
   ]
 

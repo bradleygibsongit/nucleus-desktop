@@ -14,6 +14,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/features/shared/components/ui/dropdown-menu"
+import { LoadingDots } from "@/features/shared/components/ui/loading-dots"
 import {
   Tooltip,
   TooltipContent,
@@ -72,6 +73,29 @@ function getWorktreeRemovalDisabledReason({
   }
 
   return null
+}
+
+function isWorktreeChatRunning({
+  worktreeId,
+  currentSessionId,
+  status,
+  chatByWorktree,
+}: {
+  worktreeId: string
+  currentSessionId: string | null
+  status: "idle" | "streaming" | "error" | "connecting"
+  chatByWorktree: ReturnType<typeof useChatStore.getState>["chatByWorktree"]
+}) {
+  if (!currentSessionId || (status !== "streaming" && status !== "connecting")) {
+    return false
+  }
+
+  const worktreeChat = chatByWorktree[worktreeId]
+  if (!worktreeChat) {
+    return false
+  }
+
+  return worktreeChat.sessions.some((session) => session.id === currentSessionId)
 }
 
 function ReorderableProjectItem(props: {
@@ -146,6 +170,9 @@ export function LeftSidebar({
   } = useProjectStore()
   const setWorkspaceSetupState = useChatStore((state) => state.setWorkspaceSetupState)
   const setWorkspaceSetupIntent = useChatStore((state) => state.setWorkspaceSetupIntent)
+  const chatByWorktree = useChatStore((state) => state.chatByWorktree)
+  const currentChatSessionId = useChatStore((state) => state.currentSessionId)
+  const chatStatus = useChatStore((state) => state.status)
   const requestGitRefresh = useProjectGitStore((state) => state.requestRefresh)
   const ensureGitEntry = useProjectGitStore((state) => state.ensureEntry)
   const gitEntriesByProjectPath = useProjectGitStore((state) => state.entriesByProjectPath)
@@ -446,6 +473,12 @@ export function LeftSidebar({
                   activeWorktreeId === worktree.id
                 const isWorktreeMenuOpen = openMenuId === worktree.id
                 const isWorktreeReadyForSelection = isWorktreeReady(worktree)
+                const isWorktreeRunning = isWorktreeChatRunning({
+                  worktreeId: worktree.id,
+                  currentSessionId: currentChatSessionId,
+                  status: chatStatus,
+                  chatByWorktree,
+                })
                 const removeWorktreeDisabledReason = getWorktreeRemovalDisabledReason({
                   worktree,
                 })
@@ -470,8 +503,15 @@ export function LeftSidebar({
                         isSelectedWorktree && "text-sidebar-accent-foreground",
                       )}
                     >
-                      <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">
-                        <GitBranch size={13} />
+                      <span
+                        className={cn(
+                          "flex size-4 shrink-0 items-center justify-center",
+                          isWorktreeRunning
+                            ? (isSelectedWorktree ? "text-sidebar-accent-foreground" : "text-sidebar-foreground/72")
+                            : "text-muted-foreground"
+                        )}
+                      >
+                        {isWorktreeRunning ? <LoadingDots className="shrink-0" /> : <GitBranch size={13} />}
                       </span>
                       <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-none">
                         {worktree.name}

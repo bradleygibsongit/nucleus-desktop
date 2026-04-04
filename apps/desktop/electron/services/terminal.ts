@@ -15,7 +15,9 @@ type EventSender = (channel: string, payload: unknown) => void
 interface TerminalSession {
   pty: IPty
   buffer: string
+  cwd: string
   exited: boolean
+  suppressExitEvent: boolean
   shellKind: TerminalStartResponse["shellKind"]
 }
 
@@ -77,8 +79,15 @@ export class TerminalService {
 
     const existing = this.sessions.get(sessionId)
     if (existing && !existing.exited) {
-      existing.pty.resize(Math.max(1, cols), Math.max(1, rows))
-      return { initialData: existing.buffer, shellKind: existing.shellKind }
+      if (existing.cwd === trimmedCwd) {
+        existing.pty.resize(Math.max(1, cols), Math.max(1, rows))
+        return { initialData: existing.buffer, shellKind: existing.shellKind }
+      }
+
+      existing.suppressExitEvent = true
+      existing.exited = true
+      existing.pty.kill()
+      this.sessions.delete(sessionId)
     }
 
     const shell = resolveDefaultShell()
@@ -101,7 +110,9 @@ export class TerminalService {
     const session: TerminalSession = {
       pty: terminal,
       buffer: "",
+      cwd: trimmedCwd,
       exited: false,
+      suppressExitEvent: false,
       shellKind,
     }
 
@@ -118,6 +129,10 @@ export class TerminalService {
 
     terminal.onExit((event) => {
       session.exited = true
+      if (session.suppressExitEvent) {
+        return
+      }
+
       const payload: TerminalExitEvent = {
         sessionId,
         exitCode: event.exitCode,

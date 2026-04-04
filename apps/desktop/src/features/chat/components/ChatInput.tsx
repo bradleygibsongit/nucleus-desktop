@@ -147,6 +147,7 @@ export function ChatInput({
   const { models: availableModels, isLoading: isLoadingModels } = useModels()
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
   const [reasoningEffort, setReasoningEffort] = useState<RuntimeReasoningEffort | null>(null)
+  const focusChatInputShortcut = useMemo(() => getShortcutBinding("focus-chat-input"), [])
   const planModeShortcut = useMemo(() => getShortcutBinding("toggle-plan-mode"), [])
   const planModeShortcutLabel = useMemo(
     () => formatShortcutBinding(planModeShortcut),
@@ -163,6 +164,15 @@ export function ChatInput({
 
   const disablePlanMode = useCallback(() => {
     setIsPlanModeEnabled(false)
+  }, [])
+
+  const focusComposer = useCallback(() => {
+    const editor = editorRef.current
+    if (!editor) {
+      return
+    }
+
+    editor.focus()
   }, [])
 
   const { commands, isLoading: isLoadingCommands } = useCommands()
@@ -340,6 +350,24 @@ export function ChatInput({
   }, [isPlanModeAvailable, isPromptActive, planModeShortcut, togglePlanMode])
 
   useEffect(() => {
+    if (isPromptActive || isComposerLocked) {
+      return
+    }
+
+    const handleWindowKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat || !matchesShortcutBinding(event, focusChatInputShortcut)) {
+        return
+      }
+
+      event.preventDefault()
+      focusComposer()
+    }
+
+    window.addEventListener("keydown", handleWindowKeyDown)
+    return () => window.removeEventListener("keydown", handleWindowKeyDown)
+  }, [focusChatInputShortcut, focusComposer, isComposerLocked, isPromptActive])
+
+  useEffect(() => {
     if (isPromptActive) {
       setIsSlashMenuOpen(false)
       setSlashQuery("")
@@ -466,7 +494,7 @@ export function ChatInput({
         return
       }
 
-      editor.focus()
+      focusComposer()
       editor.update(() => {
         let selection = $getSelection()
 
@@ -488,7 +516,7 @@ export function ChatInput({
       setIsSlashMenuOpen(false)
       setSlashQuery("")
     },
-    []
+    [focusComposer]
   )
 
   const handleSelectAgent = useCallback(
@@ -496,10 +524,10 @@ export function ChatInput({
       setDismissedMenuKey(null)
       setInput(`@${agent.name} `)
       requestAnimationFrame(() => {
-        editorRef.current?.focus()
+        focusComposer()
       })
     },
-    [setInput]
+    [focusComposer, setInput]
   )
 
   const handleSelectFile = useCallback(
@@ -507,10 +535,10 @@ export function ChatInput({
       setDismissedMenuKey(null)
       setInput(`${file.path} `)
       requestAnimationFrame(() => {
-        editorRef.current?.focus()
+        focusComposer()
       })
     },
-    [setInput]
+    [focusComposer, setInput]
   )
 
   const closeSlashMenu = useCallback(() => {

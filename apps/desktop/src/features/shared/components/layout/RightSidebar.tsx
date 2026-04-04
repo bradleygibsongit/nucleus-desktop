@@ -3,7 +3,6 @@ import { desktop } from "@/desktop/client"
 import { FileChangesList, FileChangesToolbar, FileTreeViewer, useFileChangesState } from "@/features/version-control/components"
 import { useFileTreeStore } from "@/features/workspace/store"
 import { useTabStore } from "@/features/editor/store"
-import { TerminalPanel } from "@/features/terminal/components"
 import { useCurrentProjectWorktree } from "@/features/shared/hooks"
 import { useProjectGitChanges } from "@/features/shared/hooks"
 import { useRightSidebar } from "./useRightSidebar"
@@ -258,10 +257,6 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
             )
           )}
         </div>
-        <TerminalPanel
-          projectId={selectedWorktreeId}
-          projectPath={selectedWorktreePath}
-        />
       </div>
     </SidebarShell>
   )

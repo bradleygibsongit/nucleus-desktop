@@ -6,7 +6,7 @@ export interface ShortcutBinding {
   modifiers: ShortcutModifier[]
 }
 
-export type ShortcutId = "toggle-plan-mode"
+export type ShortcutId = "toggle-plan-mode" | "focus-chat-input"
 
 export interface ShortcutDefinition {
   id: ShortcutId
@@ -29,6 +29,17 @@ const SHORTCUT_MODIFIER_LABELS: Record<ShortcutModifier, string> = {
 }
 
 export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
+  {
+    id: "focus-chat-input",
+    title: "Focus chat input",
+    description: "Move focus to the active chat composer.",
+    category: "composer",
+    defaultBinding: {
+      key: "L",
+      code: "KeyL",
+      modifiers: ["meta"],
+    },
+  },
   {
     id: "toggle-plan-mode",
     title: "Toggle plan mode",

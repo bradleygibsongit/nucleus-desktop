@@ -12,7 +12,6 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/features/shared/components/ui/dropdown-menu"
-import { useRightSidebar } from "@/features/shared/components/layout/useRightSidebar"
 import { useCurrentProjectWorktree } from "@/features/shared/hooks"
 import { Button } from "@/features/shared/components/ui/button"
 import { runCommandInProjectTerminal } from "@/features/terminal/utils/projectTerminal"
@@ -26,9 +25,20 @@ import { ProjectActionIcon } from "@/features/workspace/components/ProjectAction
 import { AddProjectActionModal } from "@/features/workspace/components/modals/AddProjectActionModal"
 import { cn } from "@/lib/utils"
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+
+  if (target.isContentEditable) {
+    return true
+  }
+
+  return !!target.closest("input, textarea, select, [contenteditable='true'], [role='textbox']")
+}
+
 export function ProjectActionsControl() {
   const { setPrimaryAction } = useProjectStore()
-  const { expand } = useRightSidebar()
   const { selectedProject, selectedWorktreeId, selectedWorktreePath } =
     useCurrentProjectWorktree()
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -50,7 +60,6 @@ export function ProjectActionsControl() {
     }
 
     setRunningActionId(action.id)
-    expand()
 
     try {
       const commandLines = getProjectActionCommands(action.command)
@@ -73,7 +82,7 @@ export function ProjectActionsControl() {
     } finally {
       setRunningActionId((current) => (current === action.id ? null : current))
     }
-  }, [expand, selectedProject, selectedWorktreeId, selectedWorktreePath, setPrimaryAction])
+  }, [selectedProject, selectedWorktreeId, selectedWorktreePath, setPrimaryAction])
 
   useEffect(() => {
     if (!selectedProject || actions.length === 0 || isModalOpen) {
@@ -81,7 +90,7 @@ export function ProjectActionsControl() {
     }
 
     const handleWindowKeyDown = (event: KeyboardEvent) => {
-      if (event.repeat) {
+      if (event.defaultPrevented || event.repeat || isEditableTarget(event.target)) {
         return
       }
 

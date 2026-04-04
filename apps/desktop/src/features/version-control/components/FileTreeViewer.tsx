@@ -355,7 +355,7 @@ export function FileTreeViewer({
         className
       )}
     >
-      <Tree indent={indent} tree={tree}>
+      <Tree indent={indent} tree={tree} className="font-pixel">
         {tree.getItems().map((item) => {
           const isFolder = item.isFolder()
           const itemData = item.getItemData()

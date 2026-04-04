@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react"
-import { Trash } from "@/components/icons"
+import { useEffect, useState } from "react"
+import { InformationCircle, Trash } from "@/components/icons"
 import { desktop } from "@/desktop/client"
 import {
   AlertDialog,
@@ -14,7 +14,9 @@ import {
 } from "@/features/shared/components/ui/alert-dialog"
 import { useChatStore } from "@/features/chat/store"
 import { useTabStore } from "@/features/editor/store"
-import { useTerminalStore } from "@/features/terminal/store/terminalStore"
+import { Switch } from "@/features/shared/components/ui/switch"
+import { useProjectGitChanges } from "@/features/shared/hooks/useProjectGitChanges"
+import { getTerminalSessionId, isTerminalTab } from "@/features/terminal/utils/terminalTabs"
 import { useProjectStore } from "@/features/workspace/store"
 import type { Project, ProjectWorktree } from "@/features/workspace/types"
 
@@ -34,40 +36,29 @@ export function RemoveWorktreeModal({
   const removeWorktree = useProjectStore((state) => state.removeWorktree)
   const removeWorktreeData = useChatStore((state) => state.removeWorktreeData)
   const removeWorktreeTabs = useTabStore((state) => state.removeWorktreeTabs)
-  const removeTerminalProject = useTerminalStore((state) => state.removeProject)
-  const terminalStateByProject = useTerminalStore((state) => state.terminalStateByProject)
+  const tabsByWorktree = useTabStore((state) => state.tabsByWorktree)
   const [isRemoving, setIsRemoving] = useState(false)
+  const [deleteFromSystem, setDeleteFromSystem] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  const isRootWorktree = project != null && worktree != null && project.rootWorktreeId === worktree.id
-  const isLastWorktree = (project?.worktrees.length ?? 0) <= 1
+  const { changes, isLoading } = useProjectGitChanges(open ? (worktree?.path ?? null) : null)
+  const hasUncommittedChanges = changes.length > 0
+  const canDeleteFromSystem = worktree?.source === "managed"
+  const deleteIsBlocked = deleteFromSystem && (isLoading || hasUncommittedChanges)
+  const actionLabel = deleteFromSystem ? "Remove and delete" : "Remove from app"
 
-  const copy = useMemo(() => {
-    if (isLastWorktree) {
-      return {
-        title: "Remove last workspace?",
-        action: "Remove workspace",
-        description:
-          "This only removes the workspace from Nucleus. The folder, files, Git worktree, and any local changes stay on disk. The project will remain in Nucleus, but it will not have any workspaces until you create a new one.",
-      }
+  useEffect(() => {
+    if (!open) {
+      setDeleteFromSystem(false)
+      setErrorMessage(null)
     }
+  }, [open])
 
-    if (isRootWorktree) {
-      return {
-        title: "Remove root workspace?",
-        action: "Remove root workspace",
-        description:
-          "This only removes the root workspace from Nucleus and promotes another workspace in its place. The folder, files, Git worktree, and any local changes stay on disk.",
-      }
+  useEffect(() => {
+    if (!canDeleteFromSystem) {
+      setDeleteFromSystem(false)
     }
-
-    return {
-      title: "Remove workspace?",
-      action: "Remove workspace",
-      description:
-        "This only removes the workspace from Nucleus. The folder, files, Git worktree, and any local changes stay on disk.",
-    }
-  }, [isLastWorktree, isRootWorktree])
+  }, [canDeleteFromSystem, worktree?.id])
 
   const handleRemove = async () => {
     if (!project || !worktree) {
@@ -78,14 +69,15 @@ export function RemoveWorktreeModal({
     setErrorMessage(null)
 
     try {
-      const terminalTabs = terminalStateByProject[worktree.id]?.tabs ?? []
-      await Promise.allSettled(
-        terminalTabs.map((tab) => desktop.terminal.closeSession(`project-terminal:${tab.id}`))
-      )
+      await removeWorktree(project.id, worktree.id, {
+        deleteFromDisk: deleteFromSystem,
+      })
 
-      await removeWorktree(project.id, worktree.id)
+      const terminalTabs = (tabsByWorktree[worktree.id]?.tabs ?? []).filter(isTerminalTab)
+      await Promise.allSettled(
+        terminalTabs.map((tab) => desktop.terminal.closeSession(getTerminalSessionId(tab.id)))
+      )
       removeWorktreeTabs(worktree.id)
-      removeTerminalProject(worktree.id)
 
       try {
         await removeWorktreeData(worktree.id)
@@ -109,14 +101,51 @@ export function RemoveWorktreeModal({
           <AlertDialogMedia className="bg-destructive/10 text-destructive">
             <Trash />
           </AlertDialogMedia>
-          <AlertDialogTitle>{copy.title}</AlertDialogTitle>
+          <AlertDialogTitle>Remove workspace?</AlertDialogTitle>
           <AlertDialogDescription>
-            {worktree?.name ?? "This workspace"} will be removed.
-            {" "}
-            {copy.description}
+            {worktree?.name ?? "This workspace"} will be removed from Nucleus.
             {errorMessage ? ` ${errorMessage}` : ""}
           </AlertDialogDescription>
         </AlertDialogHeader>
+
+        <div className="space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="text-left">
+              <p className="text-sm font-medium text-foreground">Also delete from system</p>
+              {!canDeleteFromSystem ? (
+                <p className="text-xs text-muted-foreground">Not available for the root workspace</p>
+              ) : null}
+            </div>
+            <Switch
+              checked={deleteFromSystem}
+              disabled={!canDeleteFromSystem || isRemoving}
+              size="sm"
+              aria-label="Also delete workspace from system"
+              onCheckedChange={setDeleteFromSystem}
+              className="mt-0.5 shrink-0 disabled:opacity-100"
+            />
+          </div>
+
+          {hasUncommittedChanges ? (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-left">
+              <InformationCircle className="mt-0.5 size-4 shrink-0 text-amber-700" />
+              <p className="text-xs leading-5 text-amber-900 dark:text-amber-200">
+                {deleteIsBlocked
+                  ? "Can't delete from system while this workspace has uncommitted changes."
+                  : "This workspace has uncommitted changes."}
+              </p>
+            </div>
+          ) : null}
+
+          {deleteFromSystem && isLoading ? (
+            <div className="flex items-start gap-2 rounded-lg border border-border/70 bg-muted/40 px-3 py-2.5 text-left">
+              <InformationCircle className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+              <p className="text-xs leading-5 text-muted-foreground">
+                Checking for uncommitted changes before deleting this workspace from disk.
+              </p>
+            </div>
+          ) : null}
+        </div>
 
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isRemoving}>Cancel</AlertDialogCancel>
@@ -124,9 +153,9 @@ export function RemoveWorktreeModal({
             type="button"
             variant="destructive"
             onClick={() => void handleRemove()}
-            disabled={!project || !worktree || isRemoving}
+            disabled={!project || !worktree || isRemoving || deleteIsBlocked}
           >
-            {isRemoving ? "Removing..." : copy.action}
+            {isRemoving ? "Removing..." : actionLabel}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

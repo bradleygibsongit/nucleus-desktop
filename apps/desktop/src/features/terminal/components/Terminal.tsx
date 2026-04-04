@@ -51,6 +51,24 @@ function getTerminalFontFamily() {
   )
 }
 
+function applyTerminalSurfaceStyles(container: HTMLDivElement, background: string, foreground: string) {
+  container.style.backgroundColor = background
+  container.style.color = foreground
+
+  const xtermRoot = container.querySelector<HTMLElement>(".xterm")
+  const xtermViewport = container.querySelector<HTMLElement>(".xterm-viewport")
+  const xtermScreen = container.querySelector<HTMLElement>(".xterm-screen")
+
+  for (const element of [xtermRoot, xtermViewport, xtermScreen]) {
+    if (!element) {
+      continue
+    }
+
+    element.style.backgroundColor = background
+    element.style.color = foreground
+  }
+}
+
 export function Terminal({
   sessionId,
   cwd,
@@ -62,20 +80,23 @@ export function Terminal({
   const fitAddonRef = useRef<FitAddon | null>(null)
   const sessionIdRef = useRef<string | null>(null)
   const isSessionReadyRef = useRef(false)
+  const isRestoringBufferRef = useRef(false)
   const lastSyncedSizeRef = useRef<{ cols: number; rows: number } | null>(null)
   const [connectionError, setConnectionError] = useState<string | null>(null)
 
   const updateTheme = useCallback(() => {
     const resolvedBackground = resolveThemeColor("--terminal", "#111111")
+    const resolvedForeground = resolveThemeColor("--terminal-foreground", "#d4d4d4")
 
     if (terminalRef.current) {
-      terminalRef.current.style.backgroundColor = resolvedBackground
+      applyTerminalSurfaceStyles(terminalRef.current, resolvedBackground, resolvedForeground)
     }
 
     if (xtermRef.current) {
       xtermRef.current.options.theme = {
         ...getTerminalTheme(),
         background: resolvedBackground,
+        foreground: resolvedForeground,
         cursorAccent: resolvedBackground,
       }
       xtermRef.current.refresh(0, Math.max(0, xtermRef.current.rows - 1))
@@ -145,7 +166,7 @@ export function Terminal({
 
     const terminalInputDisposable = term.onData((data) => {
       const sessionId = sessionIdRef.current
-      if (!sessionId) {
+      if (!sessionId || isRestoringBufferRef.current) {
         return
       }
 
@@ -202,6 +223,7 @@ export function Terminal({
       if (!sessionId || !cwd) {
         sessionIdRef.current = null
         isSessionReadyRef.current = false
+        isRestoringBufferRef.current = false
         lastSyncedSizeRef.current = null
         term.writeln(emptyStateMessage)
         return
@@ -209,6 +231,7 @@ export function Terminal({
 
       sessionIdRef.current = sessionId
       isSessionReadyRef.current = false
+      isRestoringBufferRef.current = false
       lastSyncedSizeRef.current = null
 
       try {
@@ -225,8 +248,21 @@ export function Terminal({
 
         term.reset()
         if (response.initialData.length > 0) {
-          term.write(response.initialData)
+          // Replaying buffered PTY output can contain old terminal capability probes.
+          // Ignore any xterm-generated replies while we restore the visual buffer.
+          isRestoringBufferRef.current = true
+          term.write(response.initialData, () => {
+            if (!isActive || sessionIdRef.current !== sessionId) {
+              return
+            }
+
+            isRestoringBufferRef.current = false
+            isSessionReadyRef.current = true
+            fitTerminal()
+          })
+          return
         }
+
         isSessionReadyRef.current = true
         fitTerminal()
       } catch (error) {
@@ -237,6 +273,7 @@ export function Terminal({
         const message = error instanceof Error ? error.message : String(error)
         setConnectionError(message)
         isSessionReadyRef.current = false
+        isRestoringBufferRef.current = false
         lastSyncedSizeRef.current = null
         term.reset()
         term.writeln("\x1b[31mUnable to start terminal session.\x1b[0m")
@@ -249,6 +286,7 @@ export function Terminal({
     return () => {
       isActive = false
       isSessionReadyRef.current = false
+      isRestoringBufferRef.current = false
       lastSyncedSizeRef.current = null
     }
   }, [cwd, emptyStateMessage, fitTerminal, sessionId])

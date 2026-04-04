@@ -6,15 +6,18 @@ import { SettingsPage } from "@/features/settings/components/SettingsPage"
 import { useTabStore } from "@/features/editor/store"
 import { useCurrentProjectWorktree } from "@/features/shared/hooks"
 import { useChatStore } from "@/features/chat/store"
-import { NucleusLogo } from "@/components/NucleusLogo"
+import { desktop } from "@/desktop/client"
 import asciiArtBackground from "@/assets/backgrounds/ascii-art.png"
 import { Button } from "@/features/shared/components/ui/button"
 import { useProjectStore } from "@/features/workspace/store"
 import { openFolderPicker } from "@/features/workspace/utils/folderDialog"
+import { Terminal } from "@/features/terminal/components"
+import { getTerminalSessionId } from "@/features/terminal/utils/terminalTabs"
 import type { Tab } from "@/features/chat/types"
 import type { SettingsSectionId } from "@/features/settings/config"
 import { UpdateBanner } from "@/features/updates/components/UpdateBanner"
 import { QuickStartModal } from "@/features/workspace/components/modals/QuickStartModal"
+import { getVisibleTab } from "./mainContentTabs"
 
 interface DiffTabContentProps {
   tab: Tab
@@ -33,6 +36,18 @@ function DiffTabContent({ tab }: DiffTabContentProps) {
   )
 }
 
+function TerminalTabContent({ tab }: DiffTabContentProps) {
+  const { selectedWorktreePath } = useCurrentProjectWorktree()
+
+  return (
+    <Terminal
+      sessionId={getTerminalSessionId(tab.id)}
+      cwd={selectedWorktreePath}
+      className="h-full min-h-0 flex-1 border-t-0"
+    />
+  )
+}
+
 interface TabContentProps {
   tab: Tab | undefined
 }
@@ -44,6 +59,10 @@ function TabContent({ tab }: TabContentProps) {
 
   if (tab.type === "file") {
     return <FileViewer filename={tab.title} filePath={tab.filePath} />
+  }
+
+  if (tab.type === "terminal") {
+    return <TerminalTabContent tab={tab} />
   }
 
   return <DiffTabContent tab={tab} />
@@ -74,8 +93,7 @@ function NoWorkspaceSelectedState({
         <div className="absolute inset-0 bg-gradient-to-b from-black/58 via-black/28 to-background/72" />
       </div>
       <div className="relative z-10 flex flex-col items-center">
-        <NucleusLogo className="size-20" />
-        <h1 className="mt-5 text-center font-pixel text-4xl tracking-tight text-foreground">
+        <h1 className="text-center font-pixel text-4xl tracking-tight text-foreground">
           Build cool sh*t
         </h1>
         <div className="mt-8 flex items-center gap-3">
@@ -103,6 +121,7 @@ export function MainContent({ activeView, activeSettingsSection }: MainContentPr
     switchProject,
     tabs,
     activeTabId,
+    openTerminalTab,
     setActiveTab,
     closeTab,
     openChatSession,
@@ -132,6 +151,7 @@ export function MainContent({ activeView, activeSettingsSection }: MainContentPr
 
     const worktreeChat = getProjectChat(activeWorktreeId)
     const currentTabs = useTabStore.getState().tabs
+    const hasChatTab = currentTabs.some((tab) => tab.type === "chat-session")
     const activeSession =
       worktreeChat.sessions.find((session) => session.id === worktreeChat.activeSessionId) ??
       worktreeChat.sessions[0] ??
@@ -145,7 +165,11 @@ export function MainContent({ activeView, activeSettingsSection }: MainContentPr
       lastInitializedWorktreeIdRef.current = activeWorktreeId
       lastOpenedSessionIdRef.current = activeSession?.id ?? null
 
-      if (!currentTabs.length) {
+      if (!currentTabs.some((tab) => tab.type === "terminal")) {
+        openTerminalTab(activeWorktreeId, false)
+      }
+
+      if (!hasChatTab) {
         if (activeSession && !activeChatTab) {
           openChatSession(activeSession.id, activeSession.title)
           return
@@ -193,10 +217,11 @@ export function MainContent({ activeView, activeSettingsSection }: MainContentPr
     activeWorktreeId,
     tabs,
     updateChatSessionTitle,
+    openTerminalTab,
   ])
 
   const activeTab = useMemo(
-    () => tabs.find((tab) => tab.id === activeTabId) ?? tabs[0],
+    () => getVisibleTab(tabs, activeTabId),
     [activeTabId, tabs]
   )
 
@@ -211,6 +236,13 @@ export function MainContent({ activeView, activeSettingsSection }: MainContentPr
   const handleTabClose = (tabId: string) => {
     const closingTab = tabs.find((tab) => tab.id === tabId)
     const remainingTabs = tabs.filter((tab) => tab.id !== tabId)
+
+    if (closingTab?.type === "terminal") {
+      void desktop.terminal.closeSession(getTerminalSessionId(closingTab.id)).catch((error) => {
+        console.error("Failed to close terminal session:", error)
+      })
+    }
+
     closeTab(tabId)
 
     if (!focusedProjectId || !activeWorktreeId || !activeWorktreePath || closingTab?.type !== "chat-session") {
@@ -288,7 +320,7 @@ export function MainContent({ activeView, activeSettingsSection }: MainContentPr
       <UpdateBanner />
       <TabBar
         tabs={tabs}
-        activeTabId={activeTabId ?? tabs[0]?.id ?? ""}
+        activeTabId={activeTabId ?? ""}
         onTabChange={setActiveTab}
         onTabClose={handleTabClose}
       />
