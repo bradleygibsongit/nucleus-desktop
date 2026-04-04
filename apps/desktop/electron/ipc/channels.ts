@@ -26,6 +26,7 @@ export const IPC_CHANNELS = {
   terminalCloseSession: "terminal:closeSession",
   gitGetBranches: "git:getBranches",
   gitGetChanges: "git:getChanges",
+  gitGetPullRequestChecks: "git:getPullRequestChecks",
   gitListWorktrees: "git:listWorktrees",
   gitCreateWorktree: "git:createWorktree",
   gitRemoveWorktree: "git:removeWorktree",
@@ -34,6 +35,7 @@ export const IPC_CHANNELS = {
   gitCheckoutBranch: "git:checkoutBranch",
   gitCreateAndCheckoutBranch: "git:createAndCheckoutBranch",
   gitPull: "git:pull",
+  gitMergePullRequest: "git:mergePullRequest",
   gitRunStackedAction: "git:runStackedAction",
   skillsList: "skills:list",
 } as const

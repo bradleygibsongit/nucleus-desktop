@@ -214,6 +214,9 @@ function registerIpcHandlers(storeService: JsonStoreService): void {
   ipcMain.handle(IPC_CHANNELS.gitGetChanges, (_event, projectPath: string) =>
     gitService.getChanges(projectPath)
   )
+  ipcMain.handle(IPC_CHANNELS.gitGetPullRequestChecks, (_event, projectPath: string) =>
+    gitService.getPullRequestChecks(projectPath)
+  )
   ipcMain.handle(IPC_CHANNELS.gitListWorktrees, (_event, projectPath: string) =>
     gitService.listWorktrees(projectPath)
   )
@@ -249,6 +252,9 @@ function registerIpcHandlers(storeService: JsonStoreService): void {
   )
   ipcMain.handle(IPC_CHANNELS.gitPull, (_event, projectPath: string) =>
     gitService.pull(projectPath)
+  )
+  ipcMain.handle(IPC_CHANNELS.gitMergePullRequest, (_event, projectPath: string) =>
+    gitService.mergePullRequest(projectPath)
   )
   ipcMain.handle(
     IPC_CHANNELS.gitRunStackedAction,

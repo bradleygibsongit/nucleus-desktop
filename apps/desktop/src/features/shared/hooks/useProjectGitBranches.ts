@@ -3,8 +3,14 @@ import { useShallow } from "zustand/react/shallow"
 import { desktop, type GitBranchesResponse } from "@/desktop/client"
 import { useProjectGitStore } from "./projectGitStore"
 
+const OPEN_PULL_REQUEST_POLL_INTERVAL_MS = 5000
+
 interface UseProjectGitBranchesOptions {
   enabled?: boolean
+  autoRefreshOnMount?: boolean
+  pollOpenPullRequest?: boolean
+  refreshOnWindowFocus?: boolean
+  subscribeToWatcher?: boolean
 }
 
 interface RefreshOptions {
@@ -16,6 +22,10 @@ export function useProjectGitBranches(
   options?: UseProjectGitBranchesOptions
 ) {
   const enabled = options?.enabled ?? true
+  const autoRefreshOnMount = options?.autoRefreshOnMount ?? true
+  const pollOpenPullRequest = options?.pollOpenPullRequest ?? true
+  const refreshOnWindowFocus = options?.refreshOnWindowFocus ?? true
+  const subscribeToWatcher = options?.subscribeToWatcher ?? true
   const { requestRefresh } = useProjectGitStore(
     useShallow((state) => ({
       requestRefresh: state.requestRefresh,
@@ -25,9 +35,10 @@ export function useProjectGitBranches(
   const entry = useProjectGitStore((state) =>
     projectPath ? state.entriesByProjectPath[projectPath] : undefined
   )
+  const hasOpenPullRequest = entry?.branchData?.openPullRequest?.state === "open"
 
   useEffect(() => {
-    if (!projectPath || !enabled) {
+    if (!projectPath || !enabled || !autoRefreshOnMount) {
       return
     }
 
@@ -37,26 +48,50 @@ export function useProjectGitBranches(
       quietBranches: false,
       debounceMs: 0,
     })
-  }, [enabled, projectPath, requestRefresh])
+  }, [autoRefreshOnMount, enabled, projectPath, requestRefresh])
 
   useEffect(() => {
-    if (!projectPath || !enabled) {
+    if (!projectPath || !enabled || !hasOpenPullRequest || !pollOpenPullRequest) {
       return
     }
 
-    const unlisten = desktop.watcher.onEvent((event) => {
-      if (event.rootPath !== projectPath || event.kind !== "rescan") {
-        return
-      }
-
+    const intervalId = window.setInterval(() => {
       void requestRefresh(projectPath, {
         includeBranches: true,
         quietBranches: true,
-        debounceMs: 120,
+        debounceMs: 0,
       })
-    })
+    }, OPEN_PULL_REQUEST_POLL_INTERVAL_MS)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [enabled, hasOpenPullRequest, pollOpenPullRequest, projectPath, requestRefresh])
+
+  useEffect(() => {
+    if (!projectPath || !enabled || (!subscribeToWatcher && !refreshOnWindowFocus)) {
+      return
+    }
+
+    const unlisten = subscribeToWatcher
+      ? desktop.watcher.onEvent((event) => {
+          if (event.rootPath !== projectPath || event.kind !== "rescan") {
+            return
+          }
+
+          void requestRefresh(projectPath, {
+            includeBranches: true,
+            quietBranches: true,
+            debounceMs: 120,
+          })
+        })
+      : () => {}
 
     const handleFocus = () => {
+      if (!refreshOnWindowFocus) {
+        return
+      }
+
       void requestRefresh(projectPath, {
         includeBranches: true,
         quietBranches: true,
@@ -64,13 +99,17 @@ export function useProjectGitBranches(
       })
     }
 
-    window.addEventListener("focus", handleFocus)
+    if (refreshOnWindowFocus) {
+      window.addEventListener("focus", handleFocus)
+    }
 
     return () => {
-      window.removeEventListener("focus", handleFocus)
+      if (refreshOnWindowFocus) {
+        window.removeEventListener("focus", handleFocus)
+      }
       unlisten()
     }
-  }, [enabled, projectPath, requestRefresh])
+  }, [enabled, projectPath, refreshOnWindowFocus, requestRefresh, subscribeToWatcher])
 
   const refresh = async ({ quiet = false }: RefreshOptions = {}): Promise<GitBranchesResponse | null> => {
     if (!projectPath || !enabled) {

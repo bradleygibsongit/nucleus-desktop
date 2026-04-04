@@ -1,17 +1,27 @@
 import { create } from "zustand"
 import { loadDesktopStore, type DesktopStoreHandle } from "@/desktop/client"
+import {
+  createDefaultGitResolvePrompts,
+  normalizeGitResolvePrompts,
+  type GitResolvePrompts,
+} from "@/features/shared/components/layout/gitResolve"
+import type { GitPullRequestResolveReason } from "@/desktop/contracts"
 
 const STORE_FILE = "settings.json"
 const GIT_GENERATION_MODEL_KEY = "gitGenerationModel"
+const GIT_RESOLVE_PROMPTS_KEY = "gitResolvePrompts"
 const WORKSPACE_SETUP_MODEL_KEY = "workspaceSetupModel"
 const PERSIST_DEBOUNCE_MS = 250
 
 interface SettingsState {
   gitGenerationModel: string
+  gitResolvePrompts: GitResolvePrompts
   workspaceSetupModel: string
   hasLoaded: boolean
   initialize: () => Promise<void>
   setGitGenerationModel: (model: string) => void
+  setGitResolvePrompt: (reason: GitPullRequestResolveReason, prompt: string) => void
+  resetGitResolvePrompts: () => void
   resetGitGenerationModel: () => void
   setWorkspaceSetupModel: (model: string) => void
   resetWorkspaceSetupModel: () => void
@@ -45,7 +55,11 @@ function normalizeWorkspaceSetupModel(model: string | null | undefined): string 
   return model.trim()
 }
 
-function schedulePersist(settings: { gitGenerationModel: string; workspaceSetupModel: string }): void {
+function schedulePersist(settings: {
+  gitGenerationModel: string
+  gitResolvePrompts: GitResolvePrompts
+  workspaceSetupModel: string
+}): void {
   if (persistTimeoutId != null) {
     clearTimeout(persistTimeoutId)
   }
@@ -57,6 +71,7 @@ function schedulePersist(settings: { gitGenerationModel: string; workspaceSetupM
       try {
         const store = await getStore()
         await store.set(GIT_GENERATION_MODEL_KEY, settings.gitGenerationModel)
+        await store.set(GIT_RESOLVE_PROMPTS_KEY, settings.gitResolvePrompts)
         await store.set(WORKSPACE_SETUP_MODEL_KEY, settings.workspaceSetupModel)
         await store.save()
       } catch (error) {
@@ -68,6 +83,7 @@ function schedulePersist(settings: { gitGenerationModel: string; workspaceSetupM
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   gitGenerationModel: "",
+  gitResolvePrompts: createDefaultGitResolvePrompts(),
   workspaceSetupModel: "",
   hasLoaded: false,
 
@@ -84,10 +100,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       try {
         const store = await getStore()
         const savedModel = await store.get<string>(GIT_GENERATION_MODEL_KEY)
+        const savedResolvePrompts =
+          await store.get<Partial<Record<GitPullRequestResolveReason, string>>>(GIT_RESOLVE_PROMPTS_KEY)
         const savedWorkspaceSetupModel = await store.get<string>(WORKSPACE_SETUP_MODEL_KEY)
 
         set({
           gitGenerationModel: normalizeGitGenerationModel(savedModel),
+          gitResolvePrompts: normalizeGitResolvePrompts(savedResolvePrompts),
           workspaceSetupModel: normalizeWorkspaceSetupModel(savedWorkspaceSetupModel),
           hasLoaded: true,
         })
@@ -95,6 +114,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         console.error("Failed to load settings:", error)
         set({
           gitGenerationModel: "",
+          gitResolvePrompts: createDefaultGitResolvePrompts(),
           workspaceSetupModel: "",
           hasLoaded: true,
         })
@@ -111,6 +131,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ gitGenerationModel: normalized })
     schedulePersist({
       gitGenerationModel: normalized,
+      gitResolvePrompts: get().gitResolvePrompts,
       workspaceSetupModel: normalizeWorkspaceSetupModel(get().workspaceSetupModel),
     })
   },
@@ -119,6 +140,30 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ gitGenerationModel: "" })
     schedulePersist({
       gitGenerationModel: "",
+      gitResolvePrompts: get().gitResolvePrompts,
+      workspaceSetupModel: normalizeWorkspaceSetupModel(get().workspaceSetupModel),
+    })
+  },
+
+  setGitResolvePrompt: (reason, prompt) => {
+    const nextPrompts = {
+      ...get().gitResolvePrompts,
+      [reason]: prompt.replace(/\r\n/g, "\n"),
+    }
+    set({ gitResolvePrompts: nextPrompts })
+    schedulePersist({
+      gitGenerationModel: normalizeGitGenerationModel(get().gitGenerationModel),
+      gitResolvePrompts: nextPrompts,
+      workspaceSetupModel: normalizeWorkspaceSetupModel(get().workspaceSetupModel),
+    })
+  },
+
+  resetGitResolvePrompts: () => {
+    const nextPrompts = createDefaultGitResolvePrompts()
+    set({ gitResolvePrompts: nextPrompts })
+    schedulePersist({
+      gitGenerationModel: normalizeGitGenerationModel(get().gitGenerationModel),
+      gitResolvePrompts: nextPrompts,
       workspaceSetupModel: normalizeWorkspaceSetupModel(get().workspaceSetupModel),
     })
   },
@@ -128,6 +173,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ workspaceSetupModel: normalized })
     schedulePersist({
       gitGenerationModel: normalizeGitGenerationModel(get().gitGenerationModel),
+      gitResolvePrompts: get().gitResolvePrompts,
       workspaceSetupModel: normalized,
     })
   },
@@ -136,6 +182,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ workspaceSetupModel: "" })
     schedulePersist({
       gitGenerationModel: normalizeGitGenerationModel(get().gitGenerationModel),
+      gitResolvePrompts: get().gitResolvePrompts,
       workspaceSetupModel: "",
     })
   },

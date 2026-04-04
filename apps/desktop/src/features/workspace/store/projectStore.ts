@@ -63,7 +63,7 @@ interface ProjectState {
   removeWorktree: (
     projectId: string,
     worktreeId: string,
-    options?: { deleteFromDisk?: boolean }
+    options?: { deleteFromDisk?: boolean; clearSelection?: boolean }
   ) => Promise<void>
   updateProject: (
     id: string,
@@ -956,6 +956,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
 
     const shouldDeleteFromDisk = options?.deleteFromDisk === true
+    const shouldClearSelection = options?.clearSelection === true
     if (shouldDeleteFromDisk) {
       if (worktree.source !== "managed") {
         throw new Error("The root workspace cannot be deleted from disk.")
@@ -981,11 +982,16 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         worktrees: [],
       }
       const nextProjects = replaceProject(get().projects, nextProject)
-      const selection = resolveFocusedProjectState(
-        nextProjects,
-        get().focusedProjectId === projectId ? projectId : get().focusedProjectId,
-        get().activeWorktreeId === worktreeId ? null : get().activeWorktreeId
-      )
+      const selection = shouldClearSelection
+        ? {
+            focusedProjectId: null,
+            activeWorktreeId: null,
+          }
+        : resolveFocusedProjectState(
+            nextProjects,
+            get().focusedProjectId === projectId ? projectId : get().focusedProjectId,
+            get().activeWorktreeId === worktreeId ? null : get().activeWorktreeId
+          )
 
       await persistProjects(nextProjects, selection.focusedProjectId, selection.activeWorktreeId)
       set({
@@ -1010,11 +1016,16 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       worktrees: sortWorktrees(nextWorktrees),
     }
     const nextProjects = replaceProject(get().projects, nextProject)
-    const selection = resolveFocusedProjectState(
-      nextProjects,
-      get().focusedProjectId,
-      get().activeWorktreeId === worktreeId ? null : get().activeWorktreeId
-    )
+    const selection = shouldClearSelection
+      ? {
+          focusedProjectId: null,
+          activeWorktreeId: null,
+        }
+      : resolveFocusedProjectState(
+          nextProjects,
+          get().focusedProjectId,
+          get().activeWorktreeId === worktreeId ? null : get().activeWorktreeId
+        )
 
     await persistProjects(nextProjects, selection.focusedProjectId, selection.activeWorktreeId)
     set({

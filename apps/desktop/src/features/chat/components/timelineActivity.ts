@@ -177,22 +177,75 @@ function createActivityGroupBlock(
 
 export function buildTimelineBlocks(messages: MessageWithParts[]): TimelineBlock[] {
   const lastIndexById = new Map<string, number>()
+  const blocks: TimelineBlock[] = []
+  let pendingGroupMessages: MessageWithParts[] = []
+  let pendingGroupFamily: Exclude<ToolActivityFamily, "approval"> | null = null
+  let pendingGroupTurnId: string | null = null
 
   messages.forEach((message, index) => {
     lastIndexById.set(message.info.id, index)
   })
 
-  return messages.flatMap((message, index) => {
-    if (lastIndexById.get(message.info.id) !== index) {
-      return []
+  const flushPendingGroup = () => {
+    if (!pendingGroupMessages.length || !pendingGroupFamily || !pendingGroupTurnId) {
+      pendingGroupMessages = []
+      pendingGroupFamily = null
+      pendingGroupTurnId = null
+      return
     }
 
-    return {
-      type: "message" as const,
+    blocks.push(
+      createActivityGroupBlock(
+        pendingGroupMessages,
+        pendingGroupFamily,
+        pendingGroupTurnId
+      )
+    )
+    pendingGroupMessages = []
+    pendingGroupFamily = null
+    pendingGroupTurnId = null
+  }
+
+  for (const [index, message] of messages.entries()) {
+    if (lastIndexById.get(message.info.id) !== index) {
+      continue
+    }
+
+    if (isGroupableToolMessage(message)) {
+      const family = getToolActivityFamily(message)
+      if (!family || family === "approval") {
+        flushPendingGroup()
+        blocks.push({
+          type: "message",
+          key: message.info.id,
+          message,
+        })
+        continue
+      }
+
+      if (
+        pendingGroupMessages.length > 0 &&
+        (pendingGroupFamily !== family || pendingGroupTurnId !== message.info.turnId)
+      ) {
+        flushPendingGroup()
+      }
+
+      pendingGroupMessages.push(message)
+      pendingGroupFamily = family
+      pendingGroupTurnId = message.info.turnId
+      continue
+    }
+
+    flushPendingGroup()
+    blocks.push({
+      type: "message",
       key: message.info.id,
       message,
-    }
-  })
+    })
+  }
+
+  flushPendingGroup()
+  return blocks
 }
 
 export function isSettledToolStatus(status: ToolExecutionStatus): boolean {

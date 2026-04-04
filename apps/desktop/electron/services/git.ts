@@ -13,7 +13,10 @@ import type {
   GitFileChange,
   GitFileDiff,
   GitFileStatus,
+  GitMergePullRequestResult,
+  GitPullRequestCheck,
   GitPullRequest,
+  GitPullRequestChecksResponse,
   GitPullResult,
   GitRenameWorktreeInput,
   GitRenameWorktreeResult,
@@ -129,9 +132,69 @@ async function runGhCommand(projectPath: string, args: string[]): Promise<string
     })
     return stdout.trim()
   } catch (error) {
-    const execError = error as Error & { stderr?: string }
+    const execError = error as Error & { stderr?: string; code?: number }
+    const stderr = execError.stderr?.trim()
+    const wrappedError = new Error(stderr || `gh ${args.join(" ")} failed`) as Error & {
+      code?: number
+    }
+    wrappedError.code = execError.code
+    throw wrappedError
+  }
+}
+
+async function runGhCommandWithAllowedExitCodes(
+  projectPath: string,
+  args: string[],
+  allowedExitCodes: number[]
+): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync("gh", args, {
+      cwd: projectPath,
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
+    })
+    return stdout.trim()
+  } catch (error) {
+    const execError = error as Error & { code?: number; stdout?: string; stderr?: string }
+    if (execError.code != null && allowedExitCodes.includes(execError.code)) {
+      return execError.stdout?.trim() ?? ""
+    }
+
     const stderr = execError.stderr?.trim()
     throw new Error(stderr || `gh ${args.join(" ")} failed`)
+  }
+}
+
+function formatGhError(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim()
+  }
+
+  return fallback
+}
+
+async function runGhJsonCommandWithAllowedExitCodes(
+  projectPath: string,
+  args: string[],
+  allowedExitCodes: number[]
+): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync("gh", args, {
+      cwd: projectPath,
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
+    })
+    return stdout.trim()
+  } catch (error) {
+    const execError = error as Error & { code?: number; stdout?: string; stderr?: string }
+    const stdout = execError.stdout?.trim() ?? ""
+    const stderr = execError.stderr?.trim()
+
+    if (execError.code != null && allowedExitCodes.includes(execError.code) && stdout) {
+      return stdout
+    }
+
+    throw new Error(stderr || stdout || `gh ${args.join(" ")} failed`)
   }
 }
 
@@ -825,54 +888,473 @@ function normalizePullRequestState(rawState: string | null | undefined): GitPull
   return "open"
 }
 
-function mapPullRequest(raw: {
+type RawPullRequest = {
   number: number
   title: string
+  body?: string | null
   url: string
   state?: string | null
   baseRefName: string
   headRefName: string
-}): GitPullRequest {
+  mergeable?: boolean | string | null
+  mergeStateStatus?: string | null
+  mergedAt?: string | null
+}
+
+type RawPullRequestCheck = {
+  bucket?: string | null
+  name?: string | null
+  state?: string | null
+  link?: string | null
+  workflow?: string | null
+  startedAt?: string | null
+  completedAt?: string | null
+  description?: string | null
+  event?: string | null
+}
+
+type RawPullRequestChecksResult = {
+  checks: RawPullRequestCheck[]
+  error: string | null
+}
+
+type GitHubActionsCheckTarget = {
+  runId: string
+  jobId?: string
+}
+
+export function summarizePullRequestChecks(
+  checks: RawPullRequestCheck[]
+): Pick<
+  GitPullRequest,
+  | "checksStatus"
+  | "failedChecksCount"
+  | "failedCheckNames"
+  | "pendingChecksCount"
+  | "passedChecksCount"
+> {
+  if (checks.length === 0) {
+    return {
+      checksStatus: "none",
+    }
+  }
+
+  let failedChecksCount = 0
+  let pendingChecksCount = 0
+  let passedChecksCount = 0
+  const failedCheckNames = new Set<string>()
+
+  for (const check of checks) {
+    switch (check.bucket) {
+      case "fail":
+      case "cancel":
+        failedChecksCount += 1
+        if (check.name?.trim()) {
+          failedCheckNames.add(check.name.trim())
+        }
+        break
+      case "pending":
+        pendingChecksCount += 1
+        break
+      case "pass":
+      case "skipping":
+        passedChecksCount += 1
+        break
+      default:
+        break
+    }
+  }
+
+  if (failedChecksCount > 0) {
+    return {
+      checksStatus: "failed",
+      failedChecksCount,
+      failedCheckNames: Array.from(failedCheckNames),
+      pendingChecksCount,
+      passedChecksCount,
+    }
+  }
+
+  if (pendingChecksCount > 0) {
+    return {
+      checksStatus: "pending",
+      failedChecksCount,
+      pendingChecksCount,
+      passedChecksCount,
+    }
+  }
+
+  if (passedChecksCount > 0) {
+    return {
+      checksStatus: "passed",
+      failedChecksCount,
+      pendingChecksCount,
+      passedChecksCount,
+    }
+  }
+
+  return {
+    checksStatus: "none",
+  }
+}
+
+export function normalizePullRequestMergeStatus(
+  rawState: string | null | undefined,
+  rawMergeable: boolean | string | null | undefined,
+  rawMergeStateStatus: string | null | undefined
+): GitPullRequest["mergeStatus"] {
+  const state = normalizePullRequestState(rawState)
+  if (state === "merged") {
+    return "merged"
+  }
+
+  const normalizedMergeable =
+    typeof rawMergeable === "string" ? rawMergeable.toUpperCase() : rawMergeable
+  if (normalizedMergeable === true || normalizedMergeable === "MERGEABLE") {
+    return "mergeable"
+  }
+
+  if (normalizedMergeable === false || normalizedMergeable === "CONFLICTING") {
+    return "blocked"
+  }
+
+  switch (rawMergeStateStatus?.toUpperCase()) {
+    case "CLEAN":
+    case "HAS_HOOKS":
+    case "UNSTABLE":
+      return "mergeable"
+    case "BEHIND":
+    case "BLOCKED":
+    case "DIRTY":
+    case "DRAFT":
+      return "blocked"
+    default:
+      return "unknown"
+  }
+}
+
+export function normalizePullRequestResolveReason(input: {
+  state: string | null | undefined
+  checksStatus: GitPullRequest["checksStatus"]
+  mergeStatus: GitPullRequest["mergeStatus"]
+  mergeable: boolean | string | null | undefined
+  mergeStateStatus: string | null | undefined
+}): GitPullRequest["resolveReason"] {
+  const state = normalizePullRequestState(input.state)
+  if (state !== "open") {
+    return undefined
+  }
+
+  if (input.checksStatus === "failed") {
+    return "failed_checks"
+  }
+
+  if (input.checksStatus === "pending" || input.mergeStatus === "mergeable") {
+    return undefined
+  }
+
+  const normalizedMergeable =
+    typeof input.mergeable === "string" ? input.mergeable.toUpperCase() : input.mergeable
+  const normalizedMergeStateStatus = input.mergeStateStatus?.toUpperCase()
+
+  if (normalizedMergeable === "CONFLICTING" || normalizedMergeStateStatus === "DIRTY") {
+    return "conflicts"
+  }
+
+  switch (normalizedMergeStateStatus) {
+    case "BEHIND":
+      return "behind"
+    case "DRAFT":
+      return "draft"
+    case "BLOCKED":
+      return "blocked"
+    case "UNKNOWN":
+      return "unknown"
+    default:
+      break
+  }
+
+  if (normalizedMergeable === false) {
+    return "blocked"
+  }
+
+  return input.mergeStatus === "blocked" || input.mergeStatus === "unknown"
+    ? "unknown"
+    : undefined
+}
+
+export function mapPullRequest(
+  raw: RawPullRequest,
+  checks: RawPullRequestCheck[] = [],
+  options?: {
+    checksError?: string | null
+  }
+): GitPullRequest {
+  const checksSummary = summarizePullRequestChecks(checks)
+  const mergeStatus = normalizePullRequestMergeStatus(
+    raw.state,
+    raw.mergeable,
+    raw.mergeStateStatus
+  )
+  const resolveReason = normalizePullRequestResolveReason({
+    state: raw.state,
+    checksStatus: checksSummary.checksStatus,
+    mergeStatus,
+    mergeable: raw.mergeable,
+    mergeStateStatus: raw.mergeStateStatus,
+  })
+
   return {
     number: raw.number,
     title: raw.title,
+    description: raw.body?.trim() || null,
     url: raw.url,
     state: normalizePullRequestState(raw.state),
     baseBranch: raw.baseRefName,
     headBranch: raw.headRefName,
+    checksStatus: checksSummary.checksStatus,
+    mergeStatus,
+    isMergeable: mergeStatus === "mergeable",
+    checksError: options?.checksError ?? null,
+    failedChecksCount: checksSummary.failedChecksCount,
+    failedCheckNames: checksSummary.failedCheckNames,
+    pendingChecksCount: checksSummary.pendingChecksCount,
+    passedChecksCount: checksSummary.passedChecksCount,
+    resolveReason,
   }
 }
 
 async function queryPullRequests(
   projectPath: string,
   args: string[]
-): Promise<Array<{
-  number: number
-  title: string
-  url: string
-  state?: string | null
-  baseRefName: string
-  headRefName: string
-}>> {
+): Promise<RawPullRequest[]> {
   const output = await runGhCommand(projectPath, args)
-  return JSON.parse(output) as Array<{
-    number: number
-    title: string
-    url: string
-    state?: string | null
-    baseRefName: string
-    headRefName: string
-  }>
+  return JSON.parse(output) as RawPullRequest[]
 }
 
-async function getOpenPullRequest(projectPath: string, branchName: string): Promise<GitPullRequest | null> {
+async function getRawPullRequestChecks(
+  projectPath: string,
+  pullRequestNumber: number,
+  options?: { requiredOnly?: boolean }
+): Promise<RawPullRequestChecksResult> {
+  try {
+    console.debug("[git] getRawPullRequestChecks:start", {
+      projectPath,
+      pullRequestNumber,
+    })
+    const output = await runGhJsonCommandWithAllowedExitCodes(
+      projectPath,
+      [
+        "pr",
+        "checks",
+        String(pullRequestNumber),
+        ...(options?.requiredOnly ? ["--required"] : []),
+        "--json",
+        "bucket,completedAt,description,event,link,name,startedAt,state,workflow",
+      ],
+      [1, 8]
+    )
+
+    if (!output.trim()) {
+      const errorMessage = "GitHub returned no pull request check data."
+      console.warn("[git] getRawPullRequestChecks:empty", {
+        projectPath,
+        pullRequestNumber,
+        errorMessage,
+      })
+      return {
+        checks: [],
+        error: errorMessage,
+      }
+    }
+
+    const checks = JSON.parse(output) as RawPullRequestCheck[]
+    console.debug("[git] getRawPullRequestChecks:success", {
+      projectPath,
+      pullRequestNumber,
+      checks,
+    })
+    return {
+      checks,
+      error: null,
+    }
+  } catch (error) {
+    const errorMessage = formatGhError(error, "Unable to load pull request checks from GitHub.")
+    console.warn("[git] getRawPullRequestChecks:error", {
+      projectPath,
+      pullRequestNumber,
+      error: errorMessage,
+    })
+    return {
+      checks: [],
+      error: errorMessage,
+    }
+  }
+}
+
+export function normalizePullRequestCheckStatus(
+  bucket: string | null | undefined
+): GitPullRequestCheck["status"] {
+  switch (bucket) {
+    case "fail":
+      return "failed"
+    case "cancel":
+      return "cancelled"
+    case "pending":
+      return "pending"
+    case "pass":
+      return "passed"
+    case "skipping":
+      return "skipped"
+    default:
+      return "pending"
+  }
+}
+
+export function parseGitHubActionsCheckTarget(
+  detailsUrl: string | null | undefined
+): GitHubActionsCheckTarget | null {
+  if (!detailsUrl) {
+    return null
+  }
+
+  const match = detailsUrl.match(/\/(?:actions\/runs|runs)\/(\d+)(?:\/job\/(\d+))?/)
+  if (!match) {
+    return null
+  }
+
+  return {
+    runId: match[1],
+    ...(match[2] ? { jobId: match[2] } : {}),
+  }
+}
+
+function stripAnsi(input: string): string {
+  return input.replace(/\u001B\[[0-9;]*[A-Za-z]/g, "")
+}
+
+export function trimPullRequestFailureOutput(output: string, maxLength = 12000): string {
+  const cleaned = stripAnsi(output).trim()
+  if (cleaned.length <= maxLength) {
+    return cleaned
+  }
+
+  const ellipsis = "\n\n...[truncated]..."
+  return `${cleaned.slice(0, maxLength - ellipsis.length)}${ellipsis}`.trim()
+}
+
+async function getPullRequestCheckFailureOutput(
+  projectPath: string,
+  detailsUrl: string | null | undefined
+): Promise<string | null> {
+  const target = parseGitHubActionsCheckTarget(detailsUrl)
+  if (!target) {
+    return null
+  }
+
+  try {
+    const args = target.jobId
+      ? ["run", "view", "--job", target.jobId, "--log-failed"]
+      : ["run", "view", target.runId, "--log-failed"]
+    const output = await runGhCommandWithAllowedExitCodes(projectPath, args, [1])
+    const trimmed = trimPullRequestFailureOutput(output)
+    return trimmed || null
+  } catch (error) {
+    console.debug("[git] getPullRequestCheckFailureOutput:error", {
+      projectPath,
+      detailsUrl,
+      error,
+    })
+    return null
+  }
+}
+
+async function mapPullRequestCheck(
+  projectPath: string,
+  rawCheck: RawPullRequestCheck
+): Promise<GitPullRequestCheck> {
+  const status = normalizePullRequestCheckStatus(rawCheck.bucket)
+  const detailsUrl = rawCheck.link?.trim() || null
+  const errorText =
+    status === "failed"
+      ? await getPullRequestCheckFailureOutput(projectPath, detailsUrl)
+      : null
+  const normalizedName = rawCheck.name?.trim() || "Unnamed check"
+
+  return {
+    id: `${normalizedName}:${rawCheck.workflow?.trim() || ""}:${detailsUrl || rawCheck.state || ""}`,
+    name: normalizedName,
+    workflowName: rawCheck.workflow?.trim() || null,
+    description: rawCheck.description?.trim() || null,
+    event: rawCheck.event?.trim() || null,
+    status,
+    startedAt: rawCheck.startedAt ?? null,
+    completedAt: rawCheck.completedAt ?? null,
+    detailsUrl,
+    ...(errorText
+      ? {
+          errorText,
+          errorCopyText: errorText,
+        }
+      : {}),
+    hasFailureDetails: Boolean(errorText),
+  }
+}
+
+async function getPullRequestDetails(
+  projectPath: string,
+  identifier: string
+): Promise<RawPullRequest | null> {
+  try {
+    const output = await runGhCommand(projectPath, [
+      "pr",
+      "view",
+      identifier,
+      "--json",
+      "number,title,body,url,state,baseRefName,headRefName,mergeable,mergeStateStatus,mergedAt",
+    ])
+
+    return JSON.parse(output) as RawPullRequest
+  } catch {
+    return null
+  }
+}
+
+async function hydratePullRequest(projectPath: string, rawPullRequest: RawPullRequest): Promise<GitPullRequest> {
+  const state = normalizePullRequestState(rawPullRequest.state)
+  const checksResult =
+    state === "open"
+      ? await getRawPullRequestChecks(projectPath, rawPullRequest.number, { requiredOnly: true })
+      : { checks: [], error: null }
+  return mapPullRequest(rawPullRequest, checksResult.checks, {
+    checksError: checksResult.error,
+  })
+}
+
+async function getPullRequestForBranch(projectPath: string, branchName: string): Promise<GitPullRequest | null> {
   const upstreamBranch = await getCurrentUpstreamBranch(projectPath)
   const remoteName = getRemoteNameFromBranchRef(upstreamBranch)
   const qualifiedHeadRef = await resolvePullRequestHeadRef(projectPath, branchName, remoteName)
   const candidateHeads = Array.from(new Set([branchName, qualifiedHeadRef]))
+  const prListFields =
+    "number,title,body,url,state,baseRefName,headRefName,mergeable,mergeStateStatus,mergedAt"
+
+  console.debug("[git] getPullRequestForBranch:start", {
+    projectPath,
+    branchName,
+    upstreamBranch,
+    remoteName,
+    qualifiedHeadRef,
+    candidateHeads,
+  })
 
   for (const headRef of candidateHeads) {
     try {
+      console.debug("[git] getPullRequestForBranch:list-open", {
+        projectPath,
+        branchName,
+        headRef,
+      })
       const parsed = await queryPullRequests(projectPath, [
         "pr",
         "list",
@@ -883,39 +1365,95 @@ async function getOpenPullRequest(projectPath: string, branchName: string): Prom
         "--limit",
         "1",
         "--json",
-        "number,title,url,state,baseRefName,headRefName",
+        prListFields,
       ])
 
       if (parsed.length > 0) {
-        return mapPullRequest(parsed[0])
+        const hydrated = await hydratePullRequest(projectPath, parsed[0])
+        console.debug("[git] getPullRequestForBranch:found-open", {
+          projectPath,
+          branchName,
+          headRef,
+          pullRequest: hydrated,
+        })
+        return hydrated
       }
-    } catch {
-      // Try the next lookup shape.
+    } catch (error) {
+      console.debug("[git] getPullRequestForBranch:list-open:error", {
+        projectPath,
+        branchName,
+        headRef,
+        error,
+      })
     }
   }
 
-  try {
-    const output = await runGhCommand(projectPath, [
-      "pr",
-      "view",
-      branchName,
-      "--json",
-      "number,title,url,state,baseRefName,headRefName",
-    ])
+  for (const headRef of candidateHeads) {
+    try {
+      console.debug("[git] getPullRequestForBranch:list-merged", {
+        projectPath,
+        branchName,
+        headRef,
+      })
+      const parsed = await queryPullRequests(projectPath, [
+        "pr",
+        "list",
+        "--head",
+        headRef,
+        "--state",
+        "merged",
+        "--limit",
+        "1",
+        "--json",
+        prListFields,
+      ])
 
-    const parsed = JSON.parse(output) as {
-      number: number
-      title: string
-      url: string
-      state?: string | null
-      baseRefName: string
-      headRefName: string
+      if (parsed.length > 0) {
+        const hydrated = await hydratePullRequest(projectPath, parsed[0])
+        console.debug("[git] getPullRequestForBranch:found-merged", {
+          projectPath,
+          branchName,
+          headRef,
+          pullRequest: hydrated,
+        })
+        return hydrated
+      }
+    } catch (error) {
+      console.debug("[git] getPullRequestForBranch:list-merged:error", {
+        projectPath,
+        branchName,
+        headRef,
+        error,
+      })
     }
+  }
 
-    return mapPullRequest(parsed)
-  } catch {
+  const viewedPullRequest = await getPullRequestDetails(projectPath, branchName)
+  if (!viewedPullRequest) {
+    console.debug("[git] getPullRequestForBranch:not-found", {
+      projectPath,
+      branchName,
+    })
     return null
   }
+
+  const state = normalizePullRequestState(viewedPullRequest.state)
+  if (state === "closed") {
+    console.debug("[git] getPullRequestForBranch:closed", {
+      projectPath,
+      branchName,
+      viewedPullRequest,
+    })
+    return null
+  }
+
+  const hydrated = await hydratePullRequest(projectPath, viewedPullRequest)
+  console.debug("[git] getPullRequestForBranch:view-fallback", {
+    projectPath,
+    branchName,
+    pullRequest: hydrated,
+  })
+  return hydrated
 }
 
 async function getGitBranchesResponse(projectPath: string): Promise<GitBranchesResponse> {
@@ -937,7 +1475,7 @@ async function getGitBranchesResponse(projectPath: string): Promise<GitBranchesR
   const defaultBranch = await resolveDefaultBranch(trimmedPath, branches)
   const { aheadCount, behindCount } = await getAheadBehind(trimmedPath)
   const originRemote = await hasOriginRemote(trimmedPath)
-  const openPullRequest = isDetached ? null : await getOpenPullRequest(trimmedPath, currentBranch)
+  const openPullRequest = isDetached ? null : await getPullRequestForBranch(trimmedPath, currentBranch)
 
   return {
     currentBranch,
@@ -1410,8 +1948,19 @@ async function createPullRequest(
   generationModel?: string | null,
   remoteName?: string | null
 ): Promise<GitRunStackedActionResult["pr"]> {
-  const existing = await getOpenPullRequest(projectPath, branchName)
+  console.debug("[git] createPullRequest:start", {
+    projectPath,
+    branchName,
+    remoteName,
+    generationModel,
+  })
+  const existing = await getPullRequestForBranch(projectPath, branchName)
   if (existing) {
+    console.debug("[git] createPullRequest:existing", {
+      projectPath,
+      branchName,
+      existing,
+    })
     return {
       status: "opened_existing",
       url: existing.url,
@@ -1434,6 +1983,13 @@ async function createPullRequest(
     (branchData.hasOriginRemote ? "origin" : branchData.remoteNames[0] ?? null)
   await ensureRemoteBranchExists(projectPath, branchName, resolvedRemoteName)
   const headRef = await resolvePullRequestHeadRef(projectPath, branchName, resolvedRemoteName)
+  console.debug("[git] createPullRequest:resolved-head", {
+    projectPath,
+    branchName,
+    baseBranch,
+    resolvedRemoteName,
+    headRef,
+  })
 
   const rangeContext = await readRangeContext(projectPath, baseBranch)
   const generated = await runCodexJson<{ title: string; body: string }>(
@@ -1457,7 +2013,7 @@ async function createPullRequest(
     generationModel
   )
 
-  await runGhCommand(projectPath, [
+  const createdUrl = await runGhCommand(projectPath, [
     "pr",
     "create",
     "--base",
@@ -1469,8 +2025,49 @@ async function createPullRequest(
     "--body",
     generated.body.trim(),
   ])
+  console.debug("[git] createPullRequest:created", {
+    projectPath,
+    branchName,
+    createdUrl,
+    generatedTitle: generated.title.trim(),
+  })
 
-  const created = await getOpenPullRequest(projectPath, branchName)
+  let created = await getPullRequestForBranch(projectPath, branchName)
+  if (!created && createdUrl) {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      console.debug("[git] createPullRequest:retry-lookup", {
+        projectPath,
+        branchName,
+        attempt: attempt + 1,
+      })
+      await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)))
+      created = await getPullRequestForBranch(projectPath, branchName)
+      if (created) {
+        console.debug("[git] createPullRequest:retry-lookup:found", {
+          projectPath,
+          branchName,
+          attempt: attempt + 1,
+          created,
+        })
+        break
+      }
+    }
+  }
+
+  const normalizedCreatedUrl = createdUrl.trim().split(/\s+/).find((value) => value.startsWith("http")) ?? undefined
+  const createdNumber =
+    created?.number ??
+    (normalizedCreatedUrl
+      ? Number.parseInt(normalizedCreatedUrl.replace(/\/$/, "").split("/").pop() ?? "", 10) || undefined
+      : undefined)
+
+  console.debug("[git] createPullRequest:resolved-result", {
+    projectPath,
+    branchName,
+    normalizedCreatedUrl,
+    createdNumber,
+    created,
+  })
   return {
     status: "created",
     ...(created
@@ -1482,6 +2079,8 @@ async function createPullRequest(
           headBranch: created.headBranch,
         }
       : {
+          ...(normalizedCreatedUrl ? { url: normalizedCreatedUrl } : {}),
+          ...(createdNumber ? { number: createdNumber } : {}),
           title: generated.title.trim(),
           baseBranch,
           headBranch: branchName,
@@ -1495,6 +2094,7 @@ function localBranchNameForRemote(branchName: string): string {
 
 export class GitService {
   getBranches(projectPath: string): Promise<GitBranchesResponse> {
+    console.debug("[git] getBranches", { projectPath })
     return getGitBranchesResponse(projectPath)
   }
 
@@ -1502,6 +2102,31 @@ export class GitService {
     const trimmedPath = ensureGitProjectPath(projectPath)
     await runGitCommand(trimmedPath, ["rev-parse", "--show-toplevel"])
     return getChangedFiles(trimmedPath)
+  }
+
+  async getPullRequestChecks(projectPath: string): Promise<GitPullRequestChecksResponse> {
+    const trimmedPath = ensureGitProjectPath(projectPath)
+    const branchData = await getGitBranchesResponse(trimmedPath)
+    const pullRequest = branchData.openPullRequest
+
+    if (!pullRequest || pullRequest.state !== "open") {
+      return {
+        checks: [],
+        pullRequestNumber: null,
+        error: null,
+      }
+    }
+
+    const rawChecks = await getRawPullRequestChecks(trimmedPath, pullRequest.number)
+    const checks = await Promise.all(
+      rawChecks.checks.map((rawCheck) => mapPullRequestCheck(trimmedPath, rawCheck))
+    )
+
+    return {
+      checks,
+      pullRequestNumber: pullRequest.number,
+      error: rawChecks.error,
+    }
   }
 
   async listWorktrees(projectPath: string): Promise<GitWorktreeSummary[]> {
@@ -1755,6 +2380,51 @@ export class GitService {
       status: beforeSha === afterSha ? "skipped_up_to_date" : "pulled",
       branch: branchData.currentBranch,
       upstreamBranch: branchData.upstreamBranch,
+    }
+  }
+
+  async mergePullRequest(projectPath: string): Promise<GitMergePullRequestResult> {
+    const trimmedPath = ensureGitProjectPath(projectPath)
+    const branchData = await getGitBranchesResponse(trimmedPath)
+
+    if (branchData.isDetached) {
+      throw new Error("Cannot merge a pull request from detached HEAD.")
+    }
+
+    const pullRequest = branchData.openPullRequest
+    if (!pullRequest || pullRequest.state !== "open") {
+      throw new Error("No open pull request found for this branch.")
+    }
+
+    if (pullRequest.checksError) {
+      throw new Error(pullRequest.checksError)
+    }
+
+    if (pullRequest.checksStatus === "pending") {
+      throw new Error("Checks are still pending for this pull request.")
+    }
+
+    if (pullRequest.checksStatus === "failed") {
+      throw new Error("Checks are failing for this pull request.")
+    }
+
+    if (pullRequest.mergeStatus !== "mergeable") {
+      throw new Error("This pull request is not ready to merge.")
+    }
+
+    const headSha = await runGitCommand(trimmedPath, ["rev-parse", "HEAD"])
+    await runGhCommand(trimmedPath, [
+      "pr",
+      "merge",
+      String(pullRequest.number),
+      "--merge",
+      "--match-head-commit",
+      headSha,
+    ])
+
+    return {
+      number: pullRequest.number,
+      url: pullRequest.url,
     }
   }
 

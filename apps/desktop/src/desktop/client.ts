@@ -9,6 +9,11 @@ import type {
   GitCreateWorktreeResult,
   GitFileChange,
   GitFileDiff,
+  GitMergePullRequestResult,
+  GitPullRequestResolveReason,
+  GitPullRequestChecksResponse,
+  GitPullRequestCheck,
+  GitPullRequestCheckStatus,
   GitPullResult,
   GitRenameWorktreeInput,
   GitRenameWorktreeResult,
@@ -126,6 +131,19 @@ export const desktop = {
   git: {
     getBranches: (projectPath: string) => window.nucleus.git.getBranches(projectPath),
     getChanges: (projectPath: string) => window.nucleus.git.getChanges(projectPath),
+    getPullRequestChecks: (projectPath: string) => {
+      const getPullRequestChecks = window.nucleus.git.getPullRequestChecks
+      if (typeof getPullRequestChecks !== "function") {
+        console.warn("[desktop.git] getPullRequestChecks is unavailable in the current preload bridge")
+        return Promise.resolve({
+          checks: [],
+          pullRequestNumber: null,
+          error: "Pull request checks are unavailable in the current desktop bridge.",
+        })
+      }
+
+      return getPullRequestChecks(projectPath)
+    },
     listWorktrees: (projectPath: string) => window.nucleus.git.listWorktrees(projectPath),
     createWorktree: (projectPath: string, input: GitCreateWorktreeInput) =>
       window.nucleus.git.createWorktree(projectPath, input),
@@ -140,6 +158,7 @@ export const desktop = {
     createAndCheckoutBranch: (projectPath: string, branchName: string) =>
       window.nucleus.git.createAndCheckoutBranch(projectPath, branchName),
     pull: (projectPath: string) => window.nucleus.git.pull(projectPath),
+    mergePullRequest: (projectPath: string) => window.nucleus.git.mergePullRequest(projectPath),
     runStackedAction: (projectPath: string, input: GitRunStackedActionInput) =>
       window.nucleus.git.runStackedAction(projectPath, input),
     onActionProgress: (listener: (event: GitActionProgressEvent) => void) =>
@@ -160,6 +179,11 @@ export type {
   GitCreateWorktreeResult,
   GitFileChange,
   GitFileDiff,
+  GitMergePullRequestResult,
+  GitPullRequestResolveReason,
+  GitPullRequestChecksResponse,
+  GitPullRequestCheck,
+  GitPullRequestCheckStatus,
   GitPullResult,
   GitRenameWorktreeInput,
   GitRenameWorktreeResult,

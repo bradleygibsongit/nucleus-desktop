@@ -55,6 +55,10 @@ export function findProjectForSession(
   sessionId: string
 ): { worktreeId: string; projectChat: ProjectChatState; session: RuntimeSession } | null {
   for (const [worktreeId, projectChat] of Object.entries(chatByWorktree)) {
+    if (!hasProjectChatSession(projectChat, sessionId)) {
+      continue
+    }
+
     const session = projectChat.sessions.find((candidate) => candidate.id === sessionId)
     if (session) {
       return { worktreeId, projectChat, session }

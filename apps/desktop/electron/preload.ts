@@ -10,6 +10,8 @@ import type {
   GitCreateWorktreeResult,
   GitFileChange,
   GitFileDiff,
+  GitMergePullRequestResult,
+  GitPullRequestChecksResponse,
   GitPullResult,
   GitRenameWorktreeInput,
   GitRenameWorktreeResult,
@@ -147,6 +149,11 @@ contextBridge.exposeInMainWorld("nucleus", {
       ipcRenderer.invoke(IPC_CHANNELS.gitGetBranches, projectPath) as Promise<GitBranchesResponse>,
     getChanges: (projectPath: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.gitGetChanges, projectPath) as Promise<GitFileChange[]>,
+    getPullRequestChecks: (projectPath: string) =>
+      ipcRenderer.invoke(
+        IPC_CHANNELS.gitGetPullRequestChecks,
+        projectPath
+      ) as Promise<GitPullRequestChecksResponse>,
     listWorktrees: (projectPath: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.gitListWorktrees, projectPath) as Promise<GitWorktreeSummary[]>,
     createWorktree: (projectPath: string, input: GitCreateWorktreeInput) =>
@@ -188,6 +195,11 @@ contextBridge.exposeInMainWorld("nucleus", {
       ) as Promise<GitBranchesResponse>,
     pull: (projectPath: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.gitPull, projectPath) as Promise<GitPullResult>,
+    mergePullRequest: (projectPath: string) =>
+      ipcRenderer.invoke(
+        IPC_CHANNELS.gitMergePullRequest,
+        projectPath
+      ) as Promise<GitMergePullRequestResult>,
     runStackedAction: (projectPath: string, input: GitRunStackedActionInput) =>
       ipcRenderer.invoke(
         IPC_CHANNELS.gitRunStackedAction,

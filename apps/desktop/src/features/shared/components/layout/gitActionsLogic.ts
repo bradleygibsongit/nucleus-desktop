@@ -3,23 +3,45 @@ import type {
   GitRunStackedActionResult,
   GitStackedAction,
 } from "@/desktop/client"
+import { getResolveHint, getResolveTone } from "./gitResolve"
 
-export type GitActionIconName = "commit" | "push" | "pr" | "info"
+export type GitActionIconName =
+  | "archive"
+  | "chat"
+  | "commit"
+  | "info"
+  | "pr"
+  | "pull"
+  | "push"
+
+export interface GitActionResolutionOptions {
+  preferredRemoteName?: string | null
+  canArchiveWorktree?: boolean
+}
 
 export interface GitActionMenuItem {
-  id: "commit" | "push" | "pr"
+  id: "archive" | "commit" | "pr" | "push" | "resolve"
   label: string
   disabled: boolean
   icon: GitActionIconName
+  kind: "open_archive" | "open_pr" | "resolve_pr" | "run_action"
   action?: GitStackedAction
   openDialog?: boolean
-  opensPr?: boolean
 }
 
 export interface GitQuickAction {
   label: string
   disabled: boolean
-  kind: "run_action" | "run_pull" | "open_pr" | "show_hint"
+  icon: GitActionIconName
+  kind:
+    | "merge_pr"
+    | "open_archive"
+    | "open_pr"
+    | "resolve_pr"
+    | "run_action"
+    | "run_pull"
+    | "show_hint"
+  tone: "danger" | "default" | "warning"
   action?: GitStackedAction
   hint?: string
 }
@@ -40,21 +62,52 @@ function hasConfiguredRemote(
   return branchData.remoteNames.length > 0
 }
 
+function isArchiveAvailable(
+  branchData: GitBranchesResponse,
+  canArchiveWorktree: boolean
+): boolean {
+  return canArchiveWorktree && branchData.openPullRequest?.state === "merged"
+}
+
+function getChecksPendingHint(branchData: GitBranchesResponse): string {
+  const pendingCount = branchData.openPullRequest?.pendingChecksCount ?? 0
+  if (pendingCount > 0) {
+    return pendingCount === 1 ? "1 required check is still running." : `${pendingCount} required checks are still running.`
+  }
+
+  return "Required checks are still running for this pull request."
+}
+
+function getChecksFailedHint(branchData: GitBranchesResponse): string {
+  const failedCount = branchData.openPullRequest?.failedChecksCount ?? 0
+  if (failedCount > 0) {
+    return failedCount === 1 ? "1 required check is failing." : `${failedCount} required checks are failing.`
+  }
+
+  return "Required checks are failing for this pull request."
+}
+
+function canResolvePullRequest(branchData: GitBranchesResponse): boolean {
+  return branchData.openPullRequest?.state === "open" && Boolean(branchData.openPullRequest.resolveReason)
+}
+
 export function buildMenuItems(
   branchData: GitBranchesResponse | null,
   hasChanges: boolean,
   isBusy: boolean,
-  preferredRemoteName?: string | null
+  options: GitActionResolutionOptions = {}
 ): GitActionMenuItem[] {
   if (!branchData) {
     return []
   }
 
-  const hasBranch = !branchData.isDetached
-  const hasOpenPr = branchData.openPullRequest?.state === "open"
+  const pullRequest = branchData.openPullRequest
+  const hasOpenPr = pullRequest?.state === "open"
+  const hasPullRequest = pullRequest != null
   const isBehind = branchData.behindCount > 0
+  const hasBranch = !branchData.isDetached
   const canPushWithoutUpstream =
-    hasConfiguredRemote(branchData, preferredRemoteName) && !branchData.hasUpstream
+    hasConfiguredRemote(branchData, options.preferredRemoteName) && !branchData.hasUpstream
   const canCommit = !isBusy && hasChanges
   const canPush =
     !isBusy &&
@@ -71,14 +124,14 @@ export function buildMenuItems(
     branchData.aheadCount > 0 &&
     !isBehind &&
     (branchData.hasUpstream || canPushWithoutUpstream)
-  const canOpenPr = !isBusy && hasOpenPr
 
-  return [
+  const menuItems: GitActionMenuItem[] = [
     {
       id: "commit",
       label: "Commit",
       disabled: !canCommit,
       icon: "commit",
+      kind: "run_action",
       action: "commit",
       openDialog: true,
     },
@@ -87,38 +140,64 @@ export function buildMenuItems(
       label: "Push",
       disabled: !canPush,
       icon: "push",
+      kind: "run_action",
       action: "commit_push",
     },
-    hasOpenPr
+    hasPullRequest
       ? {
           id: "pr",
           label: "View PR",
-          disabled: !canOpenPr,
+          disabled: isBusy,
           icon: "pr",
-          opensPr: true,
+          kind: "open_pr",
         }
       : {
           id: "pr",
           label: "Create PR",
           disabled: !canCreatePr,
           icon: "pr",
+          kind: "run_action",
           action: "commit_push_pr",
         },
   ]
+
+  if (canResolvePullRequest(branchData)) {
+    menuItems.push({
+      id: "resolve",
+      label: "Resolve",
+      disabled: isBusy,
+      icon: "chat",
+      kind: "resolve_pr",
+    })
+  }
+
+  if (isArchiveAvailable(branchData, options.canArchiveWorktree === true)) {
+    menuItems.push({
+      id: "archive",
+      label: "Archive",
+      disabled: isBusy,
+      icon: "archive",
+      kind: "open_archive",
+    })
+  }
+
+  return menuItems
 }
 
 export function resolveQuickAction(
   branchData: GitBranchesResponse | null,
   hasChanges: boolean,
   isBusy: boolean,
-  preferredRemoteName?: string | null
+  options: GitActionResolutionOptions = {}
 ): GitQuickAction {
   if (isBusy) {
     return {
       label: "Commit",
       disabled: true,
+      icon: "commit",
       kind: "show_hint",
       hint: "A git action is already in progress.",
+      tone: "default",
     }
   }
 
@@ -126,83 +205,63 @@ export function resolveQuickAction(
     return {
       label: "Commit",
       disabled: true,
+      icon: "commit",
       kind: "show_hint",
       hint: "Git status is unavailable.",
+      tone: "default",
     }
   }
 
+  const pullRequest = branchData.openPullRequest
+  const hasOpenPr = pullRequest?.state === "open"
+  const hasMergedPr = pullRequest?.state === "merged"
   const hasBranch = !branchData.isDetached
-  const hasOpenPr = branchData.openPullRequest?.state === "open"
   const isAhead = branchData.aheadCount > 0
   const isBehind = branchData.behindCount > 0
   const isDiverged = isAhead && isBehind
-  const hasConfiguredPreferredRemote = hasConfiguredRemote(branchData, preferredRemoteName)
+  const hasConfiguredPreferredRemote = hasConfiguredRemote(branchData, options.preferredRemoteName)
 
   if (!hasBranch) {
     return {
       label: "Commit",
       disabled: true,
+      icon: "commit",
       kind: "show_hint",
       hint: "Create and checkout a branch before pushing or opening a PR.",
+      tone: "default",
     }
   }
 
   if (hasChanges) {
     if (!branchData.hasUpstream && !hasConfiguredPreferredRemote) {
-      return { label: "Commit", disabled: false, kind: "run_action", action: "commit" }
+      return {
+        label: "Commit",
+        disabled: false,
+        icon: "commit",
+        kind: "run_action",
+        action: "commit",
+        tone: "default",
+      }
     }
+
     if (hasOpenPr || branchData.isDefaultBranch) {
       return {
         label: "Commit & push",
         disabled: false,
+        icon: "push",
         kind: "run_action",
         action: "commit_push",
+        tone: "default",
       }
     }
+
     return {
       label: "Commit, push & PR",
       disabled: false,
+      icon: "pr",
       kind: "run_action",
       action: "commit_push_pr",
-    }
-  }
-
-  if (!branchData.hasUpstream) {
-    if (!hasConfiguredPreferredRemote) {
-      if (hasOpenPr && !isAhead) {
-        return { label: "View PR", disabled: false, kind: "open_pr" }
-      }
-      return {
-        label: "Push",
-        disabled: true,
-        kind: "show_hint",
-        hint: preferredRemoteName?.trim()
-          ? `Configure the "${preferredRemoteName.trim()}" remote before pushing or creating a PR.`
-          : "Add a remote before pushing or creating a PR.",
-      }
-    }
-
-    if (!isAhead) {
-      if (hasOpenPr) {
-        return { label: "View PR", disabled: false, kind: "open_pr" }
-      }
-      return {
-        label: "Push",
-        disabled: true,
-        kind: "show_hint",
-        hint: "No local commits to push.",
-      }
-    }
-
-    if (hasOpenPr || branchData.isDefaultBranch) {
-      return { label: "Push", disabled: false, kind: "run_action", action: "commit_push" }
-    }
-
-    return {
-      label: "Push & create PR",
-      disabled: false,
-      kind: "run_action",
-      action: "commit_push_pr",
+      tone: "default",
     }
   }
 
@@ -210,8 +269,10 @@ export function resolveQuickAction(
     return {
       label: "Sync branch",
       disabled: true,
+      icon: "info",
       kind: "show_hint",
       hint: "This branch has diverged from upstream. Rebase or merge before continuing.",
+      tone: "default",
     }
   }
 
@@ -219,32 +280,154 @@ export function resolveQuickAction(
     return {
       label: "Pull",
       disabled: false,
+      icon: "pull",
       kind: "run_pull",
+      tone: "default",
     }
   }
 
   if (isAhead) {
+    if (!branchData.hasUpstream && !hasConfiguredPreferredRemote) {
+      return {
+        label: "Push",
+        disabled: true,
+        icon: "push",
+        kind: "show_hint",
+        hint: options.preferredRemoteName?.trim()
+          ? `Configure the "${options.preferredRemoteName.trim()}" remote before pushing or creating a PR.`
+          : "Add a remote before pushing or creating a PR.",
+        tone: "default",
+      }
+    }
+
     if (hasOpenPr || branchData.isDefaultBranch) {
-      return { label: "Push", disabled: false, kind: "run_action", action: "commit_push" }
+      return {
+        label: "Push",
+        disabled: false,
+        icon: "push",
+        kind: "run_action",
+        action: "commit_push",
+        tone: "default",
+      }
     }
 
     return {
       label: "Push & create PR",
       disabled: false,
+      icon: "pr",
       kind: "run_action",
       action: "commit_push_pr",
+      tone: "default",
     }
   }
 
-  if (hasOpenPr && branchData.hasUpstream) {
-    return { label: "View PR", disabled: false, kind: "open_pr" }
+  if (hasOpenPr) {
+    if (pullRequest.checksError) {
+      return {
+        label: "Checks unavailable",
+        disabled: false,
+        icon: "pr",
+        kind: "open_pr",
+        hint: pullRequest.checksError,
+        tone: "warning",
+      }
+    }
+
+    if (pullRequest.checksStatus === "pending") {
+      return {
+        label: "Checks pending",
+        disabled: false,
+        icon: "pr",
+        kind: "open_pr",
+        hint: getChecksPendingHint(branchData),
+        tone: "warning",
+      }
+    }
+
+    if (pullRequest.resolveReason) {
+      return {
+        label: "Resolve",
+        disabled: false,
+        icon: "chat",
+        kind: "resolve_pr",
+        hint:
+          pullRequest.resolveReason === "failed_checks"
+            ? getChecksFailedHint(branchData)
+            : getResolveHint(pullRequest.resolveReason),
+        tone: getResolveTone(pullRequest.resolveReason),
+      }
+    }
+
+    if (pullRequest.mergeStatus === "mergeable") {
+      return {
+        label: "Merge PR",
+        disabled: false,
+        icon: "pr",
+        kind: "merge_pr",
+        tone: "default",
+      }
+    }
+
+    return {
+      label: "View PR",
+      disabled: false,
+      icon: "pr",
+      kind: "open_pr",
+      tone: "default",
+    }
+  }
+
+  if (hasMergedPr && isArchiveAvailable(branchData, options.canArchiveWorktree === true)) {
+    return {
+      label: "Archive",
+      disabled: false,
+      icon: "archive",
+      kind: "open_archive",
+      tone: "default",
+    }
+  }
+
+  if (hasMergedPr) {
+    return {
+      label: "View PR",
+      disabled: false,
+      icon: "pr",
+      kind: "open_pr",
+      tone: "default",
+    }
+  }
+
+  if (!branchData.hasUpstream) {
+    if (!hasConfiguredPreferredRemote) {
+      return {
+        label: "Push",
+        disabled: true,
+        icon: "push",
+        kind: "show_hint",
+        hint: options.preferredRemoteName?.trim()
+          ? `Configure the "${options.preferredRemoteName.trim()}" remote before pushing or creating a PR.`
+          : "Add a remote before pushing or creating a PR.",
+        tone: "default",
+      }
+    }
+
+    return {
+      label: "Push",
+      disabled: true,
+      icon: "push",
+      kind: "show_hint",
+      hint: "No local commits to push.",
+      tone: "default",
+    }
   }
 
   return {
     label: "Commit",
     disabled: true,
+    icon: "commit",
     kind: "show_hint",
     hint: "This branch is already up to date.",
+    tone: "default",
   }
 }
 

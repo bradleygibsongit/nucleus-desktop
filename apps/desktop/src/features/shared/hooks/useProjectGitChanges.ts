@@ -5,6 +5,9 @@ import { useProjectGitStore } from "./projectGitStore"
 
 interface UseProjectGitChangesOptions {
   enabled?: boolean
+  autoRefreshOnMount?: boolean
+  refreshOnWindowFocus?: boolean
+  subscribeToWatcher?: boolean
 }
 
 interface RefreshOptions {
@@ -16,13 +19,16 @@ export function useProjectGitChanges(
   options?: UseProjectGitChangesOptions
 ) {
   const enabled = options?.enabled ?? true
+  const autoRefreshOnMount = options?.autoRefreshOnMount ?? true
+  const refreshOnWindowFocus = options?.refreshOnWindowFocus ?? true
+  const subscribeToWatcher = options?.subscribeToWatcher ?? true
   const requestRefresh = useProjectGitStore((state) => state.requestRefresh)
   const entry = useProjectGitStore((state) =>
     projectPath ? state.entriesByProjectPath[projectPath] : undefined
   )
 
   useEffect(() => {
-    if (!projectPath || !enabled) {
+    if (!projectPath || !enabled || !autoRefreshOnMount) {
       return
     }
 
@@ -32,26 +38,32 @@ export function useProjectGitChanges(
       quietChanges: false,
       debounceMs: 0,
     })
-  }, [enabled, projectPath, requestRefresh])
+  }, [autoRefreshOnMount, enabled, projectPath, requestRefresh])
 
   useEffect(() => {
-    if (!projectPath || !enabled) {
+    if (!projectPath || !enabled || (!subscribeToWatcher && !refreshOnWindowFocus)) {
       return
     }
 
-    const unlisten = desktop.watcher.onEvent((event) => {
-      if (event.rootPath !== projectPath) {
+    const unlisten = subscribeToWatcher
+      ? desktop.watcher.onEvent((event) => {
+          if (event.rootPath !== projectPath) {
+            return
+          }
+
+          void requestRefresh(projectPath, {
+            includeChanges: true,
+            quietChanges: true,
+            debounceMs: 120,
+          })
+        })
+      : () => {}
+
+    const handleFocus = () => {
+      if (!refreshOnWindowFocus) {
         return
       }
 
-      void requestRefresh(projectPath, {
-        includeChanges: true,
-        quietChanges: true,
-        debounceMs: 120,
-      })
-    })
-
-    const handleFocus = () => {
       void requestRefresh(projectPath, {
         includeChanges: true,
         quietChanges: true,
@@ -59,13 +71,17 @@ export function useProjectGitChanges(
       })
     }
 
-    window.addEventListener("focus", handleFocus)
+    if (refreshOnWindowFocus) {
+      window.addEventListener("focus", handleFocus)
+    }
 
     return () => {
-      window.removeEventListener("focus", handleFocus)
+      if (refreshOnWindowFocus) {
+        window.removeEventListener("focus", handleFocus)
+      }
       unlisten()
     }
-  }, [enabled, projectPath, requestRefresh])
+  }, [enabled, projectPath, refreshOnWindowFocus, requestRefresh, subscribeToWatcher])
 
   const refresh = async ({ quiet = false }: RefreshOptions = {}): Promise<GitFileChange[]> => {
     if (!projectPath || !enabled) {

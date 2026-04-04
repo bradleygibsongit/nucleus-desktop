@@ -118,6 +118,12 @@ export function useChatTimelineState(activeSessionId: string | null): {
   }
 }
 
+export function useChatHasContent(activeSessionId: string | null): boolean {
+  return useChatStore((state) =>
+    activeSessionId ? (state.messagesBySession[activeSessionId]?.length ?? 0) > 0 : false
+  )
+}
+
 export function useChatComposerState({
   selectedProjectId,
   selectedWorktreePath,

@@ -19,11 +19,14 @@ import { useProjectGitChanges } from "@/features/shared/hooks/useProjectGitChang
 import { getTerminalSessionId, isTerminalTab } from "@/features/terminal/utils/terminalTabs"
 import { useProjectStore } from "@/features/workspace/store"
 import type { Project, ProjectWorktree } from "@/features/workspace/types"
+import { resolveDeleteFromSystemDefault } from "./removeWorktreeModalLogic"
 
 interface RemoveWorktreeModalProps {
   open: boolean
   project: Project | null
   worktree: ProjectWorktree | null
+  intent?: "archive" | "remove"
+  defaultDeleteFromSystem?: boolean
   onOpenChange: (open: boolean) => void
 }
 
@@ -31,6 +34,8 @@ export function RemoveWorktreeModal({
   open,
   project,
   worktree,
+  intent = "remove",
+  defaultDeleteFromSystem = false,
   onOpenChange,
 }: RemoveWorktreeModalProps) {
   const removeWorktree = useProjectStore((state) => state.removeWorktree)
@@ -41,27 +46,39 @@ export function RemoveWorktreeModal({
   const [deleteFromSystem, setDeleteFromSystem] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  const { changes, isLoading } = useProjectGitChanges(open ? (worktree?.path ?? null) : null)
+  const { changes, isLoading, loadError } = useProjectGitChanges(open ? (worktree?.path ?? null) : null)
   const hasUncommittedChanges = changes.length > 0
   const canDeleteFromSystem = worktree?.source === "managed"
-  const deleteIsBlocked = deleteFromSystem && (isLoading || hasUncommittedChanges)
-  const actionLabel = deleteFromSystem ? "Remove and delete" : "Remove from app"
+  const deleteIsBlocked = deleteFromSystem && (isLoading || hasUncommittedChanges || Boolean(loadError))
+  const actionLabel =
+    intent === "archive"
+      ? deleteFromSystem
+        ? "Archive and delete"
+        : "Archive"
+      : deleteFromSystem
+        ? "Remove and delete"
+        : "Remove from app"
 
   useEffect(() => {
     if (!open) {
       setDeleteFromSystem(false)
       setErrorMessage(null)
+      return
     }
-  }, [open])
 
-  useEffect(() => {
-    if (!canDeleteFromSystem) {
-      setDeleteFromSystem(false)
-    }
-  }, [canDeleteFromSystem, worktree?.id])
+    setDeleteFromSystem(
+      resolveDeleteFromSystemDefault(canDeleteFromSystem, defaultDeleteFromSystem)
+    )
+    setErrorMessage(null)
+  }, [canDeleteFromSystem, defaultDeleteFromSystem, open, worktree?.id])
 
   const handleRemove = async () => {
     if (!project || !worktree) {
+      return
+    }
+
+    if (deleteFromSystem && loadError) {
+      setErrorMessage(loadError)
       return
     }
 
@@ -71,6 +88,7 @@ export function RemoveWorktreeModal({
     try {
       await removeWorktree(project.id, worktree.id, {
         deleteFromDisk: deleteFromSystem,
+        clearSelection: intent === "archive",
       })
 
       const terminalTabs = (tabsByWorktree[worktree.id]?.tabs ?? []).filter(isTerminalTab)
@@ -101,7 +119,7 @@ export function RemoveWorktreeModal({
           <AlertDialogMedia className="bg-destructive/10 text-destructive">
             <Trash />
           </AlertDialogMedia>
-          <AlertDialogTitle>Remove workspace?</AlertDialogTitle>
+          <AlertDialogTitle>{intent === "archive" ? "Archive workspace?" : "Remove workspace?"}</AlertDialogTitle>
           <AlertDialogDescription>
             {worktree?.name ?? "This workspace"} will be removed from Nucleus.
             {errorMessage ? ` ${errorMessage}` : ""}
@@ -142,6 +160,15 @@ export function RemoveWorktreeModal({
               <InformationCircle className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
               <p className="text-xs leading-5 text-muted-foreground">
                 Checking for uncommitted changes before deleting this workspace from disk.
+              </p>
+            </div>
+          ) : null}
+
+          {deleteFromSystem && loadError ? (
+            <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-left">
+              <InformationCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
+              <p className="text-xs leading-5 text-destructive">
+                {loadError}
               </p>
             </div>
           ) : null}

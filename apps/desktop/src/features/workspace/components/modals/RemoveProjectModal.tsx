@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Trash } from "@/components/icons"
 import { desktop } from "@/desktop/client"
 import {
@@ -34,6 +34,13 @@ export function RemoveProjectModal({
   const removeWorktreeTabs = useTabStore((state) => state.removeWorktreeTabs)
   const tabsByWorktree = useTabStore((state) => state.tabsByWorktree)
   const [isRemoving, setIsRemoving] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) {
+      setErrorMessage(null)
+    }
+  }, [open])
 
   const handleRemove = async () => {
     if (!project) {
@@ -41,6 +48,7 @@ export function RemoveProjectModal({
     }
 
     setIsRemoving(true)
+    setErrorMessage(null)
 
     try {
       for (const worktree of project.worktrees) {
@@ -48,13 +56,16 @@ export function RemoveProjectModal({
         await Promise.allSettled(
           terminalTabs.map((tab) => desktop.terminal.closeSession(getTerminalSessionId(tab.id)))
         )
-        removeWorktreeTabs(worktree.id)
       }
       await removeProjectData(project.id)
       await removeProject(project.id)
+      for (const worktree of project.worktrees) {
+        removeWorktreeTabs(worktree.id)
+      }
       onOpenChange(false)
     } catch (error) {
       console.error("Failed to remove project:", error)
+      setErrorMessage(error instanceof Error ? error.message : "Couldn't remove this project.")
     } finally {
       setIsRemoving(false)
     }
@@ -71,6 +82,7 @@ export function RemoveProjectModal({
           <AlertDialogDescription>
             Remove {project?.name ?? "this project"} and its chat history from Nucleus Desktop.
             This keeps the local folder and files on disk.
+            {errorMessage ? ` ${errorMessage}` : ""}
           </AlertDialogDescription>
         </AlertDialogHeader>
 

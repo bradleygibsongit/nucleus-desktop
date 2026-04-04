@@ -9,6 +9,8 @@ import type {
   GitCreateWorktreeResult,
   GitFileChange,
   GitFileDiff,
+  GitMergePullRequestResult,
+  GitPullRequestChecksResponse,
   GitPullResult,
   GitRenameWorktreeInput,
   GitRenameWorktreeResult,
@@ -99,6 +101,7 @@ declare global {
       git: {
         getBranches: (projectPath: string) => Promise<GitBranchesResponse>
         getChanges: (projectPath: string) => Promise<GitFileChange[]>
+        getPullRequestChecks: (projectPath: string) => Promise<GitPullRequestChecksResponse>
         listWorktrees: (projectPath: string) => Promise<GitWorktreeSummary[]>
         createWorktree: (
           projectPath: string,
@@ -126,6 +129,7 @@ declare global {
           branchName: string
         ) => Promise<GitBranchesResponse>
         pull: (projectPath: string) => Promise<GitPullResult>
+        mergePullRequest: (projectPath: string) => Promise<GitMergePullRequestResult>
         runStackedAction: (
           projectPath: string,
           input: GitRunStackedActionInput
