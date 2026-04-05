@@ -73,7 +73,7 @@
     --sidebar-ring: oklch(0.708 0 0);
     --main-content: oklch(0.9999 0 0);
     --main-content-foreground: oklch(0.145 0 0);
-    --terminal-font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    --terminal-font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
     --terminal: var(--main-content);
     --terminal-foreground: var(--main-content-foreground);
     --terminal-cursor: var(--main-content-foreground);
@@ -138,7 +138,7 @@
     --sidebar-ring: oklch(0.556 0 0);
     --main-content: oklch(0.192 0 0);
     --main-content-foreground: oklch(0.985 0 0);
-    --terminal-font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    --terminal-font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
     --terminal: var(--main-content);
     --terminal-foreground: var(--main-content-foreground);
     --terminal-cursor: var(--main-content-foreground);
@@ -257,7 +257,15 @@
     }
   #root {
     @apply bg-background text-foreground;
-    }
+     }
+
+  .xterm,
+  .xterm .xterm-scrollable-element,
+  .xterm .xterm-viewport,
+  .xterm .xterm-screen {
+    width: 100%;
+    height: 100%;
+  }
 }
 
 @layer components {

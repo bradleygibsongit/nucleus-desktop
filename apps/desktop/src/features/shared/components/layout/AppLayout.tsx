@@ -26,10 +26,7 @@ export function AppLayout() {
             onSelectSettingsSection={setActiveSettingsSection}
           />
           <div className="flex min-w-0 flex-1 flex-col">
-            <CenterToolbar
-              activeView={activeView}
-              onOpenChat={() => setActiveView("chat")}
-            />
+            <CenterToolbar activeView={activeView} />
             <MainContent
               activeView={activeView}
               activeSettingsSection={activeSettingsSection}

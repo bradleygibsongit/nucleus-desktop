@@ -31,6 +31,7 @@ import type {
 
 const execFileAsync = promisify(execFile)
 const CODEX_REASONING_EFFORT = "low"
+const ENABLE_VERBOSE_GIT_LOGS = process.env.NUCLEUS_VERBOSE_GIT_LOGS === "1"
 
 type CommitSuggestion = {
   subject: string
@@ -42,6 +43,27 @@ type RangeContext = {
   commitSummary: string
   diffSummary: string
   diffPatch: string
+}
+
+function logGitDebug(message: string, details?: unknown): void {
+  if (!ENABLE_VERBOSE_GIT_LOGS) {
+    return
+  }
+
+  if (details === undefined) {
+    console.debug(message)
+    return
+  }
+
+  console.debug(message, details)
+}
+
+function isBenignMissingChecksError(errorMessage: string | null | undefined): boolean {
+  if (!errorMessage) {
+    return false
+  }
+
+  return /no required checks reported/i.test(errorMessage)
 }
 
 async function runCommandWithInput(
@@ -1145,7 +1167,7 @@ async function getRawPullRequestChecks(
   options?: { requiredOnly?: boolean }
 ): Promise<RawPullRequestChecksResult> {
   try {
-    console.debug("[git] getRawPullRequestChecks:start", {
+    logGitDebug("[git] getRawPullRequestChecks:start", {
       projectPath,
       pullRequestNumber,
     })
@@ -1176,7 +1198,7 @@ async function getRawPullRequestChecks(
     }
 
     const checks = JSON.parse(output) as RawPullRequestCheck[]
-    console.debug("[git] getRawPullRequestChecks:success", {
+    logGitDebug("[git] getRawPullRequestChecks:success", {
       projectPath,
       pullRequestNumber,
       checks,
@@ -1187,14 +1209,23 @@ async function getRawPullRequestChecks(
     }
   } catch (error) {
     const errorMessage = formatGhError(error, "Unable to load pull request checks from GitHub.")
-    console.warn("[git] getRawPullRequestChecks:error", {
-      projectPath,
-      pullRequestNumber,
-      error: errorMessage,
-    })
+    const shouldSuppressError = isBenignMissingChecksError(errorMessage)
+    if (shouldSuppressError) {
+      logGitDebug("[git] getRawPullRequestChecks:benign-missing-required-checks", {
+        projectPath,
+        pullRequestNumber,
+        error: errorMessage,
+      })
+    } else {
+      console.warn("[git] getRawPullRequestChecks:error", {
+        projectPath,
+        pullRequestNumber,
+        error: errorMessage,
+      })
+    }
     return {
       checks: [],
-      error: errorMessage,
+      error: shouldSuppressError ? null : errorMessage,
     }
   }
 }
@@ -1353,7 +1384,7 @@ async function getPullRequestForBranch(
   const prListFields =
     "number,title,body,url,state,baseRefName,headRefName,mergeable,mergeStateStatus,mergedAt"
 
-  console.debug("[git] getPullRequestForBranch:start", {
+  logGitDebug("[git] getPullRequestForBranch:start", {
     projectPath,
     branchName,
     includeMerged,
@@ -1365,7 +1396,7 @@ async function getPullRequestForBranch(
 
   for (const headRef of candidateHeads) {
     try {
-      console.debug("[git] getPullRequestForBranch:list-open", {
+      logGitDebug("[git] getPullRequestForBranch:list-open", {
         projectPath,
         branchName,
         headRef,
@@ -1385,7 +1416,7 @@ async function getPullRequestForBranch(
 
       if (parsed.length > 0) {
         const hydrated = await hydratePullRequest(projectPath, parsed[0])
-        console.debug("[git] getPullRequestForBranch:found-open", {
+        logGitDebug("[git] getPullRequestForBranch:found-open", {
           projectPath,
           branchName,
           headRef,
@@ -1394,7 +1425,7 @@ async function getPullRequestForBranch(
         return hydrated
       }
     } catch (error) {
-      console.debug("[git] getPullRequestForBranch:list-open:error", {
+      logGitDebug("[git] getPullRequestForBranch:list-open:error", {
         projectPath,
         branchName,
         headRef,
@@ -1406,7 +1437,7 @@ async function getPullRequestForBranch(
   if (includeMerged) {
     for (const headRef of candidateHeads) {
       try {
-        console.debug("[git] getPullRequestForBranch:list-merged", {
+        logGitDebug("[git] getPullRequestForBranch:list-merged", {
           projectPath,
           branchName,
           headRef,
@@ -1426,7 +1457,7 @@ async function getPullRequestForBranch(
 
         if (parsed.length > 0) {
           const hydrated = await hydratePullRequest(projectPath, parsed[0])
-          console.debug("[git] getPullRequestForBranch:found-merged", {
+          logGitDebug("[git] getPullRequestForBranch:found-merged", {
             projectPath,
             branchName,
             headRef,
@@ -1435,7 +1466,7 @@ async function getPullRequestForBranch(
           return hydrated
         }
       } catch (error) {
-        console.debug("[git] getPullRequestForBranch:list-merged:error", {
+        logGitDebug("[git] getPullRequestForBranch:list-merged:error", {
           projectPath,
           branchName,
           headRef,
@@ -1447,7 +1478,7 @@ async function getPullRequestForBranch(
 
   const viewedPullRequest = await getPullRequestDetails(projectPath, branchName)
   if (!viewedPullRequest) {
-    console.debug("[git] getPullRequestForBranch:not-found", {
+    logGitDebug("[git] getPullRequestForBranch:not-found", {
       projectPath,
       branchName,
     })
@@ -1456,7 +1487,7 @@ async function getPullRequestForBranch(
 
   const state = normalizePullRequestState(viewedPullRequest.state)
   if (state === "closed") {
-    console.debug("[git] getPullRequestForBranch:closed", {
+    logGitDebug("[git] getPullRequestForBranch:closed", {
       projectPath,
       branchName,
       viewedPullRequest,
@@ -1465,7 +1496,7 @@ async function getPullRequestForBranch(
   }
 
   if (state === "merged" && !includeMerged) {
-    console.debug("[git] getPullRequestForBranch:merged-skipped", {
+    logGitDebug("[git] getPullRequestForBranch:merged-skipped", {
       projectPath,
       branchName,
       viewedPullRequest,
@@ -1474,7 +1505,7 @@ async function getPullRequestForBranch(
   }
 
   const hydrated = await hydratePullRequest(projectPath, viewedPullRequest)
-  console.debug("[git] getPullRequestForBranch:view-fallback", {
+  logGitDebug("[git] getPullRequestForBranch:view-fallback", {
     projectPath,
     branchName,
     pullRequest: hydrated,
@@ -2126,7 +2157,7 @@ function localBranchNameForRemote(branchName: string): string {
 
 export class GitService {
   getBranches(projectPath: string): Promise<GitBranchesResponse> {
-    console.debug("[git] getBranches", { projectPath })
+    logGitDebug("[git] getBranches", { projectPath })
     return getGitBranchesResponse(projectPath)
   }
 

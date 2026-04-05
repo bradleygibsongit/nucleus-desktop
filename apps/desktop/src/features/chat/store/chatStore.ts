@@ -88,6 +88,7 @@ interface ChatState {
   deleteSession: (worktreeId: string, sessionId: string) => Promise<void>
   archiveSession: (worktreeId: string, sessionId: string) => Promise<void>
   selectHarness: (worktreeId: string, harnessId: HarnessId) => Promise<void>
+  setSessionModel: (sessionId: string, model: string | null) => Promise<void>
   listAgents: (worktreeId: string) => Promise<RuntimeAgent[]>
   listCommands: (worktreeId: string) => Promise<RuntimeCommand[]>
   listModels: (worktreeId: string) => Promise<RuntimeModel[]>
@@ -116,6 +117,7 @@ interface ChatState {
 
 let storeInstance: DesktopStoreHandle | null = null
 let scheduledPersistTimeoutId: ReturnType<typeof setTimeout> | null = null
+let initializationPromise: Promise<void> | null = null
 
 function isExpiredApprovalPromptError(error: unknown): boolean {
   if (!(error instanceof Error)) {
@@ -345,44 +347,55 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return
     }
 
-    try {
-      const store = await getStore()
-      const persisted = await store.get<PersistedChatState>("chatState")
-      const normalizedChatByWorktree = await migratePersistedChatState(persisted)
-      const normalizedMessagesBySession = normalizeMessagesBySession(persisted?.messagesBySession)
-
-      set({
-        chatByWorktree: normalizedChatByWorktree,
-        messagesBySession: normalizedMessagesBySession,
-        // Prompt requests are only resumable while the in-memory harness adapter
-        // still tracks the corresponding pending request. After a reload they
-        // become stale UI, so we intentionally drop them on startup.
-        activePromptBySession: {},
-        isLoading: false,
-        isInitialized: true,
-      })
-
-      const uniqueHarnessIds = new Set<HarnessId>()
-      for (const projectChat of Object.values(normalizedChatByWorktree)) {
-        uniqueHarnessIds.add(projectChat.selectedHarnessId ?? DEFAULT_HARNESS_ID)
-        for (const session of projectChat.sessions) {
-          uniqueHarnessIds.add(session.harnessId ?? DEFAULT_HARNESS_ID)
-        }
-      }
-
-      await Promise.all(
-        Array.from(uniqueHarnessIds).map((harnessId) =>
-          getHarnessAdapter(harnessId).initialize()
-        )
-      )
-    } catch (error) {
-      console.error("[chatStore] Failed to initialize:", error)
-      set({
-        isLoading: false,
-        isInitialized: true,
-        error: String(error),
-      })
+    if (initializationPromise) {
+      await initializationPromise
+      return
     }
+
+    initializationPromise = (async () => {
+      try {
+        const store = await getStore()
+        const persisted = await store.get<PersistedChatState>("chatState")
+        const normalizedChatByWorktree = await migratePersistedChatState(persisted)
+        const normalizedMessagesBySession = normalizeMessagesBySession(persisted?.messagesBySession)
+
+        set({
+          chatByWorktree: normalizedChatByWorktree,
+          messagesBySession: normalizedMessagesBySession,
+          // Prompt requests are only resumable while the in-memory harness adapter
+          // still tracks the corresponding pending request. After a reload they
+          // become stale UI, so we intentionally drop them on startup.
+          activePromptBySession: {},
+          isLoading: false,
+          isInitialized: true,
+        })
+
+        const uniqueHarnessIds = new Set<HarnessId>()
+        for (const projectChat of Object.values(normalizedChatByWorktree)) {
+          uniqueHarnessIds.add(projectChat.selectedHarnessId ?? DEFAULT_HARNESS_ID)
+          for (const session of projectChat.sessions) {
+            uniqueHarnessIds.add(session.harnessId ?? DEFAULT_HARNESS_ID)
+          }
+        }
+
+        await Promise.all(
+          Array.from(uniqueHarnessIds).map((harnessId) =>
+            getHarnessAdapter(harnessId).initialize()
+          )
+        )
+      } catch (error) {
+        console.error("[chatStore] Failed to initialize:", error)
+        set({
+          isLoading: false,
+          isInitialized: true,
+          error: String(error),
+        })
+      } finally {
+        initializationPromise = null
+      }
+    })()
+
+    await initializationPromise
   },
 
   getProjectChat: (worktreeId: string) => {
@@ -393,6 +406,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   getHarnessDefinition: (harnessId: HarnessId) => getHarnessDefinition(harnessId),
 
   loadSessionsForProject: async (worktreeId: string, projectPath: string) => {
+    if (!get().isInitialized) {
+      await get().initialize()
+    }
+
     const { chatByWorktree } = get()
     const projectChat = chatByWorktree[worktreeId] ?? createDefaultProjectChat(projectPath)
     const hasExistingProjectChat = chatByWorktree[worktreeId] != null
@@ -415,6 +432,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   openDraftSession: async (worktreeId: string, projectPath: string) => {
+    if (!get().isInitialized) {
+      await get().initialize()
+    }
+
     const { chatByWorktree } = get()
     const projectChat = chatByWorktree[worktreeId] ?? createDefaultProjectChat(projectPath)
 
@@ -437,6 +458,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   createSession: async (worktreeId: string, projectPath: string) => {
+    if (!get().isInitialized) {
+      await get().initialize()
+    }
+
     const { chatByWorktree } = get()
     const projectChat = chatByWorktree[worktreeId] ?? createDefaultProjectChat(projectPath)
     const adapter = getHarnessAdapter(projectChat.selectedHarnessId)
@@ -463,6 +488,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   createOptimisticSession: (worktreeId: string, projectPath: string) => {
+    if (!get().isInitialized) {
+      return null
+    }
+
     const { chatByWorktree } = get()
     const projectChat = chatByWorktree[worktreeId] ?? createDefaultProjectChat(projectPath)
     const session = createOptimisticRuntimeSession(projectChat.selectedHarnessId, projectPath)
@@ -599,9 +628,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   selectSession: async (worktreeId: string, sessionId: string) => {
-    const { chatByWorktree } = get()
+    const { chatByWorktree, isInitialized } = get()
+    if (!isInitialized) {
+      return
+    }
+
     const projectChat = chatByWorktree[worktreeId]
     if (!projectChat) {
+      return
+    }
+
+    const sessionExists = projectChat.sessions.some((candidate) => candidate.id === sessionId)
+
+    if (!sessionExists) {
       return
     }
 
@@ -657,6 +696,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       messagesBySession: nextMessages,
       activePromptBySession: nextPromptState,
       currentSessionId: currentSessionId === sessionId ? nextActiveSessionId : currentSessionId,
+      childSessions: currentSessionId === sessionId ? new Map<string, ChildSessionState>() : get().childSessions,
+      status: currentSessionId === sessionId ? "idle" : get().status,
+      error: currentSessionId === sessionId ? null : get().error,
     })
 
     await get()._persistState()
@@ -702,6 +744,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   selectHarness: async (worktreeId: string, harnessId: HarnessId) => {
+    if (!get().isInitialized) {
+      await get().initialize()
+    }
+
     const { chatByWorktree } = get()
     const projectChat = chatByWorktree[worktreeId] ?? createDefaultProjectChat()
 
@@ -716,6 +762,42 @@ export const useChatStore = create<ChatState>((set, get) => ({
     })
 
     await getHarnessAdapter(harnessId).initialize()
+    await get()._persistState()
+  },
+
+  setSessionModel: async (sessionId, model) => {
+    const sessionMatch = findProjectForSession(get().chatByWorktree, sessionId)
+    if (!sessionMatch) {
+      return
+    }
+
+    const normalizedModel = model?.trim() || null
+    if ((sessionMatch.session.model?.trim() || null) === normalizedModel) {
+      return
+    }
+
+    set((state) => {
+      const liveSessionMatch = findProjectForSession(state.chatByWorktree, sessionId)
+      if (!liveSessionMatch) {
+        return {}
+      }
+
+      const nextSession: RuntimeSession = {
+        ...liveSessionMatch.session,
+        model: normalizedModel,
+      }
+
+      return {
+        chatByWorktree: {
+          ...state.chatByWorktree,
+          [liveSessionMatch.worktreeId]: {
+            ...liveSessionMatch.projectChat,
+            sessions: replaceSession(liveSessionMatch.projectChat.sessions, nextSession),
+          },
+        },
+      }
+    })
+
     await get()._persistState()
   },
 
@@ -1000,7 +1082,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const adapter = getHarnessAdapter(session.harnessId)
     const userMessage = createTextMessage(sessionId, "user", text.trim())
     const nextSessionTitle = session.title?.trim() ? session.title : deriveSessionTitle(text)
-    let nextSession = touchSession(session, nextSessionTitle)
+    const nextSessionModel = options?.model?.trim() || session.model?.trim() || null
+    let nextSession: RuntimeSession = {
+      ...touchSession(session, nextSessionTitle),
+      model: nextSessionModel,
+    }
     const nextMessages = [...(get().messagesBySession[sessionId] ?? []), userMessage]
 
     set({
@@ -1021,6 +1107,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       status: "streaming",
       error: null,
     })
+
+    try {
+      await get()._persistState()
+    } catch (error) {
+      console.error("[chatStore] Failed to persist pending turn state:", error)
+    }
 
     const syncLiveSession = (sessionToSync: RuntimeSession) => {
       set((state) => {
@@ -1350,6 +1442,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   _persistState: async () => {
+    if (!get().isInitialized) {
+      return
+    }
+
     clearScheduledPersist()
     const { chatByWorktree, messagesBySession } = get()
     const store = await getStore()

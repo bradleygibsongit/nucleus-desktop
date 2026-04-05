@@ -67,6 +67,7 @@ import { getChatInputPlaceholder } from "./chatInputConfig"
 import { ModelLogo, getModelLogoKind, type ModelLogoKind } from "./ModelLogo"
 
 interface ChatInputProps {
+  sessionId?: string | null
   input: string
   setInput: (value: string) => void
   isLocked?: boolean
@@ -119,6 +120,7 @@ function formatReasoningEffortLabel(value: string): string {
 }
 
 export function ChatInput({
+  sessionId = null,
   input,
   setInput,
   isLocked = false,
@@ -134,7 +136,19 @@ export function ChatInput({
   onDismissPrompt,
 }: ChatInputProps) {
   const { selectedWorktreeId } = useCurrentProjectWorktree()
-  const getProjectChat = useChatStore((state) => state.getProjectChat)
+  const projectChat = useChatStore((state) =>
+    selectedWorktreeId ? state.getProjectChat(selectedWorktreeId) : null
+  )
+  const setSessionModel = useChatStore((state) => state.setSessionModel)
+  const activeSession = useMemo(
+    () =>
+      sessionId
+        ? projectChat?.sessions.find((session) => session.id === sessionId) ?? null
+        : null,
+    [projectChat, sessionId]
+  )
+  const activeSessionModelId = activeSession?.model?.trim() || null
+  const selectedHarnessId = activeSession?.harnessId ?? projectChat?.selectedHarnessId ?? null
   const [isImeComposing, setIsImeComposing] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [dismissedMenuKey, setDismissedMenuKey] = useState<string | null>(null)
@@ -144,7 +158,7 @@ export function ChatInput({
   const [promptAnswers, setPromptAnswers] = useState<Record<string, string | string[]>>({})
   const [promptCustomAnswers, setPromptCustomAnswers] = useState<Record<string, string>>({})
   const [currentPromptQuestionIndex, setCurrentPromptQuestionIndex] = useState(0)
-  const { models: availableModels, isLoading: isLoadingModels } = useModels()
+  const { models: availableModels, isLoading: isLoadingModels } = useModels(selectedHarnessId)
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
   const [reasoningEffort, setReasoningEffort] = useState<RuntimeReasoningEffort | null>(null)
   const focusChatInputShortcut = useMemo(() => getShortcutBinding("focus-chat-input"), [])
@@ -175,25 +189,29 @@ export function ChatInput({
     editor.focus()
   }, [])
 
-  const { commands, isLoading: isLoadingCommands } = useCommands()
-  const { agents, isLoading: isLoadingAgents } = useAgents()
+  const { commands, isLoading: isLoadingCommands } = useCommands(selectedHarnessId)
+  const { agents, isLoading: isLoadingAgents } = useAgents(selectedHarnessId)
   const { results: fileResults, isLoading: isLoadingFiles, search: searchFiles, clear: clearFiles } = useFileSearch()
-  const selectedHarnessId = selectedWorktreeId
-    ? getProjectChat(selectedWorktreeId).selectedHarnessId
-    : null
-  const selectedModel = useMemo(
+  const defaultModel = useMemo(
+    () => availableModels.find((model) => model.isDefault) ?? availableModels[0] ?? null,
+    [availableModels]
+  )
+  const explicitSelectedModel = useMemo(
     () => availableModels.find((model) => model.id === selectedModelId) ?? null,
     [availableModels, selectedModelId]
   )
+  const effectiveModel = explicitSelectedModel ?? defaultModel
   const selectedModelLogoKind = useMemo(
     () =>
-      selectedModel
+      effectiveModel
         ? getModelLogoKind(
-            `${selectedModel.displayName ?? ""} ${selectedModel.id ?? ""}`,
+            `${effectiveModel.displayName ?? ""} ${effectiveModel.id ?? ""}`,
             selectedHarnessId
           )
-        : (selectedHarnessId === "claude-code" ? "claude" : selectedHarnessId === "codex" ? "codex" : "default"),
-    [selectedHarnessId, selectedModel]
+        : selectedModelId
+          ? getModelLogoKind(selectedModelId, selectedHarnessId)
+          : (selectedHarnessId === "claude-code" ? "claude" : selectedHarnessId === "codex" ? "codex" : "default"),
+    [effectiveModel, selectedHarnessId, selectedModelId]
   )
   const modelGroups = useMemo(() => {
     const harnessGroup = getHarnessGroupMeta(selectedHarnessId)
@@ -212,18 +230,20 @@ export function ChatInput({
     ]
   }, [availableModels, selectedHarnessId])
   const availableReasoningEfforts = useMemo(() => {
-    const supported = selectedModel?.supportedReasoningEfforts?.filter((effort) => effort.trim().length > 0) ?? []
-    const defaultEffort = selectedModel?.defaultReasoningEffort?.trim() ?? null
+    const supported = effectiveModel?.supportedReasoningEfforts?.filter((effort) => effort.trim().length > 0) ?? []
+    const defaultEffort = effectiveModel?.defaultReasoningEffort?.trim() ?? null
 
     if (supported.length > 0) {
       return Array.from(new Set(supported))
     }
 
     return defaultEffort ? [defaultEffort] : []
-  }, [selectedModel])
-  const selectedModelLabel = selectedModel
-    ? getRuntimeModelLabel(selectedModel)
-    : (isLoadingModels ? "Loading models..." : "Default model")
+  }, [effectiveModel])
+  const selectedModelLabel = effectiveModel
+    ? getRuntimeModelLabel(effectiveModel)
+    : selectedModelId
+      ? selectedModelId
+      : (isLoadingModels ? "Loading models..." : "Select model")
   const reasoningEffortLabel = reasoningEffort
     ? formatReasoningEffortLabel(reasoningEffort)
     : isLoadingModels
@@ -290,19 +310,16 @@ export function ChatInput({
   }, [prompt?.id])
 
   useEffect(() => {
-    if (availableModels.length === 0) {
-      setSelectedModelId(null)
-      return
-    }
-
     setSelectedModelId((current) => {
-      if (current && availableModels.some((model) => model.id === current)) {
-        return current
+      const nextModelId = activeSessionModelId ?? current?.trim() ?? null
+
+      if (!nextModelId) {
+        return null
       }
 
-      return availableModels.find((model) => model.isDefault)?.id ?? availableModels[0]?.id ?? null
+      return availableModels.some((model) => model.id === nextModelId) ? nextModelId : null
     })
-  }, [availableModels])
+  }, [activeSession?.id, activeSessionModelId, availableModels, selectedWorktreeId])
 
   useEffect(() => {
     if (availableReasoningEfforts.length === 0) {
@@ -310,7 +327,7 @@ export function ChatInput({
       return
     }
 
-    const defaultEffort = selectedModel?.defaultReasoningEffort?.trim() ?? null
+    const defaultEffort = effectiveModel?.defaultReasoningEffort?.trim() ?? null
 
     setReasoningEffort((current) => {
       if (current && availableReasoningEfforts.includes(current)) {
@@ -323,7 +340,7 @@ export function ChatInput({
 
       return availableReasoningEfforts[0] ?? null
     })
-  }, [availableReasoningEfforts, selectedModel?.defaultReasoningEffort])
+  }, [availableReasoningEfforts, effectiveModel?.defaultReasoningEffort])
 
   useEffect(() => {
     if (!isPlanModeAvailable) {
@@ -1126,6 +1143,21 @@ export function ChatInput({
 
   const placeholder = getChatInputPlaceholder(placement)
 
+  const handleSelectModel = useCallback(
+    (modelId: string | null) => {
+      const trimmedModelId = modelId?.trim() || null
+      const normalizedModelId = trimmedModelId && defaultModel?.id === trimmedModelId ? null : trimmedModelId
+      setSelectedModelId(normalizedModelId)
+
+      if (!activeSession?.id) {
+        return
+      }
+
+      void setSessionModel(activeSession.id, normalizedModelId)
+    },
+    [activeSession?.id, defaultModel?.id, setSessionModel]
+  )
+
   return (
     <form
       onSubmit={handleSubmit}
@@ -1286,36 +1318,44 @@ export function ChatInput({
           {!isPromptActive && !isComposerLocked && (
             <div className="mt-4 flex items-center gap-2">
               {selectorsRow && <DropdownMenu>
-              <DropdownMenuTrigger className="inline-flex h-8 items-center gap-2 px-1 text-sm text-muted-foreground transition-colors hover:text-foreground cursor-pointer">
+              <DropdownMenuTrigger
+                className="inline-flex h-8 items-center gap-2 px-1 text-sm text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
+                aria-label={selectedModelLabel}
+                title={selectedModelLabel}
+              >
                 <ModelLogo kind={selectedModelLogoKind} className="size-[18px] shrink-0" />
                 <span>{selectedModelLabel}</span>
                 <CaretDown className="size-3 text-muted-foreground" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-64">
                 {availableModels.length > 0 ? (
-                  modelGroups.map((group, groupIndex) => (
-                    <div key={group.key}>
-                      {groupIndex > 0 ? <DropdownMenuSeparator /> : null}
-                      <DropdownMenuGroup>
-                        <DropdownMenuLabel className="px-2 py-1.5 text-[11px] uppercase tracking-[0.12em] text-muted-foreground/78">
-                          <span>{group.label}</span>
-                        </DropdownMenuLabel>
-                        {group.models.map(({ model, logoKind }) => (
-                          <DropdownMenuItem
-                            key={model.id}
-                          onClick={() => setSelectedModelId(model.id)}
-                          className="flex items-center justify-between gap-3"
-                        >
-                          <span className="flex min-w-0 items-center gap-2">
-                            <ModelLogo kind={logoKind} className="size-5 shrink-0 text-muted-foreground/82" />
-                            <span className="truncate">{getRuntimeModelLabel(model)}</span>
-                          </span>
-                            {model.id === selectedModelId && <CheckCircle className="size-3.5 text-muted-foreground" />}
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuGroup>
-                    </div>
-                  ))
+                  <>
+                    {modelGroups.map((group, groupIndex) => (
+                      <div key={group.key}>
+                        {groupIndex > 0 ? <DropdownMenuSeparator /> : null}
+                        <DropdownMenuGroup>
+                          <DropdownMenuLabel className="px-2 py-1.5 text-[11px] uppercase tracking-[0.12em] text-muted-foreground/78">
+                            <span>{group.label}</span>
+                          </DropdownMenuLabel>
+                          {group.models.map(({ model, logoKind }) => (
+                            <DropdownMenuItem
+                              key={model.id}
+                              onClick={() => handleSelectModel(model.id)}
+                              className="flex items-center justify-between gap-3"
+                            >
+                              <span className="flex min-w-0 items-center gap-2">
+                                <ModelLogo kind={logoKind} className="size-5 shrink-0 text-muted-foreground/82" />
+                                <span className="truncate">{getRuntimeModelLabel(model)}</span>
+                              </span>
+                              {model.id === selectedModelId || (selectedModelId == null && defaultModel?.id === model.id) ? (
+                                <CheckCircle className="size-3.5 text-muted-foreground" />
+                              ) : null}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuGroup>
+                      </div>
+                    ))}
+                  </>
                 ) : (
                   <DropdownMenuItem disabled>
                     <span>{isLoadingModels ? "Loading models..." : "No models available"}</span>

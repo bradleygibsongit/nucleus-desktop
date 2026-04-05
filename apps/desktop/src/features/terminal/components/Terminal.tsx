@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from "react"
 import { Terminal as XTerm } from "@xterm/xterm"
 import { FitAddon } from "@xterm/addon-fit"
+import { WebglAddon } from "@xterm/addon-webgl"
 import {
   desktop,
   type TerminalDataEvent,
@@ -15,9 +16,11 @@ interface TerminalProps {
   cwd: string | null
   emptyStateMessage?: string
   className?: string
+  padded?: boolean
 }
 
 const INACTIVE_MESSAGE = "\x1b[90mSelect a project to open a terminal.\x1b[0m"
+let preferDomTerminalRenderer = false
 
 function resolveThemeColor(variableName: string, fallback: string) {
   const probe = document.createElement("div")
@@ -40,6 +43,10 @@ function getTerminalTheme() {
     cursor: resolveThemeColor("--terminal-cursor", "#f5f5f5"),
     cursorAccent: resolveThemeColor("--terminal", "#111111"),
     selectionBackground: resolveThemeColor("--terminal-selection", "rgba(110, 110, 110, 0.4)"),
+    scrollbarSliderBackground: "transparent",
+    scrollbarSliderHoverBackground: "transparent",
+    scrollbarSliderActiveBackground: "transparent",
+    overviewRulerBorder: "transparent",
   }
 }
 
@@ -47,7 +54,7 @@ function getTerminalFontFamily() {
   const style = getComputedStyle(document.documentElement)
   return (
     style.getPropertyValue("--terminal-font-family").trim() ||
-    '"Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace'
+    'SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace'
   )
 }
 
@@ -56,10 +63,11 @@ function applyTerminalSurfaceStyles(container: HTMLDivElement, background: strin
   container.style.color = foreground
 
   const xtermRoot = container.querySelector<HTMLElement>(".xterm")
+  const xtermScrollable = container.querySelector<HTMLElement>(".xterm-scrollable-element")
   const xtermViewport = container.querySelector<HTMLElement>(".xterm-viewport")
   const xtermScreen = container.querySelector<HTMLElement>(".xterm-screen")
 
-  for (const element of [xtermRoot, xtermViewport, xtermScreen]) {
+  for (const element of [xtermRoot, xtermScrollable, xtermViewport, xtermScreen]) {
     if (!element) {
       continue
     }
@@ -74,6 +82,7 @@ export function Terminal({
   cwd,
   emptyStateMessage = INACTIVE_MESSAGE,
   className,
+  padded = true,
 }: TerminalProps) {
   const terminalRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<XTerm | null>(null)
@@ -149,7 +158,7 @@ export function Terminal({
       theme: getTerminalTheme(),
       fontFamily: getTerminalFontFamily(),
       fontSize: 13,
-      lineHeight: 1.4,
+      overviewRuler: { width: 0.1 },
       cursorBlink: true,
       cursorStyle: "block",
     })
@@ -158,6 +167,32 @@ export function Terminal({
     term.loadAddon(fitAddon)
 
     term.open(terminalRef.current)
+
+    let webglAddon: WebglAddon | null = null
+    const webglLoadFrame = requestAnimationFrame(() => {
+      if (preferDomTerminalRenderer) {
+        return
+      }
+
+      try {
+        webglAddon = new WebglAddon()
+        webglAddon.onContextLoss(() => {
+          try {
+            webglAddon?.dispose()
+          } catch {
+            // Ignore renderer teardown errors and fall back to the default renderer.
+          }
+
+          webglAddon = null
+          term.refresh(0, Math.max(0, term.rows - 1))
+        })
+        term.loadAddon(webglAddon)
+      } catch {
+        preferDomTerminalRenderer = true
+        webglAddon = null
+      }
+    })
+
     fitAddon.fit()
     updateTheme()
 
@@ -188,11 +223,17 @@ export function Terminal({
       terminalInputDisposable.dispose()
       terminalResizeDisposable.dispose()
       resizeObserver.disconnect()
+      cancelAnimationFrame(webglLoadFrame)
+      try {
+        webglAddon?.dispose()
+      } catch {
+        // Ignore renderer teardown errors during terminal disposal.
+      }
       term.dispose()
       xtermRef.current = null
       fitAddonRef.current = null
     }
-  }, [fitTerminal, pushTerminalSize])
+  }, [fitTerminal, pushTerminalSize, updateTheme])
 
   useEffect(() => {
     const observer = new MutationObserver((mutations) => {
@@ -341,7 +382,8 @@ export function Terminal({
   return (
     <div
       className={cn(
-        "border-t border-terminal-border bg-terminal px-3 py-2 text-terminal-foreground",
+        "border-t border-terminal-border bg-terminal text-terminal-foreground",
+        padded && "px-3 py-2",
         className
       )}
     >

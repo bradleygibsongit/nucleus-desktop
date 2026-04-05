@@ -53,8 +53,8 @@ export function TabItem({ type, title, harnessId, isActive, onClick, onClose }: 
               ? "bg-sidebar-accent text-sidebar-accent-foreground"
               : "text-muted-foreground hover:bg-muted/30 hover:text-foreground"
           )}
-        >
-          <TabIcon type={type} title={title} harnessId={harnessId} />
+          >
+            <TabIcon type={type} title={title} harnessId={harnessId} />
           <span className="truncate max-w-28">{title}</span>
           {onClose && (
             <button

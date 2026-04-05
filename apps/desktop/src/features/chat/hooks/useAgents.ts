@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react"
-import { useCurrentProjectWorktree } from "@/features/shared/hooks"
-import { useChatStore } from "../store/chatStore"
+import { getHarnessAdapter } from "../runtime/harnesses"
+import type { HarnessId } from "../types"
 
 export interface NormalizedAgent {
   name: string
@@ -9,24 +9,17 @@ export interface NormalizedAgent {
   builtIn: boolean
 }
 
-export function useAgents() {
-  const { selectedWorktreeId } = useCurrentProjectWorktree()
-  const listAgents = useChatStore((state) => state.listAgents)
+export function useAgents(harnessId: HarnessId | null) {
   const [agents, setAgents] = useState<NormalizedAgent[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const fetchAgents = useCallback(async () => {
-    if (!selectedWorktreeId) {
-      setAgents([])
-      return
-    }
-
     setIsLoading(true)
     setError(null)
 
     try {
-      const rawAgents = await listAgents(selectedWorktreeId)
+      const rawAgents = await getHarnessAdapter(harnessId ?? "codex").listAgents()
 
       const normalized: NormalizedAgent[] = rawAgents
         .filter((agent) => agent.mode === "subagent" || agent.mode === "all")
@@ -52,7 +45,7 @@ export function useAgents() {
     } finally {
       setIsLoading(false)
     }
-  }, [listAgents, selectedWorktreeId])
+  }, [harnessId])
 
   useEffect(() => {
     fetchAgents()

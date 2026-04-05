@@ -300,20 +300,25 @@ export function buildChatTimelineViewModel({
   const completedWorkDurationByMessageId = new Map<string, number>()
   const lastAssistantMessageByTurnId = new Map<string, MessageWithParts>()
   const fileChangeTotalsByTurnId = new Map<string, Map<string, { added: number; removed: number }>>()
+  let latestUserTimestamp: number | null = null
 
   for (const message of renderedMessages) {
+    if (message.info.role === "user") {
+      latestUserTimestamp = message.info.createdAt
+      continue
+    }
+
     const turnId = message.info.turnId
     if (!turnId) {
       continue
     }
 
     const existingTimestamp = earliestTimestampByTurnId.get(turnId)
-    earliestTimestampByTurnId.set(
-      turnId,
-      existingTimestamp == null
-        ? message.info.createdAt
-        : Math.min(existingTimestamp, message.info.createdAt)
-    )
+    if (existingTimestamp == null) {
+      earliestTimestampByTurnId.set(turnId, latestUserTimestamp ?? message.info.createdAt)
+    } else {
+      earliestTimestampByTurnId.set(turnId, Math.min(existingTimestamp, message.info.createdAt))
+    }
 
     if (message.info.itemType === "fileChange") {
       const output = getToolPartFromMessage(message)?.state.output
@@ -343,7 +348,11 @@ export function buildChatTimelineViewModel({
     }
 
     const turnId = message.info.turnId
-    const startTime = turnId ? earliestTimestampByTurnId.get(turnId) : null
+    if (!turnId) {
+      continue
+    }
+
+    const startTime = earliestTimestampByTurnId.get(turnId)
     if (startTime == null) {
       continue
     }

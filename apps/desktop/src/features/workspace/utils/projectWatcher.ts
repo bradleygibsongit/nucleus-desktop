@@ -1,5 +1,7 @@
 import { desktop, type ProjectFileSystemEvent } from "@/desktop/client"
 
+export type { ProjectFileSystemEvent } from "@/desktop/client"
+
 type UnlistenFn = () => void
 
 export async function startProjectFileWatcher(projectPath: string): Promise<void> {

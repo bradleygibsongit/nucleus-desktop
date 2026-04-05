@@ -48,17 +48,9 @@ function shouldEmitStartedItem(item: CodexThreadItem): boolean {
   }
 }
 
-// Smooth-chat experiment: we still buffer Codex deltas into turnState, but we do
-// not emit UI updates for delta notifications anymore. The timeline now updates
-// on step boundaries (`item/started` for tool-like shells, `item/completed`, and
-// final turn completion) so the chat feels less jagged.
-//
-// Revert path if we want live streaming back:
-// - restore delta-driven `emitUpdate(...)` calls in the `item/*/delta` handlers
-// - optionally restore deferred text emits if we want token/paragraph streaming
-// - reconsider whether `syncTurnFromRead()` should emit while `turn.status` is in progress
-//
-// Keeping this note close to the tracker makes the experiment easy to undo.
+// We keep Codex delta events live, but coalesce UI commits so the store only
+// sees one consolidated snapshot per frame. That keeps streaming responsive
+// without repainting the whole timeline for every tiny delta notification.
 
 interface WaitForCodexTurnCompletionOptions {
   rpc: CodexRpcClient
@@ -89,6 +81,7 @@ export function waitForCodexTurnCompletion(
     const turnState = new CodexTurnState()
     let settled = false
     let emitQueued = false
+    let emitFrameId: number | null = null
     let lastEmittedSnapshot = ""
     let activePromptId: string | null = null
     let lastActivityAt = Date.now()
@@ -192,42 +185,52 @@ export function waitForCodexTurnCompletion(
       onUpdate?.({ prompt: promptWithMetadata })
     }
 
-    const emitUpdate = () => {
+    const flushEmitUpdate = () => {
+      emitQueued = false
+      emitFrameId = null
       if (!onUpdate || settled) {
         return
       }
-
-      if (emitQueued) {
-        return
-      }
-
       const items = turnState.orderedItems()
       const snapshot = JSON.stringify(items)
       if (snapshot === lastEmittedSnapshot) {
         return
       }
       lastEmittedSnapshot = snapshot
+      onUpdate({
+        messages: mapTurnItemsToMessages(
+          {
+            id: turnId,
+            items,
+            status: "inProgress",
+            error: null,
+          },
+          sessionId
+        ),
+      })
+    }
+
+    const emitUpdate = () => {
+      if (!onUpdate || settled || emitQueued) {
+        return
+      }
 
       emitQueued = true
-
-      requestAnimationFrame(() => {
-        emitQueued = false
-        if (settled) {
-          return
-        }
-
-        onUpdate({
-          messages: mapTurnItemsToMessages(
-            {
-              id: turnId,
-              items,
-              status: "inProgress",
-              error: null,
-            },
-            sessionId
-          ),
-        })
+      emitFrameId = requestAnimationFrame(() => {
+        flushEmitUpdate()
       })
+    }
+
+    const flushPendingUpdate = () => {
+      if (!emitQueued) {
+        return
+      }
+
+      if (emitFrameId != null) {
+        window.cancelAnimationFrame(emitFrameId)
+      }
+
+      flushEmitUpdate()
     }
 
     const syncTurnFromRead = async (): Promise<void> => {
@@ -268,6 +271,7 @@ export function waitForCodexTurnCompletion(
         return
       }
 
+      flushPendingUpdate()
       settled = true
       window.clearInterval(syncIntervalId)
       window.clearInterval(stallIntervalId)
@@ -284,6 +288,7 @@ export function waitForCodexTurnCompletion(
         return
       }
 
+      flushPendingUpdate()
       settled = true
       window.clearInterval(syncIntervalId)
       window.clearInterval(stallIntervalId)
@@ -364,6 +369,7 @@ export function waitForCodexTurnCompletion(
 
             noteActivity()
             turnState.appendAgentMessageDelta(params.itemId, params.delta)
+            emitUpdate()
             return
           }
 
@@ -375,6 +381,7 @@ export function waitForCodexTurnCompletion(
 
             noteActivity()
             turnState.appendPlanDelta(params.itemId, params.delta)
+            emitUpdate()
             return
           }
 
@@ -386,6 +393,7 @@ export function waitForCodexTurnCompletion(
 
             noteActivity()
             turnState.appendReasoningContentDelta(params.itemId, params.contentIndex, params.delta)
+            emitUpdate()
             return
           }
 
@@ -398,6 +406,7 @@ export function waitForCodexTurnCompletion(
 
             noteActivity()
             turnState.appendReasoningSummaryDelta(params.itemId, params.summaryIndex, params.delta)
+            emitUpdate()
             return
           }
 
@@ -409,6 +418,7 @@ export function waitForCodexTurnCompletion(
 
             noteActivity()
             turnState.appendCommandOutputDelta(params.itemId, params.delta)
+            emitUpdate()
             return
           }
 
@@ -420,6 +430,7 @@ export function waitForCodexTurnCompletion(
 
             noteActivity()
             turnState.appendFileChangeOutputDelta(params.itemId, params.delta)
+            emitUpdate()
             return
           }
 

@@ -70,6 +70,7 @@ function ChatComposerPane({
 
   return (
     <ChatInput
+      sessionId={activeSessionId}
       input={input}
       setInput={setInput}
       onSubmit={async (text, options) => {
@@ -99,7 +100,15 @@ const MemoizedChatComposerPane = memo(
     previousProps.selectedWorktree?.branchName === nextProps.selectedWorktree?.branchName
 )
 
-export function ChatContainer() {
+export function ChatContainer({ sessionId = null }: ChatContainerContentProps) {
+  return <ChatContainerContent sessionId={sessionId} />
+}
+
+interface ChatContainerContentProps {
+  sessionId?: string | null
+}
+
+export function ChatContainerContent({ sessionId = null }: ChatContainerContentProps) {
   const {
     selectedProject,
     selectedProjectId,
@@ -107,8 +116,9 @@ export function ChatContainer() {
     selectedWorktree,
     activeSessionId,
   } = useChatProjectState()
-  const hasContent = useChatHasContent(activeSessionId)
-  const threadKey = `${selectedWorktreeId ?? selectedProject?.id ?? "no-project"}:${activeSessionId ?? "draft"}`
+  const resolvedSessionId = sessionId ?? activeSessionId
+  const hasContent = useChatHasContent(resolvedSessionId)
+  const threadKey = `${selectedWorktreeId ?? selectedProject?.id ?? "no-project"}:${resolvedSessionId ?? "draft"}`
   const prevHasContentRef = useRef(hasContent)
   const [transition, setTransition] = useState<"settle" | "rise" | null>(null)
 
@@ -150,7 +160,7 @@ export function ChatContainer() {
             <h3 className="text-sm font-medium text-foreground/90 px-10">New chat</h3>
           )}
           <MemoizedChatComposerPane
-            activeSessionId={activeSessionId}
+            activeSessionId={resolvedSessionId}
             selectedProjectId={selectedProjectId}
             selectedWorktreePath={selectedWorktree?.path ?? null}
             selectedWorktreeId={selectedWorktreeId}
@@ -166,7 +176,7 @@ export function ChatContainer() {
       <div className="flex-1 min-h-0 overflow-hidden">
         <ChatTimelinePane
           threadKey={threadKey}
-          activeSessionId={activeSessionId}
+          activeSessionId={resolvedSessionId}
           selectedProject={selectedProject}
           selectedWorktree={selectedWorktree}
         />
@@ -177,7 +187,7 @@ export function ChatContainer() {
       >
         <div className="w-full max-w-[803px]">
           <MemoizedChatComposerPane
-            activeSessionId={activeSessionId}
+            activeSessionId={resolvedSessionId}
             selectedProjectId={selectedProjectId}
             selectedWorktreePath={selectedWorktree?.path ?? null}
             selectedWorktreeId={selectedWorktreeId}

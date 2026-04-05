@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from "react"
 import { desktop } from "@/desktop/client"
-import { useCurrentProjectWorktree } from "@/features/shared/hooks"
-import { useChatStore } from "../store/chatStore"
 import type { SkillsSyncResponse } from "@/features/skills/types"
+import { getHarnessAdapter } from "../runtime/harnesses"
+import type { HarnessId } from "../types"
 
 export interface NormalizedCommand {
   name: string
@@ -31,25 +31,18 @@ const BUILTIN_PREVIEW_COMMANDS: NormalizedCommand[] = [
   },
 ]
 
-export function useCommands() {
-  const { selectedWorktreeId } = useCurrentProjectWorktree()
-  const listCommands = useChatStore((state) => state.listCommands)
+export function useCommands(harnessId: HarnessId | null) {
   const [commands, setCommands] = useState<NormalizedCommand[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const fetchCommands = useCallback(async () => {
-    if (!selectedWorktreeId) {
-      setCommands([])
-      return
-    }
-
     setIsLoading(true)
     setError(null)
 
     try {
       const [rawCommands, installedSkillsResponse] = await Promise.all([
-        listCommands(selectedWorktreeId),
+        getHarnessAdapter(harnessId ?? "codex").listCommands(),
         desktop.skills.list().catch(() => null as SkillsSyncResponse | null),
       ])
       const installedSkillCommands: NormalizedCommand[] =
@@ -107,7 +100,7 @@ export function useCommands() {
     } finally {
       setIsLoading(false)
     }
-  }, [listCommands, selectedWorktreeId])
+  }, [harnessId])
 
   useEffect(() => {
     fetchCommands()
