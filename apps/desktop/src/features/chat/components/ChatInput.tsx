@@ -64,6 +64,7 @@ import {
   matchesShortcutBinding,
 } from "@/features/settings/shortcuts"
 import { getChatInputPlaceholder } from "./chatInputConfig"
+import { resolveSessionSelectedModelId } from "./chatInputModelSelection"
 import { ModelLogo, getModelLogoKind, type ModelLogoKind } from "./ModelLogo"
 
 interface ChatInputProps {
@@ -310,15 +311,12 @@ export function ChatInput({
   }, [prompt?.id])
 
   useEffect(() => {
-    setSelectedModelId((current) => {
-      const nextModelId = activeSessionModelId ?? current?.trim() ?? null
-
-      if (!nextModelId) {
-        return null
-      }
-
-      return availableModels.some((model) => model.id === nextModelId) ? nextModelId : null
-    })
+    setSelectedModelId(
+      resolveSessionSelectedModelId(
+        activeSessionModelId,
+        availableModels.map((model) => model.id)
+      )
+    )
   }, [activeSession?.id, activeSessionModelId, availableModels, selectedWorktreeId])
 
   useEffect(() => {

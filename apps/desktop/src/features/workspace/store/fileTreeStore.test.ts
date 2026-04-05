@@ -4,12 +4,23 @@ import type { FileTreeItem } from "@/features/version-control/types"
 
 const projectTrees = new Map<string, Record<string, FileTreeItem>>()
 const readCounts = new Map<string, number>()
+const queuedReadWaits = new Map<string, Promise<void>[]>()
 const startWatcherCalls: string[] = []
 let stopWatcherCallCount = 0
 
 mock.module("@/features/workspace/utils/fileSystem", () => ({
   readProjectFiles: async (projectPath: string) => {
     readCounts.set(projectPath, (readCounts.get(projectPath) ?? 0) + 1)
+
+    const waits = queuedReadWaits.get(projectPath)
+    const nextWait = waits?.shift()
+    if (waits && waits.length === 0) {
+      queuedReadWaits.delete(projectPath)
+    }
+    if (nextWait) {
+      await nextWait
+    }
+
     return structuredClone(projectTrees.get(projectPath) ?? {})
   },
   readProjectSubtree: async () => ({}),
@@ -61,10 +72,22 @@ function resetStoreState() {
   })
 }
 
+function queueReadWait(projectPath: string): () => void {
+  let release!: () => void
+  const waitPromise = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const existing = queuedReadWaits.get(projectPath) ?? []
+  existing.push(waitPromise)
+  queuedReadWaits.set(projectPath, existing)
+  return release
+}
+
 describe("fileTreeStore", () => {
   beforeEach(() => {
     projectTrees.clear()
     readCounts.clear()
+    queuedReadWaits.clear()
     startWatcherCalls.length = 0
     stopWatcherCallCount = 0
     resetStoreState()
@@ -111,5 +134,33 @@ describe("fileTreeStore", () => {
     expect(useFileTreeStore.getState().staleByProjectPath[alphaPath]).toBe(false)
     expect(useFileTreeStore.getState().staleByProjectPath[betaPath]).toBe(true)
     expect(stopWatcherCallCount).toBe(0)
+  })
+
+  test("forces a fresh reload when activation races with a priming load", async () => {
+    const projectPath = "/tmp/project-alpha"
+    const releasePrimingRead = queueReadWait(projectPath)
+    projectTrees.set(projectPath, createTree(projectPath, ["before.ts"]))
+
+    const primingPromise = useFileTreeStore.getState().primeProjectPath(projectPath)
+
+    while ((readCounts.get(projectPath) ?? 0) === 0) {
+      await Promise.resolve()
+    }
+
+    projectTrees.set(projectPath, createTree(projectPath, ["after.ts"]))
+
+    const activationPromise = useFileTreeStore.getState().setActiveProjectPath(projectPath)
+
+    releasePrimingRead()
+
+    await primingPromise
+    await activationPromise
+
+    expect(startWatcherCalls).toEqual([projectPath])
+    expect(readCounts.get(projectPath)).toBe(2)
+    expect(useFileTreeStore.getState().dataByProjectPath[projectPath]).toEqual(
+      createTree(projectPath, ["after.ts"])
+    )
+    expect(useFileTreeStore.getState().staleByProjectPath[projectPath]).toBe(false)
   })
 })

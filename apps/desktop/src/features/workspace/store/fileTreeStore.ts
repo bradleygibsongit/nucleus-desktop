@@ -73,7 +73,19 @@ async function ensureProjectTreeLoaded(
 
   const inFlightLoad = treeLoadPromiseByProject.get(projectPath)
   if (inFlightLoad) {
-    return inFlightLoad
+    await inFlightLoad
+
+    const isLoadedAfterInFlight = get().loadedByProjectPath[projectPath] ?? false
+    const isStillStaleAfterInFlight = get().staleByProjectPath[projectPath] ?? false
+
+    if (!options?.forceReload || (isLoadedAfterInFlight && !isStillStaleAfterInFlight)) {
+      return get().dataByProjectPath[projectPath] ?? {}
+    }
+  }
+
+  const latestInFlightLoad = treeLoadPromiseByProject.get(projectPath)
+  if (latestInFlightLoad) {
+    return latestInFlightLoad
   }
 
   setProjectLoading(set, projectPath, true)
