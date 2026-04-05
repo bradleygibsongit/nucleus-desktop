@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs"
+import { join } from "node:path"
 import { app } from "electron"
 import electronUpdater from "electron-updater"
 import type { ProgressInfo, UpdateInfo } from "electron-updater"
@@ -6,6 +8,9 @@ import { EVENT_CHANNELS } from "../ipc/channels"
 import { capture, captureException } from "./analytics"
 
 const { autoUpdater } = electronUpdater
+const APP_UPDATE_CONFIG = "app-update.yml"
+const UPDATE_UNAVAILABLE_MESSAGE =
+  "In-app updates are unavailable in this build. Install Nucleus from a signed GitHub release to use the updater."
 
 type EventSender = (channel: string, payload: unknown) => void
 
@@ -34,6 +39,16 @@ export class UpdaterService {
   async checkForUpdates(): Promise<AppUpdateInfo | null> {
     if (!app.isPackaged) {
       return null
+    }
+
+    const updateConfigPath = this.getUpdateConfigPath()
+    if (!existsSync(updateConfigPath)) {
+      capture("update_check_unavailable", {
+        reason: "missing_update_config",
+        config_path: updateConfigPath,
+        current_version: app.getVersion(),
+      })
+      throw new Error(UPDATE_UNAVAILABLE_MESSAGE)
     }
 
     this.bindEvents()
@@ -121,5 +136,9 @@ export class UpdaterService {
     })
 
     this.isBound = true
+  }
+
+  private getUpdateConfigPath(): string {
+    return join(process.resourcesPath, APP_UPDATE_CONFIG)
   }
 }

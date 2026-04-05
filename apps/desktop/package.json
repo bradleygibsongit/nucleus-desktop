@@ -1,6 +1,6 @@
 {
   "name": "nucleus-desktop",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Desktop ADE for local-first coding projects",
   "type": "module",
   "main": "out/main/main.js",

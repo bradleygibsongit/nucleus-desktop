@@ -121,7 +121,7 @@ export const useAppUpdateStore = create<AppUpdateState>((set, get) => ({
         const message = getErrorMessage(error)
 
         set((state) => ({
-          error: message,
+          error: options?.silent ? state.error : message,
           lastCheckedAt: Date.now(),
           phase: options?.silent ? (state.availableUpdate ? state.phase : previousPhase) : "error",
         }))
