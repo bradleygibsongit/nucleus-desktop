@@ -12,10 +12,13 @@ import {
 interface FileTreeState {
   activeProjectPath: string | null
   dataByProjectPath: Record<string, Record<string, FileTreeItem>>
+  loadedByProjectPath: Record<string, boolean>
   loadingByProjectPath: Record<string, boolean>
   lastEventByProjectPath: Record<string, ProjectFileSystemEvent | null>
+  staleByProjectPath: Record<string, boolean>
   isInitialized: boolean
   initialize: () => Promise<void>
+  primeProjectPath: (projectPath: string) => Promise<void>
   setActiveProjectPath: (projectPath: string | null) => Promise<void>
   refreshActiveProject: () => Promise<void>
 }
@@ -24,6 +27,7 @@ let unlistenProjectEvents: (() => void) | null = null
 let initializePromise: Promise<void> | null = null
 let switchingProjectPromise: Promise<void> | null = null
 let eventFlushTimeoutId: ReturnType<typeof setTimeout> | null = null
+const treeLoadPromiseByProject = new Map<string, Promise<Record<string, FileTreeItem>>>()
 const queuedEventsByProject = new Map<string, ProjectFileSystemEvent[]>()
 
 function clearQueuedEvents(projectPath?: string | null): void {
@@ -52,6 +56,86 @@ async function loadProjectTree(projectPath: string): Promise<Record<string, File
   return readProjectFiles(projectPath)
 }
 
+async function ensureProjectTreeLoaded(
+  projectPath: string,
+  get: () => FileTreeState,
+  set: (updater: (state: FileTreeState) => Partial<FileTreeState>) => void,
+  options?: {
+    forceReload?: boolean
+    staleAfterLoad?: boolean
+  }
+): Promise<Record<string, FileTreeItem>> {
+  const cachedTree = get().dataByProjectPath[projectPath]
+  const isLoaded = get().loadedByProjectPath[projectPath] ?? false
+  if (!options?.forceReload && isLoaded) {
+    return cachedTree ?? {}
+  }
+
+  const inFlightLoad = treeLoadPromiseByProject.get(projectPath)
+  if (inFlightLoad) {
+    await inFlightLoad
+
+    const isLoadedAfterInFlight = get().loadedByProjectPath[projectPath] ?? false
+    const isStillStaleAfterInFlight = get().staleByProjectPath[projectPath] ?? false
+
+    if (!options?.forceReload || (isLoadedAfterInFlight && !isStillStaleAfterInFlight)) {
+      return get().dataByProjectPath[projectPath] ?? {}
+    }
+  }
+
+  const latestInFlightLoad = treeLoadPromiseByProject.get(projectPath)
+  if (latestInFlightLoad) {
+    return latestInFlightLoad
+  }
+
+  setProjectLoading(set, projectPath, true)
+
+  const loadPromise = (async () => {
+    try {
+      const tree = await loadProjectTree(projectPath)
+      set((state) => ({
+        dataByProjectPath: {
+          ...state.dataByProjectPath,
+          [projectPath]: tree,
+        },
+        loadedByProjectPath: {
+          ...state.loadedByProjectPath,
+          [projectPath]: true,
+        },
+        staleByProjectPath: {
+          ...state.staleByProjectPath,
+          [projectPath]: options?.staleAfterLoad ?? false,
+        },
+      }))
+      return tree
+    } catch (error) {
+      console.error("Failed to load project files:", error)
+      const fallbackTree: Record<string, FileTreeItem> = {}
+      set((state) => ({
+        dataByProjectPath: {
+          ...state.dataByProjectPath,
+          [projectPath]: fallbackTree,
+        },
+        loadedByProjectPath: {
+          ...state.loadedByProjectPath,
+          [projectPath]: true,
+        },
+        staleByProjectPath: {
+          ...state.staleByProjectPath,
+          [projectPath]: options?.staleAfterLoad ?? false,
+        },
+      }))
+      return fallbackTree
+    } finally {
+      setProjectLoading(set, projectPath, false)
+      treeLoadPromiseByProject.delete(projectPath)
+    }
+  })()
+
+  treeLoadPromiseByProject.set(projectPath, loadPromise)
+  return loadPromise
+}
+
 async function applyQueuedEventsForProject(
   projectPath: string,
   get: () => FileTreeState,
@@ -75,6 +159,14 @@ async function applyQueuedEventsForProject(
           ...state.dataByProjectPath,
           [projectPath]: freshTree,
         },
+        loadedByProjectPath: {
+          ...state.loadedByProjectPath,
+          [projectPath]: true,
+        },
+        staleByProjectPath: {
+          ...state.staleByProjectPath,
+          [projectPath]: false,
+        },
       }))
       return
     }
@@ -86,6 +178,14 @@ async function applyQueuedEventsForProject(
     dataByProjectPath: {
       ...state.dataByProjectPath,
       [projectPath]: nextTree,
+    },
+    loadedByProjectPath: {
+      ...state.loadedByProjectPath,
+      [projectPath]: true,
+    },
+    staleByProjectPath: {
+      ...state.staleByProjectPath,
+      [projectPath]: false,
     },
   }))
 }
@@ -142,8 +242,10 @@ async function ensureProjectListener(
 export const useFileTreeStore = create<FileTreeState>((set, get) => ({
   activeProjectPath: null,
   dataByProjectPath: {},
+  loadedByProjectPath: {},
   loadingByProjectPath: {},
   lastEventByProjectPath: {},
+  staleByProjectPath: {},
   isInitialized: false,
 
   initialize: async () => {
@@ -165,6 +267,17 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
     return initializePromise
   },
 
+  primeProjectPath: async (projectPath) => {
+    if (!projectPath) {
+      return
+    }
+
+    await get().initialize()
+    await ensureProjectTreeLoaded(projectPath, get, set, {
+      staleAfterLoad: true,
+    })
+  },
+
   setActiveProjectPath: async (projectPath) => {
     if (switchingProjectPromise) {
       await switchingProjectPromise
@@ -184,6 +297,14 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
       }
 
       clearQueuedEvents(previousProjectPath)
+      if (previousProjectPath) {
+        set((state) => ({
+          staleByProjectPath: {
+            ...state.staleByProjectPath,
+            [previousProjectPath]: true,
+          },
+        }))
+      }
 
       if (!projectPath) {
         await stopProjectFileWatcher()
@@ -192,7 +313,6 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
       }
 
       set({ activeProjectPath: projectPath })
-      setProjectLoading(set, projectPath, true)
 
       try {
         await startProjectFileWatcher(projectPath)
@@ -200,25 +320,11 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
         console.error("Failed to start project file watcher:", error)
       }
 
-      try {
-        const tree = await loadProjectTree(projectPath)
-        set((state) => ({
-          dataByProjectPath: {
-            ...state.dataByProjectPath,
-            [projectPath]: tree,
-          },
-        }))
-      } catch (error) {
-        console.error("Failed to load project files:", error)
-        set((state) => ({
-          dataByProjectPath: {
-            ...state.dataByProjectPath,
-            [projectPath]: {},
-          },
-        }))
-      } finally {
-        setProjectLoading(set, projectPath, false)
-      }
+      await ensureProjectTreeLoaded(projectPath, get, set, {
+        forceReload:
+          (get().staleByProjectPath[projectPath] ?? false) ||
+          !(get().loadedByProjectPath[projectPath] ?? false),
+      })
 
       await applyQueuedEventsForProject(projectPath, get, set)
     })().finally(() => {
@@ -242,6 +348,14 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
         dataByProjectPath: {
           ...state.dataByProjectPath,
           [projectPath]: tree,
+        },
+        loadedByProjectPath: {
+          ...state.loadedByProjectPath,
+          [projectPath]: true,
+        },
+        staleByProjectPath: {
+          ...state.staleByProjectPath,
+          [projectPath]: false,
         },
       }))
     } catch (error) {

@@ -15,6 +15,20 @@ const desktopStore = {
 }
 
 mock.module("@/desktop/client", () => ({
+  desktop: {
+    fs: {
+      exists: async () => true,
+      homeDir: async () => "/Users/tester",
+    },
+    git: {
+      getBranches: async () => null,
+      listWorktrees: async () => [],
+      createWorktree: async () => ({ worktree: { branchName: "", path: "" } }),
+      renameWorktree: async () => ({ worktree: { branchName: "", path: "" } }),
+      removeWorktree: async () => ({ worktreePath: "" }),
+      getChanges: async () => [],
+    },
+  },
   loadDesktopStore: async () => desktopStore,
 }))
 

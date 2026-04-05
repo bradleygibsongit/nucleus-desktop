@@ -14,7 +14,9 @@ import { getChecksTabBadgeCount } from "./pullRequestChecks"
 import { useRightSidebar } from "./useRightSidebar"
 import { SidebarShell } from "./SidebarShell"
 import { SourceControlActionGroup } from "./AppHeader"
+import { RightSidebarEmptyState } from "./RightSidebarEmptyState"
 import { cn } from "@/lib/utils"
+import { prewarmProjectData } from "@/features/shared/utils/prewarmProjectData"
 
 interface RightSidebarProps {
   activeView?: "chat" | "settings" | "automations"
@@ -56,7 +58,9 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
     changes: projectChanges,
     isLoading: isChangesLoading,
     loadError: changesError,
-  } = useProjectGitChanges(selectedWorktreePath, { enabled: activeTab === "changes" })
+  } = useProjectGitChanges(selectedWorktreePath, {
+    enabled: Boolean(selectedWorktreePath) && activeView === "chat",
+  })
   const openPullRequest = branchData?.openPullRequest ?? null
   const shouldLoadChecks = openPullRequest?.state === "open"
   const {
@@ -174,6 +178,13 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
     [refreshActiveProject, selectedWorktreePath]
   )
 
+  const handleTabIntent = useCallback(
+    (tab: "files" | "changes" | "checks") => {
+      void prewarmProjectData(selectedWorktreeId, selectedWorktreePath, tab)
+    },
+    [selectedWorktreeId, selectedWorktreePath]
+  )
+
   if (!isAvailable || isCollapsed || activeView !== "chat") {
     return null
   }
@@ -203,6 +214,7 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
                 key={key}
                 type="button"
                 onClick={() => setActiveTab(key)}
+                onPointerEnter={() => handleTabIntent(key)}
                 className={cn(
                   "inline-flex h-7 items-center gap-1 rounded-lg px-2 text-sm font-medium transition-colors",
                   isActive
@@ -249,18 +261,19 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
       )}
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="app-scrollbar-sm min-h-0 flex-1 overflow-y-auto px-1.5 py-1.5">
+        <div className="app-scrollbar-sm flex min-h-0 flex-1 flex-col overflow-y-auto px-1.5 py-1.5">
           {activeTab === "files" ? (
             isInitialLoad || isFileTreeLoading ? (
               <div className="flex items-center justify-center py-8">
                 <span className="text-sm text-muted-foreground">Loading files...</span>
               </div>
             ) : !selectedWorktree ? (
-              <div className="flex items-center justify-center py-8">
-                <span className="text-sm text-muted-foreground">Select a worktree to view files</span>
-              </div>
+              <RightSidebarEmptyState
+                title="No project selected"
+                description="Choose a worktree to browse files in this panel."
+              />
             ) : (
-              <div className="space-y-2">
+              <div className="flex h-full flex-col gap-2">
                 {isImportingFiles ? (
                   <div className="rounded-xl border border-border/70 bg-card px-2.5 py-2 text-xs leading-5 text-muted-foreground">
                     Importing dropped files into the project...
@@ -274,9 +287,10 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
                 ) : null}
 
                 {Object.keys(fileTreeData).length === 0 ? (
-                  <div className="flex items-center justify-center py-8">
-                    <span className="text-sm text-muted-foreground">No files found</span>
-                  </div>
+                  <RightSidebarEmptyState
+                    title="No files yet"
+                    description="This project folder is empty right now."
+                  />
                 ) : (
                   <FileTreeViewer
                     data={fileTreeData}
@@ -290,9 +304,10 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
             )
           ) : activeTab === "changes" ? (
             !selectedWorktree ? (
-              <div className="flex items-center justify-center py-8">
-                <span className="text-sm text-muted-foreground">Select a worktree to view changes</span>
-              </div>
+              <RightSidebarEmptyState
+                title="No project selected"
+                description="Choose a worktree to inspect local changes."
+              />
             ) : isChangesLoading ? (
               <div className="flex items-center justify-center py-8">
                 <span className="text-sm text-muted-foreground">Loading changes...</span>
@@ -302,14 +317,10 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
                 {changesError}
               </div>
             ) : projectChanges.length === 0 ? (
-              <div className="flex h-full flex-col items-center justify-center gap-2 py-8 text-center">
-                <div className="rounded-full border border-border/70 bg-card px-3 py-1 text-xs font-medium text-muted-foreground">
-                  Working tree clean
-                </div>
-                <span className="max-w-56 text-sm text-muted-foreground">
-                  This worktree has no local file changes right now.
-                </span>
-              </div>
+              <RightSidebarEmptyState
+                title="Working tree clean"
+                description="This worktree has no local file changes right now."
+              />
             ) : (
               <div className="px-1.5 py-1">
                 <FileChangesList
@@ -323,9 +334,10 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
               </div>
             )
           ) : !selectedWorktree ? (
-            <div className="flex items-center justify-center py-8">
-              <span className="text-sm text-muted-foreground">Select a worktree to view checks</span>
-            </div>
+            <RightSidebarEmptyState
+              title="No project selected"
+              description="Choose a worktree to inspect pull request checks."
+            />
           ) : (
             <PullRequestChecksPanel
               pullRequest={openPullRequest}

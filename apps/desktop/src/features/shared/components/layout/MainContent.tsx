@@ -54,7 +54,7 @@ interface TabContentProps {
 
 function TabContent({ tab }: TabContentProps) {
   if (!tab || tab.type === "chat-session") {
-    return <ChatContainer />
+    return <ChatContainer sessionId={tab?.type === "chat-session" ? tab.sessionId ?? null : null} />
   }
 
   if (tab.type === "file") {
@@ -112,6 +112,10 @@ function NoWorkspaceSelectedState({
 export function MainContent({ activeView, activeSettingsSection }: MainContentProps) {
   const { focusedProjectId, activeWorktreeId, activeWorktreePath } = useCurrentProjectWorktree()
   const { getProjectChat, openDraftSession, createOptimisticSession, selectSession } = useChatStore()
+  const chatStoreInitialized = useChatStore((state) => state.isInitialized)
+  const worktreeChat = useChatStore((state) =>
+    activeWorktreeId ? state.chatByWorktree[activeWorktreeId] ?? null : null
+  )
   const addProject = useProjectStore((state) => state.addProject)
   const newWorkspaceSetupProjectId = useProjectStore((state) => state.newWorkspaceSetupProjectId)
   const [quickStartOpen, setQuickStartOpen] = useState(false)
@@ -143,18 +147,24 @@ export function MainContent({ activeView, activeSettingsSection }: MainContentPr
   }, [activeWorktreeId, isInitialized, switchProject])
 
   useEffect(() => {
-    if (!isInitialized || !focusedProjectId || !activeWorktreeId || !activeWorktreePath) {
+    if (
+      !isInitialized ||
+      !chatStoreInitialized ||
+      !focusedProjectId ||
+      !activeWorktreeId ||
+      !activeWorktreePath
+    ) {
       lastInitializedWorktreeIdRef.current = null
       lastOpenedSessionIdRef.current = null
       return
     }
 
-    const worktreeChat = getProjectChat(activeWorktreeId)
+    const resolvedWorktreeChat = worktreeChat ?? getProjectChat(activeWorktreeId)
     const currentTabs = useTabStore.getState().tabs
     const hasChatTab = currentTabs.some((tab) => tab.type === "chat-session")
     const activeSession =
-      worktreeChat.sessions.find((session) => session.id === worktreeChat.activeSessionId) ??
-      worktreeChat.sessions[0] ??
+      resolvedWorktreeChat.sessions.find((session) => session.id === resolvedWorktreeChat.activeSessionId) ??
+      resolvedWorktreeChat.sessions[0] ??
       null
 
     const activeChatTab = useTabStore
@@ -201,7 +211,7 @@ export function MainContent({ activeView, activeSettingsSection }: MainContentPr
         continue
       }
 
-      const matchingSession = worktreeChat.sessions.find((session) => session.id === tab.sessionId)
+      const matchingSession = resolvedWorktreeChat.sessions.find((session) => session.id === tab.sessionId)
       const nextTitle = matchingSession?.title?.trim() || "New chat"
       if (matchingSession && nextTitle !== tab.title) {
         updateChatSessionTitle(tab.sessionId, matchingSession.title)
@@ -210,11 +220,13 @@ export function MainContent({ activeView, activeSettingsSection }: MainContentPr
   }, [
     getProjectChat,
     isInitialized,
+    chatStoreInitialized,
     openChatSession,
     createOptimisticSession,
     focusedProjectId,
     activeWorktreePath,
     activeWorktreeId,
+    worktreeChat,
     tabs,
     updateChatSessionTitle,
     openTerminalTab,
@@ -226,12 +238,22 @@ export function MainContent({ activeView, activeSettingsSection }: MainContentPr
   )
 
   useEffect(() => {
-    if (!activeWorktreeId || activeTab?.type !== "chat-session" || !activeTab.sessionId) {
+    if (
+      !chatStoreInitialized ||
+      !activeWorktreeId ||
+      activeTab?.type !== "chat-session" ||
+      !activeTab.sessionId
+    ) {
+      return
+    }
+
+    const resolvedWorktreeChat = worktreeChat ?? getProjectChat(activeWorktreeId)
+    if (!resolvedWorktreeChat.sessions.some((session) => session.id === activeTab.sessionId)) {
       return
     }
 
     void selectSession(activeWorktreeId, activeTab.sessionId)
-  }, [activeTab, activeWorktreeId, selectSession])
+  }, [activeTab, activeWorktreeId, chatStoreInitialized, getProjectChat, selectSession, worktreeChat])
 
   const handleTabClose = (tabId: string) => {
     const closingTab = tabs.find((tab) => tab.id === tabId)

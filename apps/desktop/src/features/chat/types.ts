@@ -39,6 +39,7 @@ export interface RuntimeSession {
   id: string;
   remoteId?: string;
   harnessId: HarnessId;
+  model?: string | null;
   title?: string;
   projectPath?: string;
   parentSessionId?: string;

@@ -4,6 +4,28 @@ import type { MessageWithParts, RuntimePromptState } from "../types"
 import { buildChatTimelineViewModel } from "./timelineViewModel"
 
 function createCommandToolMessage(id: string, toolId = id): MessageWithParts {
+  const parts: MessageWithParts["parts"] = [
+    {
+      id: `${id}:tool`,
+      type: "tool",
+      messageId: id,
+      sessionId: "session-1",
+      tool: "command/exec",
+      state: {
+        status: "pending",
+        title: "pwd",
+        input: {
+          command: "pwd",
+        },
+      },
+    },
+    {
+      id: `${id}:text`,
+      type: "text",
+      text: "",
+    },
+  ]
+
   return {
     info: {
       id,
@@ -13,27 +35,7 @@ function createCommandToolMessage(id: string, toolId = id): MessageWithParts {
       turnId: "turn-1",
       itemType: "commandExecution",
     },
-    parts: [
-      {
-        id: `${id}:tool`,
-        type: "tool",
-        messageId: id,
-        sessionId: "session-1",
-        tool: "command/exec",
-        state: {
-          status: "pending",
-          title: "pwd",
-          input: {
-            command: "pwd",
-          },
-        },
-      },
-      {
-        id: `${id}:text`,
-        type: "text",
-        text: "",
-      },
-    ].map((part) =>
+    parts: parts.map((part) =>
       part.type === "tool"
         ? {
             ...part,
@@ -62,6 +64,44 @@ function createApprovalPromptState(itemId?: string): RuntimePromptState {
     status: "active",
     createdAt: 10,
     updatedAt: 20,
+  }
+}
+
+function createUserMessage(id: string, text: string, createdAt: number): MessageWithParts {
+  return {
+    info: {
+      id,
+      sessionId: "session-1",
+      role: "user",
+      createdAt,
+    },
+    parts: [
+      {
+        id: `${id}:text`,
+        type: "text",
+        text,
+      },
+    ],
+  }
+}
+
+function createAgentMessage(id: string, turnId: string, createdAt: number, text: string): MessageWithParts {
+  return {
+    info: {
+      id,
+      sessionId: "session-1",
+      role: "assistant",
+      createdAt,
+      turnId,
+      itemType: "agentMessage",
+    },
+    parts: [
+      {
+        id: `${id}:text`,
+        type: "text",
+        text,
+      },
+    ],
   }
 }
 
@@ -139,6 +179,20 @@ describe("buildChatTimelineViewModel", () => {
 
     expect(viewModel.latestTurnFooterMessageId).toBe("call-3:message")
     expect(viewModel.completedFooterByMessageId.has("call-3:message")).toBe(true)
+  })
+
+  test("uses the preceding user timestamp for agent-only turn durations", () => {
+    const userMessage = createUserMessage("user-1", "ping", 100)
+    const agentMessage = createAgentMessage("assistant-1", "turn-1", 1500, "pong")
+
+    const viewModel = buildChatTimelineViewModel({
+      messages: [userMessage, agentMessage],
+    })
+
+    expect(viewModel.completedWorkDurationByMessageId.get("assistant-1")).toBe(1400)
+    expect(viewModel.completedFooterByMessageId.get("assistant-1")).toMatchObject({
+      durationMs: 1400,
+    })
   })
 
   test("builds per-file footer entries for changed files", () => {

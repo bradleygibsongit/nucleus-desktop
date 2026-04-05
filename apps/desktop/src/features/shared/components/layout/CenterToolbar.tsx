@@ -10,29 +10,28 @@ import { useProjectStore } from "@/features/workspace/store"
 import { ProjectActionsControl } from "@/features/workspace/components/ProjectActionsControl"
 import { useChatStore } from "@/features/chat/store"
 import { useTabStore } from "@/features/editor/store"
+import { prewarmProjectData } from "@/features/shared/utils/prewarmProjectData"
 
 interface CenterToolbarProps {
   activeView?: "chat" | "settings" | "automations"
-  onOpenChat?: () => void
 }
 
 const WINDOW_CONTROLS_GUTTER_WIDTH = 80
 const DESKTOP_LEFT_TOGGLE_OFFSET = WINDOW_CONTROLS_GUTTER_WIDTH + 12
 const COLLAPSED_LEFT_ACTIONS_WIDTH = 64
 
-export function CenterToolbar({ activeView = "chat", onOpenChat }: CenterToolbarProps) {
+export function CenterToolbar({ activeView = "chat" }: CenterToolbarProps) {
   const { isCollapsed, toggle: toggleLeft } = useSidebar()
   const {
     isAvailable: isRightSidebarAvailable,
     isCollapsed: isRightCollapsed,
+    activeTab: rightSidebarActiveTab,
     toggle: toggleRight,
   } = useRightSidebar()
-  const selectProject = useProjectStore((state) => state.selectProject)
   const newWorkspaceSetupProjectId = useProjectStore((state) => state.newWorkspaceSetupProjectId)
   const { createOptimisticSession, getProjectChat } = useChatStore()
   const openChatSession = useTabStore((state) => state.openChatSession)
-  const { focusedProject, focusedProjectId, activeWorktreeId, activeWorktreePath, targetBranch } =
-    useCurrentProjectWorktree()
+  const { focusedProjectId, activeWorktreeId, activeWorktreePath, targetBranch } = useCurrentProjectWorktree()
 
   // Session title needed for mobile collapsed view
   const projectChat = activeWorktreeId ? getProjectChat(activeWorktreeId) : null
@@ -51,14 +50,15 @@ export function CenterToolbar({ activeView = "chat", onOpenChat }: CenterToolbar
     isCollapsed && activeView === "chat"
       ? DESKTOP_LEFT_TOGGLE_OFFSET + COLLAPSED_LEFT_ACTIONS_WIDTH
       : 0
+  const handleRightSidebarIntent = () => {
+    void prewarmProjectData(activeWorktreeId, activeWorktreePath, rightSidebarActiveTab)
+  }
 
-  const handleCreateThread = async () => {
-    if (!focusedProject || !focusedProjectId || !activeWorktreeId || !activeWorktreePath) {
+  const handleCreateThread = () => {
+    if (!activeWorktreeId || !activeWorktreePath) {
       return
     }
 
-    onOpenChat?.()
-    await selectProject(focusedProject.id)
     const session = createOptimisticSession(activeWorktreeId, activeWorktreePath)
     if (session) {
       openChatSession(session.id, session.title)
@@ -72,7 +72,7 @@ export function CenterToolbar({ activeView = "chat", onOpenChat }: CenterToolbar
         activeView === "chat" && "text-foreground",
       )}
     >
-      {/* Desktop: left sidebar toggle + new thread (only when left sidebar collapsed) */}
+      {/* Desktop: left sidebar toggle and new chat when the left sidebar is collapsed */}
       {isCollapsed ? (
         <div
           className="absolute top-1/2 z-10 hidden -translate-y-1/2 items-center gap-2 md:flex"
@@ -93,10 +93,10 @@ export function CenterToolbar({ activeView = "chat", onOpenChat }: CenterToolbar
               type="button"
               variant="ghost"
               size="icon-sm"
-              onClick={() => void handleCreateThread()}
-              disabled={!focusedProject || !focusedProjectId || !activeWorktreeId || !activeWorktreePath}
+              onClick={handleCreateThread}
+              disabled={!focusedProjectId || !activeWorktreeId || !activeWorktreePath}
               className="text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
-              aria-label="New thread"
+              aria-label="New chat"
             >
               <PencilSimple size={14} />
             </Button>
@@ -129,6 +129,7 @@ export function CenterToolbar({ activeView = "chat", onOpenChat }: CenterToolbar
               <Button
                 type="button"
                 onClick={toggleRight}
+                onPointerEnter={handleRightSidebarIntent}
                 variant="ghost"
                 size="icon-sm"
                 className="text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
@@ -157,12 +158,12 @@ export function CenterToolbar({ activeView = "chat", onOpenChat }: CenterToolbar
           <div className="flex min-w-0 items-center gap-2 md:hidden">
             <Button
               type="button"
-              onClick={() => void handleCreateThread()}
+              onClick={handleCreateThread}
               variant="ghost"
               size="icon-sm"
-              disabled={!focusedProject || !focusedProjectId || !activeWorktreeId || !activeWorktreePath}
+              disabled={!focusedProjectId || !activeWorktreeId || !activeWorktreePath}
               className="shrink-0 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
-              aria-label="New thread"
+              aria-label="New chat"
             >
               <PencilSimple size={14} />
             </Button>
@@ -179,6 +180,7 @@ export function CenterToolbar({ activeView = "chat", onOpenChat }: CenterToolbar
           <Button
             type="button"
             onClick={toggleRight}
+            onPointerEnter={handleRightSidebarIntent}
             variant="ghost"
             size="icon-sm"
             className="text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"

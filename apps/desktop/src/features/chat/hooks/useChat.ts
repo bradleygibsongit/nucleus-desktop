@@ -8,6 +8,7 @@ import { runCommandInProjectTerminal } from "@/features/terminal/utils/projectTe
 import { buildWorkspaceSetupScriptEnvironment } from "@/features/workspace/utils/setupScript"
 import { suggestWorkspaceSetup } from "@/features/workspace/utils/workspaceSetup"
 import { useChatStore, type ChildSessionState, type MessageWithParts } from "../store"
+import { ensureComposerSessionTab } from "./composerSessionTab"
 import { hasProjectChatSession } from "../store/sessionState"
 import {
   createWorkspaceSetupState,
@@ -244,6 +245,7 @@ export function useChatComposerState({
         targetSessionId = session.id
       }
 
+      ensureComposerSessionTab(selectedWorktreeId, targetSessionId)
       clearDraftInput(targetSessionId)
       await sendMessage(targetSessionId, text, options)
       return true
@@ -306,6 +308,7 @@ export function useChatComposerState({
         targetSessionId = session.id
       }
 
+      ensureComposerSessionTab(selectedWorktreeId, targetSessionId)
       await executeCommand(targetSessionId, command, args)
       return true
     },

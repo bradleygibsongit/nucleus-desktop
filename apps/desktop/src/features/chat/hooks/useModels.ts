@@ -1,12 +1,8 @@
 import { useState, useEffect, useCallback } from "react"
-import { useCurrentProjectWorktree } from "@/features/shared/hooks"
 import { getHarnessAdapter } from "../runtime/harnesses"
-import { useChatStore } from "../store/chatStore"
-import type { RuntimeModel } from "../types"
+import type { HarnessId, RuntimeModel } from "../types"
 
-export function useModels() {
-  const { selectedWorktreeId } = useCurrentProjectWorktree()
-  const listModels = useChatStore((state) => state.listModels)
+export function useModels(harnessId: HarnessId | null) {
   const [models, setModels] = useState<RuntimeModel[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -16,9 +12,7 @@ export function useModels() {
     setError(null)
 
     try {
-      const response = selectedWorktreeId
-        ? await listModels(selectedWorktreeId)
-        : await getHarnessAdapter("codex").listModels()
+      const response = await getHarnessAdapter(harnessId ?? "codex").listModels()
       setModels(response)
     } catch (err) {
       console.error("[useModels] Failed to fetch models:", err)
@@ -27,7 +21,7 @@ export function useModels() {
     } finally {
       setIsLoading(false)
     }
-  }, [listModels, selectedWorktreeId])
+  }, [harnessId])
 
   useEffect(() => {
     fetchModels()

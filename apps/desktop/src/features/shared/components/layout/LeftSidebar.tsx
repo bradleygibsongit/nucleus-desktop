@@ -33,6 +33,7 @@ import { useProjectStore } from "@/features/workspace/store"
 import { useProjectGitStore } from "@/features/shared/hooks/projectGitStore"
 import { openFolderPicker } from "@/features/workspace/utils/folderDialog"
 import { useSidebar } from "./useSidebar"
+import { useRightSidebar } from "./useRightSidebar"
 import { SidebarShell } from "./SidebarShell"
 import { Button } from "@/features/shared/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -43,6 +44,7 @@ import {
   type SettingsSectionId,
 } from "@/features/settings/config"
 import { isWorktreeReady } from "@/features/workspace/utils/worktrees"
+import { prewarmProjectData } from "@/features/shared/utils/prewarmProjectData"
 
 const OPEN_PROJECT_SETTINGS_EVENT = "nucleus:open-project-settings"
 
@@ -154,6 +156,7 @@ export function LeftSidebar({
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>([])
   const { isCollapsed, width, setWidth, toggle } = useSidebar()
+  const { activeTab: rightSidebarActiveTab, isCollapsed: isRightSidebarCollapsed } = useRightSidebar()
   const {
     projects,
     focusedProjectId,
@@ -175,7 +178,6 @@ export function LeftSidebar({
   const chatStatus = useChatStore((state) => state.status)
   const requestGitRefresh = useProjectGitStore((state) => state.requestRefresh)
   const ensureGitEntry = useProjectGitStore((state) => state.ensureEntry)
-  const gitEntriesByProjectPath = useProjectGitStore((state) => state.entriesByProjectPath)
   const [projectOrderPreview, setProjectOrderPreview] = useState<string[] | null>(null)
   const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null)
   const [isHoverPreviewOpen, setIsHoverPreviewOpen] = useState(false)
@@ -217,6 +219,8 @@ export function LeftSidebar({
     "absolute top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-sidebar-foreground/52 transition hover:text-sidebar-foreground/90 focus-visible:text-sidebar-foreground/90"
   const sectionLabelClass =
     "text-[11px] font-medium uppercase tracking-[0.08em] text-sidebar-foreground/40"
+  const hoveredWorktreePrewarmTarget =
+    activeView === "chat" && !isRightSidebarCollapsed ? rightSidebarActiveTab : "changes"
   const projectById = useMemo(
     () => new Map(projects.map((project) => [project.id, project])),
     [projects]
@@ -494,6 +498,17 @@ export function LeftSidebar({
                     <button
                       type="button"
                       onClick={() => void handleSelectWorktree(project, worktree)}
+                      onPointerEnter={() => {
+                        if (!isWorktreeReadyForSelection) {
+                          return
+                        }
+
+                        void prewarmProjectData(
+                          worktree.id,
+                          worktree.path,
+                          hoveredWorktreePrewarmTarget
+                        )
+                      }}
                       disabled={!isWorktreeReadyForSelection}
                       className={cn(
                         "flex h-8 w-full min-w-0 items-center gap-2 rounded-md pl-8 pr-8 text-left",

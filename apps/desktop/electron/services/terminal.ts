@@ -52,6 +52,18 @@ function resolveShellKind(shell: string): TerminalStartResponse["shellKind"] {
   return "cmd"
 }
 
+function resolveShellArgs(shell: string): string[] {
+  if (process.platform === "win32") {
+    return []
+  }
+
+  if (shell === "/bin/zsh" || shell === "/bin/bash" || shell.endsWith("/fish")) {
+    return ["-l"]
+  }
+
+  return []
+}
+
 export class TerminalService {
   private readonly sessions = new Map<string, TerminalSession>()
 
@@ -93,12 +105,7 @@ export class TerminalService {
 
     const shell = resolveDefaultShell()
     const shellKind = resolveShellKind(shell)
-    const shellArgs =
-      process.platform === "win32"
-        ? []
-        : shell === "/bin/zsh" || shell === "/bin/bash" || shell.endsWith("/fish")
-          ? ["-l"]
-          : []
+    const shellArgs = resolveShellArgs(shell)
 
     const terminal = pty.spawn(shell, shellArgs, {
       name: "xterm-256color",
