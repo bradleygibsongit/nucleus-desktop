@@ -1,6 +1,6 @@
 {
   "name": "nucleus-desktop",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Desktop ADE for local-first coding projects",
   "repository": {
     "type": "git",
@@ -82,9 +82,10 @@
     },
     "publish": [
       {
-        "provider": "github",
-        "owner": "bradleygibsongit",
-        "repo": "nucleus-desktop"
+        "provider": "keygen",
+        "account": "d9f9a4e8-d158-4f0c-b099-43fbea9bb094",
+        "product": "70174b6b-5383-4f36-86ac-25ddc30f533c",
+        "channel": "stable"
       }
     ],
     "mac": {

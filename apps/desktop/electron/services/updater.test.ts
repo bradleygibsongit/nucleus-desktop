@@ -14,6 +14,7 @@ const onceListeners = new Map<string, (payload?: unknown) => void>()
 const autoUpdater = {
   autoDownload: true,
   autoInstallOnAppQuit: true,
+  channel: "stable",
   once: mock((event: string, listener: (payload?: unknown) => void) => {
     onceListeners.set(event, listener)
   }),
@@ -23,6 +24,7 @@ const autoUpdater = {
       onceListeners.delete(event)
     }
   }),
+  addAuthHeader: mock(() => {}),
   checkForUpdates: mock(async () => {}),
   downloadUpdate: mock(async () => {}),
   quitAndInstall: mock(() => {}),
@@ -48,6 +50,8 @@ mock.module("./analytics", () => ({
 
 const { UpdaterService } = await import("./updater")
 const originalResourcesPath = process.resourcesPath
+const originalUpdateAuthHeader = process.env.NUCLEUS_UPDATE_AUTH_HEADER
+const originalUpdateChannel = process.env.NUCLEUS_UPDATE_CHANNEL
 
 describe("UpdaterService.checkForUpdates", () => {
   beforeEach(() => {
@@ -64,6 +68,7 @@ describe("UpdaterService.checkForUpdates", () => {
     appMock.getVersion.mockReturnValue("0.1.1")
     autoUpdater.autoDownload = true
     autoUpdater.autoInstallOnAppQuit = true
+    autoUpdater.channel = "stable"
     autoUpdater.once.mockReset()
     autoUpdater.once.mockImplementation((event: string, listener: (payload?: unknown) => void) => {
       onceListeners.set(event, listener)
@@ -78,9 +83,12 @@ describe("UpdaterService.checkForUpdates", () => {
     })
     autoUpdater.checkForUpdates.mockReset()
     autoUpdater.checkForUpdates.mockImplementation(async () => {})
+    autoUpdater.addAuthHeader.mockReset()
     autoUpdater.downloadUpdate.mockReset()
     autoUpdater.quitAndInstall.mockReset()
     onceListeners.clear()
+    delete process.env.NUCLEUS_UPDATE_AUTH_HEADER
+    delete process.env.NUCLEUS_UPDATE_CHANNEL
   })
 
   test("returns early for unpackaged builds", async () => {
@@ -99,7 +107,7 @@ describe("UpdaterService.checkForUpdates", () => {
     const service = new UpdaterService(() => {})
 
     await expect(service.checkForUpdates()).rejects.toThrow(
-      "In-app updates are unavailable in this build. Download the latest GitHub release manually to update."
+      "In-app updates are unavailable in this build. Download the latest Nucleus release manually to update."
     )
 
     expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled()
@@ -134,9 +142,46 @@ describe("UpdaterService.checkForUpdates", () => {
     expect(autoUpdater.autoDownload).toBe(false)
     expect(autoUpdater.autoInstallOnAppQuit).toBe(false)
   })
+
+  test("surfaces a friendly error for private GitHub release feeds", async () => {
+    autoUpdater.checkForUpdates.mockRejectedValue(
+      new Error(
+        'HttpError: 404 "method: GET url: https://github.com/bradleygibsongit/nucleus-desktop/releases.atom\\n\\nPlease double check that your authentication token is correct. Due to security reasons, actual status maybe not reported, but 404.\\n"'
+      )
+    )
+
+    const service = new UpdaterService(() => {})
+
+    await expect(service.checkForUpdates()).rejects.toThrow(
+      "Automatic updates are unavailable because this build checks a private or inaccessible GitHub Releases feed. Publish updates from a public release feed or install the latest release manually."
+    )
+  })
+
+  test("applies optional updater auth and channel configuration from the environment", async () => {
+    process.env.NUCLEUS_UPDATE_AUTH_HEADER = "License test-token"
+    process.env.NUCLEUS_UPDATE_CHANNEL = "beta"
+
+    const service = new UpdaterService(() => {})
+    await service.checkForUpdates()
+
+    expect(autoUpdater.addAuthHeader).toHaveBeenCalledWith("License test-token")
+    expect(autoUpdater.channel).toBe("beta")
+  })
 })
 
 Object.defineProperty(process, "resourcesPath", {
   configurable: true,
   value: originalResourcesPath,
 })
+
+if (originalUpdateAuthHeader) {
+  process.env.NUCLEUS_UPDATE_AUTH_HEADER = originalUpdateAuthHeader
+} else {
+  delete process.env.NUCLEUS_UPDATE_AUTH_HEADER
+}
+
+if (originalUpdateChannel) {
+  process.env.NUCLEUS_UPDATE_CHANNEL = originalUpdateChannel
+} else {
+  delete process.env.NUCLEUS_UPDATE_CHANNEL
+}
