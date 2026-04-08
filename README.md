@@ -77,8 +77,7 @@ nucleus/
 │   ├── desktop/          # Electron app, CLI, and desktop-specific assets
 │   └── site/             # Marketing website package
 ├── docs/                 # Product and implementation notes
-├── package.json          # Bun workspace scripts
-└── MIGRATION.md          # Product migration notes
+└── package.json          # Bun workspace scripts
 ```
 
 ## Features
@@ -94,11 +93,9 @@ nucleus/
 
 ## Development Phases
 
-See [MIGRATION.md](./MIGRATION.md) for the full plan.
-
 1. **Phase 1 (Current)**: UI shell with Electron + React
 2. **Phase 2**: Coding runtime and harness integration
-3. **Phase 3**: Migrate UI components from claude-interface project
+3. **Phase 3**: Continue migrating shared UI components into the desktop app
 
 ## Resources
 

@@ -11,7 +11,7 @@ export const mockFileChanges: FileChange[] = [
   { path: "src/components/sidebar/WorkspaceItem.tsx", status: "modified", additions: 14, deletions: 6 },
   { path: "src/components/ui/dialog.tsx", status: "modified", additions: 47, deletions: 22 },
   { path: "src/components/ui/select.tsx", status: "modified", additions: 4, deletions: 0 },
-  { path: "CLAUDE.md", status: "untracked" },
+  { path: "README.md", status: "untracked" },
   { path: "src/components/ai-elements/conversation.tsx", status: "untracked", additions: 99 },
   { path: "src/components/ai-elements/loader.tsx", status: "untracked", additions: 26 },
   { path: "src/components/ai-elements/message.tsx", status: "untracked", additions: 4 },

@@ -56,8 +56,7 @@ nucleus/
 ├── apps/
 │   ├── desktop/           # Electron shell, renderer, CLI, packaging assets
 │   └── site/              # Marketing website package
-├── package.json           # Bun workspace scripts
-└── MIGRATION.md           # Detailed migration plan
+└── package.json           # Bun workspace scripts
 ```
 
 ### Target (Phase 2+)
