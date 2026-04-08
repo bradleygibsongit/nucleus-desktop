@@ -1,7 +1,10 @@
 import {
+  createUserMessage,
   createTextMessage,
   dedupeMessages,
   getSessionTitleFallback,
+  getMessageAttachmentParts,
+  getMessageTextContent,
   preserveExistingMessageMetadata,
   remapMessagesToSession,
 } from "../domain/runtimeMessages"
@@ -74,9 +77,12 @@ export function shouldRecreateRemoteSession(session: RuntimeSession, error: unkn
 }
 
 export {
+  createUserMessage,
   createTextMessage,
   dedupeMessages,
   getSessionTitleFallback,
+  getMessageAttachmentParts,
+  getMessageTextContent,
   preserveExistingMessageMetadata,
   remapMessagesToSession,
 }

@@ -16,7 +16,8 @@ import {
 import { SearchableSelect } from "@/features/shared/components/ui/searchable-select"
 import { Switch } from "@/features/shared/components/ui/switch"
 import { Textarea } from "@/features/shared/components/ui/textarea"
-import { getHarnessAdapter, getHarnessDefinition } from "@/features/chat/runtime/harnesses"
+import { getHarnessDefinition } from "@/features/chat/runtime/harnesses"
+import { useModels } from "@/features/chat/hooks/useModels"
 import type { RuntimeModel } from "@/features/chat/types"
 import {
   resolveEffectiveComposerModelId,
@@ -44,39 +45,11 @@ const RESOLVE_REASON_LABELS: Record<GitPullRequestResolveReason, string> = {
 }
 
 function useCodexModelsState() {
-  const [availableModels, setAvailableModels] = useState<RuntimeModel[]>([])
-  const [isLoadingModels, setIsLoadingModels] = useState(false)
-  const [loadError, setLoadError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-
-    void (async () => {
-      setIsLoadingModels(true)
-      setLoadError(null)
-
-      try {
-        const models = await getHarnessAdapter("codex").listModels()
-        if (!cancelled) {
-          setAvailableModels(models)
-        }
-      } catch (error) {
-        console.error("[SettingsPage] Failed to load Codex models:", error)
-        if (!cancelled) {
-          setAvailableModels([])
-          setLoadError(error instanceof Error ? error.message : "Unable to load models")
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingModels(false)
-        }
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const {
+    models: availableModels,
+    isLoading: isLoadingModels,
+    error: loadError,
+  } = useModels("codex")
 
   const runtimeDefaultModel = useMemo(
     () => availableModels.find((model) => model.isDefault) ?? availableModels[0] ?? null,

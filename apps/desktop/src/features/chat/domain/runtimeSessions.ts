@@ -1,13 +1,24 @@
 import { nanoid } from "nanoid"
-import type { HarnessId, RuntimeSession } from "../types"
+import type { HarnessId, RuntimeAttachmentPart, RuntimeSession } from "../types"
 
-export function deriveSessionTitle(text: string): string {
+export function deriveSessionTitle(
+  text: string,
+  attachments: RuntimeAttachmentPart[] = []
+): string {
   const normalized = text.trim().replace(/\s+/g, " ")
-  if (normalized.length <= 80) {
-    return normalized
+  const fallbackLabel = attachments[0]?.label?.trim() ?? ""
+  const baseTitle = normalized || fallbackLabel
+
+  if (!baseTitle) {
+    return ""
   }
 
-  return `${normalized.slice(0, 77).trimEnd()}...`
+  const normalizedTitle = baseTitle.replace(/\s+/g, " ")
+  if (normalizedTitle.length <= 80) {
+    return normalizedTitle
+  }
+
+  return `${normalizedTitle.slice(0, 77).trimEnd()}...`
 }
 
 export function touchSession(session: RuntimeSession, title?: string): RuntimeSession {

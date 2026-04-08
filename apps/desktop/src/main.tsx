@@ -14,6 +14,13 @@ function applyTheme() {
 // Apply on load
 applyTheme()
 
+// Disable tab-key focus cycling globally
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Tab") {
+    e.preventDefault()
+  }
+})
+
 // Listen for system theme changes
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme)
 

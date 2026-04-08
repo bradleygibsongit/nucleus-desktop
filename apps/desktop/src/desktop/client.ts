@@ -24,6 +24,7 @@ import type {
   GitWorktreeSummary,
   ProjectFileSystemEvent,
   ReadFileAsDataUrlOptions,
+  RemovePathOptions,
   SkillsSyncResponse,
   TerminalCreateSessionEnvironment,
   TerminalDataEvent,
@@ -80,10 +81,29 @@ export const desktop = {
       window.nucleus.fs.readFileAsDataUrl(path, options),
     writeTextFile: (path: string, content: string, options?: WriteTextFileOptions) =>
       window.nucleus.fs.writeTextFile(path, content, options),
+    writeDataUrlFile: (path: string, dataUrl: string) => {
+      const writeDataUrlFile = window.nucleus.fs.writeDataUrlFile
+      if (typeof writeDataUrlFile !== "function") {
+        return Promise.reject(
+          new Error("Uploads require restarting Nucleus to reload the desktop bridge.")
+        )
+      }
+
+      return writeDataUrlFile(path, dataUrl)
+    },
     exists: (path: string) => window.nucleus.fs.exists(path),
     readDir: (path: string) => window.nucleus.fs.readDir(path),
     mkdir: (path: string, options?: { recursive?: boolean }) =>
       window.nucleus.fs.mkdir(path, options),
+    removePath: (path: string, options?: RemovePathOptions) => {
+      const removePath = window.nucleus.fs.removePath
+      if (typeof removePath !== "function") {
+        console.warn("[desktop.fs] removePath is unavailable in the current preload bridge")
+        return Promise.resolve()
+      }
+
+      return removePath(path, options)
+    },
     homeDir: () => window.nucleus.fs.homeDir(),
     getPathForFile: (file: File) => window.nucleus.fs.getPathForFile(file),
     copyPathsIntoDirectory: (
@@ -159,6 +179,17 @@ export const desktop = {
       window.nucleus.git.createAndCheckoutBranch(projectPath, branchName),
     pull: (projectPath: string) => window.nucleus.git.pull(projectPath),
     mergePullRequest: (projectPath: string) => window.nucleus.git.mergePullRequest(projectPath),
+    ensureInfoExcludeEntries: (projectPath: string, entries: string[]) => {
+      const ensureInfoExcludeEntries = window.nucleus.git.ensureInfoExcludeEntries
+      if (typeof ensureInfoExcludeEntries !== "function") {
+        console.warn(
+          "[desktop.git] ensureInfoExcludeEntries is unavailable in the current preload bridge"
+        )
+        return Promise.resolve()
+      }
+
+      return ensureInfoExcludeEntries(projectPath, entries)
+    },
     runStackedAction: (projectPath: string, input: GitRunStackedActionInput) =>
       window.nucleus.git.runStackedAction(projectPath, input),
     onActionProgress: (listener: (event: GitActionProgressEvent) => void) =>

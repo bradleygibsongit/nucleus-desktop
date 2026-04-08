@@ -7,6 +7,7 @@ import { useProjectStore } from "@/features/workspace/store"
 import { runCommandInProjectTerminal } from "@/features/terminal/utils/projectTerminal"
 import { buildWorkspaceSetupScriptEnvironment } from "@/features/workspace/utils/setupScript"
 import { suggestWorkspaceSetup } from "@/features/workspace/utils/workspaceSetup"
+import type { DraftChatAttachment } from "../components/composer/attachments"
 import { useChatStore, type ChildSessionState, type MessageWithParts } from "../store"
 import { ensureComposerSessionTab } from "./composerSessionTab"
 import { hasProjectChatSession } from "../store/sessionState"
@@ -29,6 +30,11 @@ import type {
 
 const EMPTY_MESSAGES: MessageWithParts[] = []
 
+interface ComposerDraftState {
+  input: string
+  attachments: DraftChatAttachment[]
+}
+
 function getActiveSessionId(projectChat: ProjectChatState | null): string | null {
   if (!projectChat) {
     return null
@@ -37,10 +43,6 @@ function getActiveSessionId(projectChat: ProjectChatState | null): string | null
   return hasProjectChatSession(projectChat, projectChat.activeSessionId)
     ? projectChat.activeSessionId
     : null
-}
-
-function getUiStatus(status: ChatStatus | "connecting"): ChatStatus {
-  return status === "connecting" ? "idle" : status
 }
 
 export function useChatProjectState(): {
@@ -104,7 +106,9 @@ export function useChatTimelineState(activeSessionId: string | null): {
   )
   const currentSessionId = useChatStore((state) => state.currentSessionId)
   const childSessions = useChatStore((state) => state.childSessions)
-  const status = useChatStore((state) => state.status)
+  const sessionStatus = useChatStore((state) =>
+    activeSessionId ? state.sessionActivityById[activeSessionId]?.status ?? "idle" : "idle"
+  )
   const activePromptState = useChatStore((state) =>
     activeSessionId ? state.activePromptBySession[activeSessionId] ?? null : null
   )
@@ -114,8 +118,8 @@ export function useChatTimelineState(activeSessionId: string | null): {
   return {
     messages,
     childSessions: isResolvedActiveSession ? childSessions : undefined,
-    status: isResolvedActiveSession ? getUiStatus(status) : "idle",
-    activePromptState: isResolvedActiveSession ? activePromptState : null,
+    status: sessionStatus,
+    activePromptState,
   }
 }
 
@@ -140,6 +144,8 @@ export function useChatComposerState({
 }): {
   input: string
   setInput: (value: string) => void
+  attachments: DraftChatAttachment[]
+  setAttachments: (attachments: DraftChatAttachment[]) => void
   status: ChatStatus
   activePrompt: RuntimePrompt | null
   answerPrompt: (response: RuntimePromptResponse) => Promise<void>
@@ -154,14 +160,14 @@ export function useChatComposerState({
       model?: string
       reasoningEffort?: string | null
       fastMode?: boolean
+      attachments?: DraftChatAttachment[]
     }
   ) => Promise<boolean>
 } {
-  const [draftInputsBySessionKey, setDraftInputsBySessionKey] = useState<Record<string, string>>({})
+  const [draftStateBySessionKey, setDraftStateBySessionKey] = useState<Record<string, ComposerDraftState>>({})
   const {
     initialize,
-    currentSessionId,
-    status,
+    sessionActivityById,
     activePromptBySession,
     createSession,
     createOptimisticSession,
@@ -173,8 +179,7 @@ export function useChatComposerState({
   } = useChatStore(
     useShallow((state) => ({
       initialize: state.initialize,
-      currentSessionId: state.currentSessionId,
-      status: state.status,
+      sessionActivityById: state.sessionActivityById,
       activePromptBySession: state.activePromptBySession,
       createSession: state.createSession,
       createOptimisticSession: state.createOptimisticSession,
@@ -188,25 +193,42 @@ export function useChatComposerState({
 
   const draftSessionKey =
     activeSessionId ?? (selectedWorktreeId ? `draft:${selectedWorktreeId}` : "draft:no-project")
-  const input = draftInputsBySessionKey[draftSessionKey] ?? ""
+  const draftState = draftStateBySessionKey[draftSessionKey]
+  const input = draftState?.input ?? ""
+  const attachments = draftState?.attachments ?? []
   const activePromptState: RuntimePromptState | null =
     activeSessionId ? activePromptBySession[activeSessionId] ?? null : null
   const activePrompt = activePromptState?.status === "active" ? activePromptState.prompt : null
-  const isResolvedActiveSession = activeSessionId != null && currentSessionId === activeSessionId
-  const uiStatus = isResolvedActiveSession ? getUiStatus(status) : "idle"
+  const uiStatus = activeSessionId ? sessionActivityById[activeSessionId]?.status ?? "idle" : "idle"
 
   const setInput = useCallback(
     (value: string) => {
-      setDraftInputsBySessionKey((current) => ({
+      setDraftStateBySessionKey((current) => ({
         ...current,
-        [draftSessionKey]: value,
+        [draftSessionKey]: {
+          input: value,
+          attachments: current[draftSessionKey]?.attachments ?? [],
+        },
       }))
     },
     [draftSessionKey]
   )
 
-  const clearDraftInput = useCallback((sessionKey: string) => {
-    setDraftInputsBySessionKey((current) => {
+  const setAttachments = useCallback(
+    (nextAttachments: DraftChatAttachment[]) => {
+      setDraftStateBySessionKey((current) => ({
+        ...current,
+        [draftSessionKey]: {
+          input: current[draftSessionKey]?.input ?? "",
+          attachments: nextAttachments,
+        },
+      }))
+    },
+    [draftSessionKey]
+  )
+
+  const clearDraftState = useCallback((sessionKey: string) => {
+    setDraftStateBySessionKey((current) => {
       if (!(sessionKey in current)) {
         return current
       }
@@ -220,15 +242,22 @@ export function useChatComposerState({
   const submit = useCallback(
     async (
       text: string,
-    options?: {
-      agent?: string
-      collaborationMode?: CollaborationModeKind
-      model?: string
-      reasoningEffort?: string | null
-      fastMode?: boolean
-    }
-  ) => {
-      if (!text.trim() || uiStatus === "streaming") {
+      options?: {
+        agent?: string
+        collaborationMode?: CollaborationModeKind
+        model?: string
+        reasoningEffort?: string | null
+        fastMode?: boolean
+        attachments?: DraftChatAttachment[]
+      }
+    ) => {
+      const attachmentsToSend = options?.attachments ?? attachments
+
+      if (
+        (!text.trim() && attachmentsToSend.length === 0) ||
+        uiStatus === "streaming" ||
+        uiStatus === "connecting"
+      ) {
         return false
       }
 
@@ -254,14 +283,20 @@ export function useChatComposerState({
 
       setInput("")
       ensureComposerSessionTab(selectedWorktreeId, targetSessionId)
-      clearDraftInput(targetSessionId)
-      await sendMessage(targetSessionId, text, options)
+      clearDraftState(draftSessionKey)
+      clearDraftState(targetSessionId)
+      await sendMessage(targetSessionId, text, {
+        ...options,
+        attachments: attachmentsToSend,
+      })
       return true
     },
     [
       activeSessionId,
-      clearDraftInput,
+      attachments,
+      clearDraftState,
       createOptimisticSession,
+      draftSessionKey,
       initialize,
       selectedProjectId,
       selectedWorktree,
@@ -333,6 +368,8 @@ export function useChatComposerState({
   return {
     input,
     setInput,
+    attachments,
+    setAttachments,
     status: uiStatus,
     activePrompt,
     answerPrompt: handleAnswerPrompt,

@@ -12,7 +12,6 @@ export type ToolActivityFamily =
   | "mcp"
   | "dynamic"
   | "subagent"
-  | "image"
   | "context"
   | "approval"
 
@@ -137,7 +136,7 @@ export function getToolActivityFamily(message: MessageWithParts): ToolActivityFa
       return "subagent"
     case "imageGeneration":
     case "imageView":
-      return "image"
+      return null
     case "contextCompaction":
       return "context"
     default:
@@ -360,8 +359,6 @@ export function getActivityGroupSummary(group: TimelineActivityGroupBlock): stri
       return `${isActive ? "Using" : "Used"} ${getPluralLabel(group.messages.length, "tool")}`
     case "subagent":
       return `${isActive ? "Starting" : "Started"} ${getPluralLabel(group.messages.length, "subagent task")}`
-    case "image":
-      return `${isActive ? "Working on" : "Completed"} ${getPluralLabel(group.messages.length, "image action")}`
     case "context":
       return isActive ? "Compacting context" : "Compacted context"
   }

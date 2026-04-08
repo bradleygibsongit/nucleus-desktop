@@ -1,40 +1,45 @@
 interface LoadingDotsProps {
   className?: string
-  variant?: "loading" | "attention"
+  variant?: "loading" | "attention" | "connecting"
 }
 
-// Snake pattern order: positions in grid for animation sequence
-// 1 → 2 → 3
-//         ↓
-// 6 ← 5 ← 4
-// ↓
-// 7 → 8 → 9
-const snakeOrder = [0, 1, 2, 5, 4, 3, 6, 7, 8]
+// Radial ripple: center out, like a heartbeat pulse
+//
+// 2  1  1  2
+// 1  0  0  1
+// 1  0  0  1
+// 2  1  1  2
+//
+// Ring 0: inner 4 (5,6,9,10) — fires first
+// Ring 1: cross 8 (1,2,4,7,8,11,13,14)
+// Ring 2: corners 4 (0,3,12,15) — fires last
+const rippleOrder = [2, 1, 1, 2, 1, 0, 0, 1, 1, 0, 0, 1, 2, 1, 1, 2]
 
-// Square pattern for attention variant (no center dot):
-// ● ● ●
-// ● . ●
-// ● ● ●
-// Visible dots: 0, 1, 2, 3, 5, 6, 7, 8 (indices)
-const squareDots = [0, 1, 2, 3, 5, 6, 7, 8]
+// Square ring for attention variant (hollow center):
+// ● ● ● ●
+// ●     ●
+// ●     ●
+// ● ● ● ●
+const squareDots = [0, 1, 2, 3, 4, 7, 8, 11, 12, 13, 14, 15]
 
 export function LoadingDots({ className, variant = "loading" }: LoadingDotsProps) {
   const isAttention = variant === "attention"
+  const isConnecting = variant === "connecting"
 
   return (
     <div
       className={className}
       style={{
         display: "grid",
-        gridTemplateColumns: "repeat(3, 2px)",
-        gridTemplateRows: "repeat(3, 2px)",
+        gridTemplateColumns: "repeat(4, 2px)",
+        gridTemplateRows: "repeat(4, 2px)",
         gap: "2px",
-        width: "10px",
-        height: "10px",
+        width: "14px",
+        height: "14px",
       }}
     >
-      {Array.from({ length: 9 }).map((_, index) => {
-        const animationOrder = snakeOrder.indexOf(index)
+      {Array.from({ length: 16 }).map((_, index) => {
+        const animationOrder = rippleOrder[index]
         const isVisible = isAttention ? squareDots.includes(index) : true
         return (
           <div
@@ -48,9 +53,11 @@ export function LoadingDots({ className, variant = "loading" }: LoadingDotsProps
               animation: isVisible
                 ? isAttention
                   ? "dot-attention 600ms ease-in-out infinite"
-                  : "dot-pulse 900ms ease-in-out infinite"
+                  : isConnecting
+                    ? "dot-connect 1600ms ease-in-out infinite"
+                    : "dot-pulse 700ms cubic-bezier(0.36, 0, 0.66, 1) infinite"
                 : "none",
-              animationDelay: isAttention ? "0ms" : `${animationOrder * 100}ms`,
+              animationDelay: isAttention ? "0ms" : `${animationOrder * (isConnecting ? 90 : 60)}ms`,
             }}
           />
         )

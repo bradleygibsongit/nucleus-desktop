@@ -1,9 +1,189 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
+import { accessSync, constants, statSync } from "node:fs"
+import os from "node:os"
+import path from "node:path"
+import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
 import readline from "node:readline"
+import { promisify } from "node:util"
 import { EVENT_CHANNELS } from "../ipc/channels"
 import { capture, captureException } from "./analytics"
 
 type EventSender = (channel: string, payload: unknown) => void
+
+const execFileAsync = promisify(execFile)
+const PATH_SEPARATOR = process.platform === "win32" ? ";" : ":"
+const CODEX_EXECUTABLE_NAME = process.platform === "win32" ? "codex.exe" : "codex"
+
+function isExecutableFile(filePath: string | null | undefined): filePath is string {
+  if (!filePath) {
+    return false
+  }
+
+  try {
+    accessSync(filePath, constants.X_OK)
+    return statSync(filePath).isFile()
+  } catch {
+    return false
+  }
+}
+
+function getShellCandidates(): string[] {
+  if (process.platform === "win32") {
+    return []
+  }
+
+  const candidates = [process.env.SHELL?.trim(), "/bin/zsh", "/bin/bash", "/bin/sh"]
+
+  return Array.from(
+    new Set(
+      candidates.filter(
+        (candidate): candidate is string =>
+          Boolean(candidate) && candidate.startsWith("/") && isExecutableFile(candidate)
+      )
+    )
+  )
+}
+
+function getCommonPathEntries(): string[] {
+  const homeDirectory = os.homedir()
+
+  if (process.platform === "win32") {
+    const localAppData = process.env.LOCALAPPDATA?.trim()
+    return [
+      process.env.USERPROFILE?.trim(),
+      localAppData ? path.join(localAppData, "Programs") : null,
+      localAppData ? path.join(localAppData, "Microsoft", "WinGet", "Links") : null,
+    ].filter((entry): entry is string => Boolean(entry))
+  }
+
+  return [
+    path.join(homeDirectory, ".bun", "bin"),
+    path.join(homeDirectory, ".local", "bin"),
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/opt/local/bin",
+    "/usr/bin",
+    "/bin",
+    "/usr/sbin",
+    "/sbin",
+  ]
+}
+
+function splitPathEntries(pathValue: string | null | undefined): string[] {
+  return (pathValue ?? "")
+    .split(PATH_SEPARATOR)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+}
+
+function buildLaunchPath(additionalEntries: string[] = []): string {
+  return Array.from(
+    new Set([
+      ...splitPathEntries(process.env.PATH),
+      ...additionalEntries,
+      ...getCommonPathEntries(),
+    ])
+  ).join(PATH_SEPARATOR)
+}
+
+function findExecutableInPath(pathValue: string): string | null {
+  for (const directory of splitPathEntries(pathValue)) {
+    const candidate = path.join(directory, CODEX_EXECUTABLE_NAME)
+    if (isExecutableFile(candidate)) {
+      return candidate
+    }
+  }
+
+  return null
+}
+
+async function resolveCodexFromShell(): Promise<string | null> {
+  for (const shell of getShellCandidates()) {
+    try {
+      const { stdout } = await execFileAsync(shell, ["-lc", `command -v ${CODEX_EXECUTABLE_NAME}`], {
+        env: {
+          ...process.env,
+          HOME: os.homedir(),
+        },
+      })
+      const candidate = stdout.trim().split(/\r?\n/).find((line) => line.trim().length > 0) ?? null
+
+      if (isExecutableFile(candidate)) {
+        return candidate
+      }
+    } catch {
+      // Ignore shell lookup failures and continue to the next candidate.
+    }
+  }
+
+  return null
+}
+
+export async function resolveCodexLaunchConfig(): Promise<{
+  command: string
+  env: NodeJS.ProcessEnv
+}> {
+  const configuredExecutable = process.env.NUCLEUS_CODEX_PATH?.trim() ?? null
+  if (configuredExecutable && !isExecutableFile(configuredExecutable)) {
+    throw new Error(
+      `NUCLEUS_CODEX_PATH points to a non-executable Codex binary: ${configuredExecutable}`
+    )
+  }
+
+  const mergedPath = buildLaunchPath(
+    configuredExecutable ? [path.dirname(configuredExecutable)] : []
+  )
+  const resolvedExecutable =
+    configuredExecutable ??
+    findExecutableInPath(mergedPath) ??
+    (await resolveCodexFromShell())
+
+  if (!resolvedExecutable) {
+    throw new Error(
+      "Unable to find the Codex CLI. Install `codex`, add it to your PATH, or set NUCLEUS_CODEX_PATH to the full executable path."
+    )
+  }
+
+  return {
+    command: resolvedExecutable,
+    env: {
+      ...process.env,
+      HOME: os.homedir(),
+      PATH: buildLaunchPath([path.dirname(resolvedExecutable)]),
+    },
+  }
+}
+
+function waitForSpawn(child: ChildProcessWithoutNullStreams): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false
+
+    const cleanup = () => {
+      child.removeListener("spawn", handleSpawn)
+      child.removeListener("error", handleError)
+    }
+
+    const handleSpawn = () => {
+      if (settled) {
+        return
+      }
+      settled = true
+      cleanup()
+      resolve()
+    }
+
+    const handleError = (error: Error) => {
+      if (settled) {
+        return
+      }
+      settled = true
+      cleanup()
+      reject(error)
+    }
+
+    child.once("spawn", handleSpawn)
+    child.once("error", handleError)
+  })
+}
 
 export class CodexServerService {
   private process: ChildProcessWithoutNullStreams | null = null
@@ -19,9 +199,10 @@ export class CodexServerService {
     let hasReportedUnexpectedExit = false
     this.isDisposingProcess = false
 
-    const child = spawn("codex", ["app-server"], {
+    const { command, env } = await resolveCodexLaunchConfig()
+    const child = spawn(command, ["app-server"], {
       stdio: "pipe",
-      env: process.env,
+      env,
     })
 
     capture("agent_server_start_requested")
@@ -69,6 +250,7 @@ export class CodexServerService {
     })
 
     this.process = child
+    await waitForSpawn(child)
     return "Codex App Server started"
   }
 

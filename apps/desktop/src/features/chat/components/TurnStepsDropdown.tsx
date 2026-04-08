@@ -5,7 +5,6 @@ import {
   CaretRight,
   Compass,
   Globe,
-  Image,
   PencilSimple,
   Robot,
   Zap,
@@ -17,7 +16,10 @@ import {
   Message as MessageComponent,
   MessageContent,
 } from "./ai-elements/message"
-import { ChatTimelineItem } from "./ChatTimelineItem"
+import {
+  ChatTimelineItem,
+  type ChatImagePreviewRequest,
+} from "./ChatTimelineItem"
 import { useViewportAnchorToggle } from "./useViewportAnchorToggle"
 import type { MessageWithParts, RuntimeApprovalDisplayState } from "../types"
 
@@ -28,6 +30,8 @@ interface TurnStepsDropdownProps {
   className?: string
   summary?: string
   defaultOpen?: boolean
+  worktreePath?: string | null
+  onOpenImagePreview?: (preview: ChatImagePreviewRequest) => void
 }
 
 function getAggregateToolIcon(itemType?: string): Icon {
@@ -38,9 +42,6 @@ function getAggregateToolIcon(itemType?: string): Icon {
       return PencilSimple
     case "webSearch":
       return Globe
-    case "imageGeneration":
-    case "imageView":
-      return Image
     case "collabAgentToolCall":
       return Robot
     case "mcpToolCall":
@@ -100,6 +101,8 @@ export function TurnStepsDropdown({
   className,
   summary: summaryOverride,
   defaultOpen = false,
+  worktreePath,
+  onOpenImagePreview,
 }: TurnStepsDropdownProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
   const summary = useMemo(
@@ -153,6 +156,8 @@ export function TurnStepsDropdown({
                   childSessions={childSessions}
                   approvalState={approvalStateByMessageId.get(message.info.id) ?? null}
                   withinGroup
+                  worktreePath={worktreePath}
+                  onOpenImagePreview={onOpenImagePreview}
                 />
               ))}
             </div>

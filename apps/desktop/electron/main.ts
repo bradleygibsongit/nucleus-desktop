@@ -188,11 +188,19 @@ function registerIpcHandlers(storeService: JsonStoreService): void {
     (_event, path: string, content: string, options?: { create?: boolean }) =>
       fsService.writeTextFile(path, content, options)
   )
+  ipcMain.handle(IPC_CHANNELS.fsWriteDataUrlFile, (_event, path: string, dataUrl: string) =>
+    fsService.writeDataUrlFile(path, dataUrl)
+  )
   ipcMain.handle(IPC_CHANNELS.fsExists, (_event, path: string) => fsService.exists(path))
   ipcMain.handle(IPC_CHANNELS.fsReadDir, (_event, path: string) => fsService.readDir(path))
   ipcMain.handle(
     IPC_CHANNELS.fsMkdir,
     (_event, path: string, options?: { recursive?: boolean }) => fsService.mkdir(path, options)
+  )
+  ipcMain.handle(
+    IPC_CHANNELS.fsRemovePath,
+    (_event, path: string, options?: { recursive?: boolean; force?: boolean }) =>
+      fsService.removePath(path, options)
   )
   ipcMain.handle(IPC_CHANNELS.fsHomeDir, () => fsService.homeDir())
   ipcMain.handle(
@@ -298,6 +306,11 @@ function registerIpcHandlers(storeService: JsonStoreService): void {
   )
   ipcMain.handle(IPC_CHANNELS.gitMergePullRequest, (_event, projectPath: string) =>
     gitService.mergePullRequest(projectPath)
+  )
+  ipcMain.handle(
+    IPC_CHANNELS.gitEnsureInfoExcludeEntries,
+    (_event, projectPath: string, entries: string[]) =>
+      gitService.ensureInfoExcludeEntries(projectPath, entries)
   )
   ipcMain.handle(
     IPC_CHANNELS.gitRunStackedAction,

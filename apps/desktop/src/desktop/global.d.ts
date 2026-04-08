@@ -21,6 +21,7 @@ import type {
   GitWorktreeSummary,
   ProjectFileSystemEvent,
   ReadFileAsDataUrlOptions,
+  RemovePathOptions,
   SkillsSyncResponse,
   TerminalCreateSessionEnvironment,
   TerminalDataEvent,
@@ -52,9 +53,11 @@ declare global {
           content: string,
           options?: WriteTextFileOptions
         ) => Promise<void>
+        writeDataUrlFile: (path: string, dataUrl: string) => Promise<void>
         exists: (path: string) => Promise<boolean>
         readDir: (path: string) => Promise<DesktopDirEntry[]>
         mkdir: (path: string, options?: { recursive?: boolean }) => Promise<void>
+        removePath: (path: string, options?: RemovePathOptions) => Promise<void>
         homeDir: () => Promise<string>
         getPathForFile: (file: File) => string | null
         copyPathsIntoDirectory: (
@@ -130,6 +133,7 @@ declare global {
         ) => Promise<GitBranchesResponse>
         pull: (projectPath: string) => Promise<GitPullResult>
         mergePullRequest: (projectPath: string) => Promise<GitMergePullRequestResult>
+        ensureInfoExcludeEntries: (projectPath: string, entries: string[]) => Promise<void>
         runStackedAction: (
           projectPath: string,
           input: GitRunStackedActionInput

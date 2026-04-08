@@ -190,6 +190,7 @@ export class CodexHarnessAdapter implements HarnessAdapter {
 
     const turnId = response.turn.id
     this.activeTurns.set(input.session.id, turnId)
+    input.onUpdate?.({})
 
     const completedTurn = await this.waitForTurnCompletion(
       threadId,

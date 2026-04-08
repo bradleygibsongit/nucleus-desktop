@@ -3,7 +3,12 @@
  * These types are owned by the app so multiple agent harnesses can map into one UI.
  */
 
-export type ChatStatus = "idle" | "streaming" | "error";
+export type ChatStatus = "idle" | "connecting" | "streaming" | "error";
+
+export interface SessionActivityState {
+  status: ChatStatus;
+  unread: boolean;
+}
 
 export type TabType = "chat-session" | "file" | "diff" | "terminal";
 
@@ -80,6 +85,19 @@ export interface RuntimeTextPart {
   text: string;
 }
 
+export type RuntimeAttachmentKind = "image" | "file" | "pasted_text";
+
+export interface RuntimeAttachmentPart {
+  id: string;
+  type: "attachment";
+  kind: RuntimeAttachmentKind;
+  label: string;
+  relativePath: string;
+  absolutePath: string;
+  mediaType?: string;
+  sizeBytes?: number;
+}
+
 export type ToolExecutionStatus = "pending" | "running" | "completed" | "error";
 
 export interface RuntimeToolState {
@@ -100,7 +118,7 @@ export interface RuntimeToolPart {
   state: RuntimeToolState;
 }
 
-export type RuntimeMessagePart = RuntimeTextPart | RuntimeToolPart;
+export type RuntimeMessagePart = RuntimeTextPart | RuntimeAttachmentPart | RuntimeToolPart;
 
 export interface MessageWithParts {
   info: RuntimeMessage;

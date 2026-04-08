@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { existsSync } from "node:fs"
-import { appendFile, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises"
+import { appendFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { promisify } from "node:util"
@@ -303,6 +303,26 @@ describe("GitService worktrees", () => {
     } finally {
       await rm(repoDir, { recursive: true, force: true })
       await rm(path.join(repoDir, "..", ".nucleus-worktrees-test"), { recursive: true, force: true })
+    }
+  })
+})
+
+describe("GitService.ensureInfoExcludeEntries", () => {
+  test("appends missing entries once without touching existing lines", async () => {
+    const repoDir = await createRepository()
+    const service = new GitService()
+
+    try {
+      const infoExcludePath = path.join(repoDir, ".git", "info", "exclude")
+      await writeFile(infoExcludePath, "# local excludes\n", "utf8")
+
+      await service.ensureInfoExcludeEntries(repoDir, ["/.nucleus/"])
+      await service.ensureInfoExcludeEntries(repoDir, ["/.nucleus/"])
+
+      const contents = await readFile(infoExcludePath, "utf8")
+      expect(contents).toBe("# local excludes\n/.nucleus/\n")
+    } finally {
+      await rm(repoDir, { recursive: true, force: true })
     }
   })
 })

@@ -35,6 +35,7 @@ interface TabState {
   openDiff: (filePath: string, fileName: string, previousFilePath?: string | null) => void
   rebaseWorktreeTabPaths: (worktreeId: string, previousPath: string, nextPath: string) => void
   removeWorktreeTabs: (worktreeId: string) => void
+  reorderTabs: (tabIds: string[]) => void
   closeTab: (tabId: string) => void
   setActiveTab: (tabId: string) => void
 }
@@ -628,6 +629,27 @@ export const useTabStore = create<TabState>((set, get) => ({
     })
 
     void persistTabs(nextTabsByWorktree)
+  },
+
+  reorderTabs: (tabIds) => {
+    const { tabs, activeTabId, activeTerminalTabId, currentWorktreeId, tabsByWorktree } = get()
+    const tabById = new Map(tabs.map((tab) => [tab.id, tab]))
+    const nextTabs = tabIds.map((id) => tabById.get(id)).filter((tab): tab is Tab => tab != null)
+
+    if (nextTabs.length !== tabs.length) {
+      return
+    }
+
+    set({ tabs: nextTabs })
+
+    if (currentWorktreeId) {
+      const nextTabsByWorktree = {
+        ...tabsByWorktree,
+        [currentWorktreeId]: { tabs: nextTabs, activeTabId, activeTerminalTabId },
+      }
+      set({ tabsByWorktree: nextTabsByWorktree })
+      void persistTabs(nextTabsByWorktree)
+    }
   },
 
   closeTab: (tabId) => {

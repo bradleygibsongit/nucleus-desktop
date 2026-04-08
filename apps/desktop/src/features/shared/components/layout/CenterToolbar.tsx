@@ -1,4 +1,4 @@
-import { PencilSimple, Sidebar } from "@/components/icons"
+import { Sidebar } from "@/components/icons"
 import { SourceControlActionGroup } from "./AppHeader"
 import { BranchTargetSelector } from "./BranchTargetSelector"
 import { useSidebar } from "./useSidebar"
@@ -8,8 +8,6 @@ import { useCurrentProjectWorktree } from "@/features/shared/hooks"
 import { cn } from "@/lib/utils"
 import { useProjectStore } from "@/features/workspace/store"
 import { ProjectActionsControl } from "@/features/workspace/components/ProjectActionsControl"
-import { useChatStore } from "@/features/chat/store"
-import { useTabStore } from "@/features/editor/store"
 import { prewarmProjectData } from "@/features/shared/utils/prewarmProjectData"
 
 interface CenterToolbarProps {
@@ -18,7 +16,10 @@ interface CenterToolbarProps {
 
 const WINDOW_CONTROLS_GUTTER_WIDTH = 80
 const DESKTOP_LEFT_TOGGLE_OFFSET = WINDOW_CONTROLS_GUTTER_WIDTH + 12
-const COLLAPSED_LEFT_ACTIONS_WIDTH = 64
+const COLLAPSED_LEFT_TOGGLE_WIDTH = 28
+const COLLAPSED_BRANCH_GAP = 8
+const COLLAPSED_BRANCH_OFFSET =
+  DESKTOP_LEFT_TOGGLE_OFFSET + COLLAPSED_LEFT_TOGGLE_WIDTH + COLLAPSED_BRANCH_GAP - 16
 
 export function CenterToolbar({ activeView = "chat" }: CenterToolbarProps) {
   const { isCollapsed, toggle: toggleLeft } = useSidebar()
@@ -29,15 +30,7 @@ export function CenterToolbar({ activeView = "chat" }: CenterToolbarProps) {
     toggle: toggleRight,
   } = useRightSidebar()
   const newWorkspaceSetupProjectId = useProjectStore((state) => state.newWorkspaceSetupProjectId)
-  const { createOptimisticSession, getProjectChat } = useChatStore()
-  const openChatSession = useTabStore((state) => state.openChatSession)
   const { focusedProjectId, activeWorktreeId, activeWorktreePath, targetBranch } = useCurrentProjectWorktree()
-
-  // Session title needed for mobile collapsed view
-  const projectChat = activeWorktreeId ? getProjectChat(activeWorktreeId) : null
-  const activeSession =
-    projectChat?.sessions.find((session) => session.id === projectChat.activeSessionId) ?? null
-  const activeSessionTitle = activeSession?.title?.trim() || ""
   const isNewWorkspaceSetupActive =
     activeView === "chat" &&
     focusedProjectId != null &&
@@ -45,24 +38,9 @@ export function CenterToolbar({ activeView = "chat" }: CenterToolbarProps) {
 
   const canToggleRightSidebar =
     activeView === "chat" && isRightSidebarAvailable && !isNewWorkspaceSetupActive
-  const showRightSidebar = canToggleRightSidebar && !isRightCollapsed
-  const collapsedBranchOffset =
-    isCollapsed && activeView === "chat"
-      ? DESKTOP_LEFT_TOGGLE_OFFSET + COLLAPSED_LEFT_ACTIONS_WIDTH
-      : 0
+  const collapsedBranchOffset = isCollapsed && activeView === "chat" ? COLLAPSED_BRANCH_OFFSET : 0
   const handleRightSidebarIntent = () => {
     void prewarmProjectData(activeWorktreeId, activeWorktreePath, rightSidebarActiveTab)
-  }
-
-  const handleCreateThread = () => {
-    if (!activeWorktreeId || !activeWorktreePath) {
-      return
-    }
-
-    const session = createOptimisticSession(activeWorktreeId, activeWorktreePath)
-    if (session) {
-      openChatSession(session.id, session.title)
-    }
   }
 
   return (
@@ -72,7 +50,7 @@ export function CenterToolbar({ activeView = "chat" }: CenterToolbarProps) {
         activeView === "chat" && "text-foreground",
       )}
     >
-      {/* Desktop: left sidebar toggle and new chat when the left sidebar is collapsed */}
+      {/* Desktop: left sidebar toggle when the left sidebar is collapsed */}
       {isCollapsed ? (
         <div
           className="absolute top-1/2 z-10 hidden -translate-y-1/2 items-center gap-2 md:flex"
@@ -88,19 +66,6 @@ export function CenterToolbar({ activeView = "chat" }: CenterToolbarProps) {
           >
             <Sidebar size={14} />
           </Button>
-          {activeView === "chat" && !isNewWorkspaceSetupActive ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              onClick={handleCreateThread}
-              disabled={!focusedProjectId || !activeWorktreeId || !activeWorktreePath}
-              className="text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
-              aria-label="New chat"
-            >
-              <PencilSimple size={14} />
-            </Button>
-          ) : null}
         </div>
       ) : null}
 
@@ -124,7 +89,7 @@ export function CenterToolbar({ activeView = "chat" }: CenterToolbarProps) {
         {activeView === "chat" && !isNewWorkspaceSetupActive ? (
           <div className="hidden shrink-0 items-center gap-2 pr-3 md:flex">
             {activeWorktreePath ? <ProjectActionsControl /> : null}
-            {activeWorktreePath && !showRightSidebar ? <SourceControlActionGroup /> : null}
+            {activeWorktreePath ? <SourceControlActionGroup /> : null}
             {canToggleRightSidebar ? (
               <Button
                 type="button"
@@ -154,29 +119,7 @@ export function CenterToolbar({ activeView = "chat" }: CenterToolbarProps) {
         >
           <Sidebar size={14} />
         </Button>
-        {isCollapsed && activeView === "chat" && !isNewWorkspaceSetupActive ? (
-          <div className="flex min-w-0 items-center gap-2 md:hidden">
-            <Button
-              type="button"
-              onClick={handleCreateThread}
-              variant="ghost"
-              size="icon-sm"
-              disabled={!focusedProjectId || !activeWorktreeId || !activeWorktreePath}
-              className="shrink-0 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
-              aria-label="New chat"
-            >
-              <PencilSimple size={14} />
-            </Button>
-            <div className="flex min-w-0 items-center gap-2">
-              {activeSessionTitle ? (
-                <span className="max-w-[160px] truncate text-sm font-medium text-foreground">
-                  {activeSessionTitle}
-                </span>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-        {canToggleRightSidebar && !showRightSidebar ? (
+        {canToggleRightSidebar ? (
           <Button
             type="button"
             onClick={toggleRight}

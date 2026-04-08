@@ -1,5 +1,6 @@
 import type { ReactElement } from "react"
 import { BookOpen } from "@/components/icons"
+import { TagChip } from "./TagChip"
 import {
   $create,
   $applyNodeReplacement,
@@ -29,13 +30,16 @@ function SkillChip({
   referenceName: string
 }): ReactElement {
   return (
-    <span
-      data-skill-chip="true"
-      data-skill-reference={referenceName}
-      className="inline-flex items-center gap-1 rounded-md bg-skill-surface px-2 py-0.5 text-[13px] leading-5 font-medium text-skill-accent"
-    >
-      <BookOpen className="size-3.5 text-skill-icon" />
-      <span>{label}</span>
+    <span data-skill-chip="true" data-skill-reference={referenceName}>
+      <TagChip
+        icon={<BookOpen className="size-3" />}
+        label={label}
+        variant="skill"
+        backgroundClassName="bg-skill-surface"
+        borderClassName="border-skill-surface"
+        textClassName="text-skill-accent"
+        iconClassName="text-skill-icon"
+      />
     </span>
   )
 }

@@ -23,6 +23,8 @@ const desktopStore = {
 
 let discoveredWorktrees: Array<{ path: string; branchName: string; isMain: boolean }> = []
 let gitBranchesResponse: { currentBranch?: string; defaultBranch?: string } | null = null
+let getBranchesImpl = async (_projectPath: string) => gitBranchesResponse
+let listWorktreesImpl = async (_projectPath: string) => discoveredWorktrees
 let createWorktreeImpl = async (
   _repoRootPath: string,
   options: { name?: string; branchName: string; baseBranch?: string; targetPath: string }
@@ -58,8 +60,8 @@ mock.module("@/desktop/client", () => ({
       homeDir: async () => "/Users/tester",
     },
     git: {
-      getBranches: async () => gitBranchesResponse,
-      listWorktrees: async () => discoveredWorktrees,
+      getBranches: async (projectPath: string) => getBranchesImpl(projectPath),
+      listWorktrees: async (projectPath: string) => listWorktreesImpl(projectPath),
       createWorktree: async (
         repoRootPath: string,
         options: { name?: string; branchName: string; baseBranch?: string; targetPath: string }
@@ -164,6 +166,16 @@ function resetStoreState() {
   })
 }
 
+async function waitFor(assertion: () => boolean, timeoutMs = 250): Promise<void> {
+  const startedAt = Date.now()
+  while (!assertion()) {
+    if (Date.now() - startedAt > timeoutMs) {
+      throw new Error("Timed out waiting for condition")
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  }
+}
+
 describe("projectStore", () => {
   beforeEach(() => {
     storeData.clear()
@@ -171,6 +183,8 @@ describe("projectStore", () => {
     readDirCalls.length = 0
     discoveredWorktrees = []
     gitBranchesResponse = null
+    getBranchesImpl = async (_projectPath) => gitBranchesResponse
+    listWorktreesImpl = async (_projectPath) => discoveredWorktrees
     createWorktreeImpl = async (_repoRootPath, options) => ({
       worktree: {
         branchName: options.branchName,
@@ -408,6 +422,110 @@ describe("projectStore", () => {
     expect(state.focusedProjectId).toBe("project-1")
     expect(state.activeWorktreeId).toBeNull()
     expect((storeData.get("activeWorktreeId") as string | null) ?? null).toBeNull()
+  })
+
+  test("loadProjects restores persisted projects before async refresh completes", async () => {
+    storeData.set("projects", [
+      createPersistedProject({
+        rootWorktreeId: "root-worktree",
+        selectedWorktreeId: "root-worktree",
+        targetBranch: "stale-main",
+      }),
+    ])
+    storeData.set("selectedProjectId", "project-1")
+
+    let releaseBranches: (() => void) | null = null
+    const branchesGate = new Promise<void>((resolve) => {
+      releaseBranches = resolve
+    })
+
+    listWorktreesImpl = async () => [
+      {
+        path: "/tmp/repo",
+        branchName: "main",
+        isMain: true,
+      },
+      {
+        path: "/tmp/.nucleus-worktrees/repo-project-1/feature-fast-restore",
+        branchName: "feature/fast-restore",
+        isMain: false,
+      },
+    ]
+
+    getBranchesImpl = async () => {
+      await branchesGate
+      return {
+        currentBranch: "main",
+        defaultBranch: "origin/main",
+      }
+    }
+
+    const loadPromise = useProjectStore.getState().loadProjects()
+    await waitFor(() => useProjectStore.getState().isLoading === false)
+
+    const interimState = useProjectStore.getState()
+    expect(interimState.isLoading).toBe(false)
+    expect(interimState.projects).toHaveLength(1)
+    expect(interimState.focusedProjectId).toBe("project-1")
+    expect(interimState.activeWorktreeId).toBeNull()
+    expect(interimState.projects[0]?.worktrees).toHaveLength(1)
+
+    releaseBranches?.()
+    await loadPromise
+
+    const finalState = useProjectStore.getState()
+    expect(finalState.projects[0]?.worktrees).toHaveLength(2)
+    expect(finalState.activeWorktreeId).toBeNull()
+    expect((storeData.get("activeWorktreeId") as string | null) ?? null).toBeNull()
+  })
+
+  test("background refresh preserves a project selected during startup", async () => {
+    storeData.set("projects", [
+      createPersistedProject({
+        rootWorktreeId: "root-worktree-1",
+        selectedWorktreeId: "root-worktree-1",
+      }),
+      createPersistedProject({
+        id: "project-2",
+        name: "Repo Two",
+        path: "/tmp/repo-2",
+        repoRootPath: "/tmp/repo-2",
+        rootWorktreeId: "root-worktree-2",
+        selectedWorktreeId: "root-worktree-2",
+        targetBranch: "develop",
+      }),
+    ])
+    storeData.set("selectedProjectId", "project-1")
+
+    let releaseBranches: (() => void) | null = null
+    const branchesGate = new Promise<void>((resolve) => {
+      releaseBranches = resolve
+    })
+
+    getBranchesImpl = async (projectPath) => {
+      await branchesGate
+      return projectPath === "/tmp/repo-2"
+        ? {
+            currentBranch: "develop",
+            defaultBranch: "origin/develop",
+          }
+        : {
+            currentBranch: "main",
+            defaultBranch: "origin/main",
+          }
+    }
+
+    const loadPromise = useProjectStore.getState().loadProjects()
+    await waitFor(() => useProjectStore.getState().projects.length === 2)
+    await useProjectStore.getState().selectProject("project-2")
+
+    releaseBranches?.()
+    await loadPromise
+
+    const state = useProjectStore.getState()
+    expect(state.focusedProjectId).toBe("project-2")
+    expect(state.activeWorktreeId).toBe("root-worktree-2")
+    expect((storeData.get("selectedProjectId") as string | null) ?? null).toBe("project-2")
   })
 
   test("selecting a zero-worktree project focuses it and leaves activeWorktreeId null", async () => {

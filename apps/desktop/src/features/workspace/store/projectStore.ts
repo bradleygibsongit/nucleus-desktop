@@ -85,6 +85,12 @@ interface ProjectState {
 }
 
 let storeInstance: DesktopStoreHandle | null = null
+let loadProjectsPromise: Promise<void> | null = null
+let projectMutationVersion = 0
+
+function bumpProjectMutationVersion(): void {
+  projectMutationVersion += 1
+}
 
 async function getStore(): Promise<DesktopStoreHandle> {
   if (!storeInstance) {
@@ -115,6 +121,24 @@ function normalizeWorktree(
     createdAt: worktree.createdAt ?? fallback.createdAt,
     updatedAt: worktree.updatedAt ?? Date.now(),
   }
+}
+
+function normalizeWorktreeStatus(status: ProjectWorktree["status"] | null | undefined): ProjectWorktree["status"] {
+  if (status === "creating" || status === "error" || status === "ready") {
+    return status
+  }
+
+  return "ready"
+}
+
+function normalizeWorktreeIntentStatus(
+  status: ProjectWorktree["intentStatus"] | null | undefined
+): ProjectWorktree["intentStatus"] {
+  if (status === "pending" || status === "configured") {
+    return status
+  }
+
+  return "configured"
 }
 
 function sortWorktrees(worktrees: ProjectWorktree[]): ProjectWorktree[] {
@@ -229,6 +253,122 @@ function normalizeProjectRemoteName(remoteName: string | null | undefined): stri
 export function normalizeProjectSetupScript(setupScript: string | null | undefined): string | null {
   const normalized = setupScript?.trim()
   return normalized || null
+}
+
+function restorePersistedProject(project: LegacyProject): Project {
+  const now = project.addedAt ?? Date.now()
+  const { iconPath, actions, primaryActionId, workspacesPath, remoteName, setupScript } =
+    hydrateProjectActions(project)
+  const projectPath = project.path?.trim() || ""
+  const repoRootPath = project.repoRootPath?.trim() || projectPath
+  const faviconPath = normalizeProjectIconPath(project.faviconPath)
+  const hiddenWorktreePaths = Array.isArray(project.hiddenWorktreePaths)
+    ? project.hiddenWorktreePaths.filter((candidate): candidate is string => Boolean(candidate?.trim()))
+    : []
+  const hiddenWorktreePathSet = new Set(hiddenWorktreePaths)
+  const existingWorktrees = Array.isArray(project.worktrees) ? project.worktrees : []
+  const normalizedWorktrees = existingWorktrees
+    .map((worktree, index) => {
+      const worktreePath = worktree.path?.trim()
+      if (!worktreePath || hiddenWorktreePathSet.has(worktreePath)) {
+        return null
+      }
+
+      const source =
+        worktree.source === "managed" || worktree.source === "root"
+          ? worktree.source
+          : normalizeComparablePath(worktreePath) === normalizeComparablePath(repoRootPath)
+            ? "root"
+            : "managed"
+      const branchName = worktree.branchName?.trim() || project.targetBranch?.trim() || "No branch"
+      const name =
+        worktree.name?.trim() || (source === "root" ? "Root" : branchName || "Worktree")
+
+      return normalizeWorktree(
+        {
+          ...worktree,
+          status: normalizeWorktreeStatus(worktree.status),
+          intentStatus: normalizeWorktreeIntentStatus(worktree.intentStatus),
+        },
+        {
+          id: worktree.id ?? crypto.randomUUID(),
+          name,
+          branchName,
+          path: worktreePath,
+          source,
+          createdAt: worktree.createdAt ?? now + index,
+        }
+      )
+    })
+    .filter((worktree): worktree is ProjectWorktree => worktree != null)
+
+  const hasVisibleRootWorktree = normalizedWorktrees.some(
+    (worktree) =>
+      worktree.source === "root" ||
+      normalizeComparablePath(worktree.path) === normalizeComparablePath(repoRootPath)
+  )
+
+  if (repoRootPath && !hiddenWorktreePathSet.has(repoRootPath) && !hasVisibleRootWorktree) {
+    normalizedWorktrees.unshift(
+      normalizeWorktree(
+        {
+          id: project.rootWorktreeId ?? undefined,
+        },
+        {
+          id: project.rootWorktreeId ?? crypto.randomUUID(),
+          name: "Root",
+          branchName: project.targetBranch?.trim() || "No branch",
+          path: repoRootPath,
+          source: "root",
+          createdAt: now,
+        }
+      )
+    )
+  }
+
+  const sortedWorktrees = sortWorktrees(normalizedWorktrees)
+  const matchingProjectPathWorktree = sortedWorktrees.find(
+    (worktree) => normalizeComparablePath(worktree.path) === normalizeComparablePath(projectPath)
+  )
+  const fallbackSelectedWorktree =
+    matchingProjectPathWorktree ??
+    sortedWorktrees.find((worktree) => worktree.id === project.rootWorktreeId) ??
+    sortedWorktrees.find((worktree) => worktree.status === "ready") ??
+    sortedWorktrees[0] ??
+    null
+  const fallbackRootWorktree =
+    sortedWorktrees.find((worktree) => worktree.id === project.rootWorktreeId) ??
+    matchingProjectPathWorktree ??
+    sortedWorktrees.find((worktree) => worktree.source === "root") ??
+    sortedWorktrees.find((worktree) => worktree.status === "ready") ??
+    sortedWorktrees[0] ??
+    null
+  const selectedWorktreeId = sortedWorktrees.some((worktree) => worktree.id === project.selectedWorktreeId)
+    ? project.selectedWorktreeId ?? fallbackSelectedWorktree?.id ?? null
+    : fallbackSelectedWorktree?.id ?? null
+  const rootWorktreeId = sortedWorktrees.some((worktree) => worktree.id === project.rootWorktreeId)
+    ? project.rootWorktreeId ?? fallbackRootWorktree?.id ?? null
+    : fallbackRootWorktree?.id ?? null
+
+  return {
+    id: project.id,
+    name: project.name?.trim() || projectPath.split("/").pop() || projectPath,
+    iconPath,
+    faviconPath,
+    path: projectPath,
+    repoRootPath,
+    workspacesPath,
+    rootWorktreeId,
+    selectedWorktreeId,
+    targetBranch: project.targetBranch?.trim() || fallbackRootWorktree?.branchName || null,
+    remoteName,
+    setupScript,
+    hiddenWorktreePaths,
+    worktrees: sortedWorktrees,
+    addedAt: project.addedAt ?? now,
+    actions,
+    primaryActionId,
+  }
 }
 
 function hydrateProjectActions(
@@ -505,54 +645,92 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   isLoading: true,
 
   loadProjects: async () => {
-    try {
-      const store = await getStore()
-      const persisted = await store.get<LegacyProject[]>(STORE_KEY)
-      const savedLocation = await store.get<string>(DEFAULT_LOCATION_KEY)
-      const savedFocusedId = await store.get<string>(SELECTED_PROJECT_KEY)
+    if (loadProjectsPromise) {
+      return loadProjectsPromise
+    }
 
-      let defaultLoc = savedLocation || ""
-      if (!defaultLoc) {
-        try {
-          defaultLoc = await desktop.fs.homeDir()
-        } catch {
-          defaultLoc = ""
+    loadProjectsPromise = (async () => {
+      try {
+        const store = await getStore()
+        const persisted = await store.get<LegacyProject[]>(STORE_KEY)
+        const savedLocation = await store.get<string>(DEFAULT_LOCATION_KEY)
+        const savedFocusedId = await store.get<string>(SELECTED_PROJECT_KEY)
+
+        let defaultLoc = savedLocation || ""
+        if (!defaultLoc) {
+          try {
+            defaultLoc = await desktop.fs.homeDir()
+          } catch {
+            defaultLoc = ""
+          }
         }
-      }
 
-      if (!persisted || !Array.isArray(persisted)) {
+        if (!persisted || !Array.isArray(persisted)) {
+          set({
+            projects: [],
+            focusedProjectId: null,
+            activeWorktreeId: null,
+            defaultLocation: defaultLoc,
+            isLoading: false,
+          })
+          return
+        }
+
+        const restoredProjects = persisted.map((project) => restorePersistedProject(project))
+        const restoredFocusedProjectId = resolveFocusedProjectId(restoredProjects, savedFocusedId ?? null)
+        const refreshMutationVersion = projectMutationVersion
+
         set({
-          projects: [],
-          focusedProjectId: null,
+          projects: restoredProjects,
+          focusedProjectId: restoredFocusedProjectId,
           activeWorktreeId: null,
           defaultLocation: defaultLoc,
           isLoading: false,
         })
-        return
+
+        const refreshedProjects = await Promise.all(
+          restoredProjects.map((project) => hydrateProject(project))
+        )
+
+        if (projectMutationVersion !== refreshMutationVersion) {
+          return
+        }
+
+        const currentState = get()
+        const focusedProjectId = resolveFocusedProjectId(refreshedProjects, currentState.focusedProjectId)
+        const focusedProject =
+          (focusedProjectId
+            ? refreshedProjects.find((project) => project.id === focusedProjectId)
+            : null) ?? null
+        const activeWorktreeId =
+          currentState.activeWorktreeId == null
+            ? null
+            : getActiveWorktree(focusedProject, currentState.activeWorktreeId)?.id ?? null
+
+        await persistProjects(refreshedProjects, focusedProjectId, activeWorktreeId)
+
+        set({
+          projects: refreshedProjects,
+          focusedProjectId,
+          activeWorktreeId,
+          defaultLocation: currentState.defaultLocation,
+          isLoading: false,
+        })
+      } catch (error) {
+        console.error("Failed to load projects:", error)
+        set({
+          projects: [],
+          focusedProjectId: null,
+          activeWorktreeId: null,
+          defaultLocation: "",
+          isLoading: false,
+        })
+      } finally {
+        loadProjectsPromise = null
       }
+    })()
 
-      const projects = await Promise.all(persisted.map((project) => hydrateProject(project)))
-      const focusedProjectId = resolveFocusedProjectId(projects, savedFocusedId ?? null)
-
-      await persistProjects(projects, focusedProjectId, null)
-
-      set({
-        projects,
-        focusedProjectId,
-        activeWorktreeId: null,
-        defaultLocation: defaultLoc,
-        isLoading: false,
-      })
-    } catch (error) {
-      console.error("Failed to load projects:", error)
-      set({
-        projects: [],
-        focusedProjectId: null,
-        activeWorktreeId: null,
-        defaultLocation: "",
-        isLoading: false,
-      })
-    }
+    return loadProjectsPromise
   },
 
   addProject: async (path, name) => {
@@ -566,6 +744,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const nextProjects = [newProject, ...projects]
     const nextActiveWorktreeId = getActiveWorktree(newProject, null)?.id ?? null
 
+    bumpProjectMutationVersion()
     await persistProjects(nextProjects, newProject.id, nextActiveWorktreeId)
     set({
       projects: nextProjects,
@@ -583,6 +762,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       focusedProjectId === id ? null : activeWorktreeId
     )
 
+    bumpProjectMutationVersion()
     await persistProjects(nextProjects, selection.focusedProjectId, selection.activeWorktreeId)
     set({
       projects: nextProjects,
@@ -598,6 +778,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ projects })
 
     try {
+      bumpProjectMutationVersion()
       await persistProjects(projects, get().focusedProjectId, get().activeWorktreeId)
     } catch (error) {
       console.error("Failed to persist project order:", error)
@@ -637,6 +818,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
     const nextProjects = replaceProject(get().projects, nextProject)
 
+    bumpProjectMutationVersion()
     await persistProjects(nextProjects, projectId, worktreeId)
     set({
       projects: nextProjects,
@@ -725,6 +907,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         ),
       }
       const readyProjects = replaceProject(get().projects, readyProject)
+      bumpProjectMutationVersion()
       await persistProjects(readyProjects, project.id, readyWorktree.id)
       set({
         projects: readyProjects,
@@ -749,6 +932,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         get().focusedProjectId,
         get().activeWorktreeId
       )
+      bumpProjectMutationVersion()
       await persistProjects(failedProjects, selection.focusedProjectId, selection.activeWorktreeId)
       set({
         projects: failedProjects,
@@ -831,6 +1015,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         ),
       }
       const readyProjects = replaceProject(get().projects, readyProject)
+      bumpProjectMutationVersion()
       await persistProjects(
         readyProjects,
         activateOnSuccess ? project.id : get().focusedProjectId,
@@ -857,6 +1042,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         get().focusedProjectId,
         get().activeWorktreeId
       )
+      bumpProjectMutationVersion()
       await persistProjects(failedProjects, selection.focusedProjectId, selection.activeWorktreeId)
       set({
         projects: failedProjects,
@@ -934,6 +1120,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       ),
     }
     const nextProjects = replaceProject(get().projects, nextProject)
+    bumpProjectMutationVersion()
     await persistProjects(nextProjects, get().focusedProjectId, get().activeWorktreeId)
     set({ projects: nextProjects })
     if (renamedWorktree.worktree.path !== worktree.path) {
@@ -993,6 +1180,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
             get().activeWorktreeId === worktreeId ? null : get().activeWorktreeId
           )
 
+      bumpProjectMutationVersion()
       await persistProjects(nextProjects, selection.focusedProjectId, selection.activeWorktreeId)
       set({
         projects: nextProjects,
@@ -1027,6 +1215,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           get().activeWorktreeId === worktreeId ? null : get().activeWorktreeId
         )
 
+    bumpProjectMutationVersion()
     await persistProjects(nextProjects, selection.focusedProjectId, selection.activeWorktreeId)
     set({
       projects: nextProjects,
@@ -1058,6 +1247,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         : project
     )
 
+    bumpProjectMutationVersion()
     await persistProjects(nextProjects, get().focusedProjectId, get().activeWorktreeId)
     set({ projects: nextProjects })
   },
@@ -1072,6 +1262,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         : project
     )
 
+    bumpProjectMutationVersion()
     await persistProjects(nextProjects, get().focusedProjectId, get().activeWorktreeId)
     set({ projects: nextProjects })
   },
@@ -1106,6 +1297,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       throw new Error(`Unknown project: ${projectId}`)
     }
 
+    bumpProjectMutationVersion()
     await persistProjects(nextProjects, get().focusedProjectId, get().activeWorktreeId)
     set({ projects: nextProjects })
     return nextAction
@@ -1143,6 +1335,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       throw new Error(`Unknown project action: ${projectId}/${actionId}`)
     }
 
+    bumpProjectMutationVersion()
     await persistProjects(nextProjects, get().focusedProjectId, get().activeWorktreeId)
     set({ projects: nextProjects })
     return updatedAction
@@ -1172,6 +1365,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       throw new Error(`Unknown project action: ${projectId}/${actionId}`)
     }
 
+    bumpProjectMutationVersion()
     await persistProjects(nextProjects, get().focusedProjectId, get().activeWorktreeId)
     set({ projects: nextProjects })
   },
@@ -1188,6 +1382,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       }
     })
 
+    bumpProjectMutationVersion()
     await persistProjects(nextProjects, get().focusedProjectId, get().activeWorktreeId)
     set({ projects: nextProjects })
   },

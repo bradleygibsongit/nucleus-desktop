@@ -1,8 +1,12 @@
 import { $createLineBreakNode, $createParagraphNode, $createTextNode, $getRoot, $isElementNode, $isLineBreakNode, $isTextNode, type LexicalNode } from "lexical"
 import type { NormalizedCommand } from "../../hooks/useCommands"
+import type { DraftChatAttachment } from "./attachments"
+import { ATTACHMENT_CHIP_PATTERN, buildAttachmentChipToken } from "./attachments"
 import { $createSkillChipNode, $isSkillChipNode } from "../SkillChipNode"
+import { $createUploadChipNode, $isUploadChipNode } from "../UploadChipNode"
 
 export const SKILL_REFERENCE_PATTERN = /\$([a-z0-9][a-z0-9-]*)/gi
+const COMPOSER_TOKEN_PATTERN = /\[\[nucleus-upload:[A-Za-z0-9_-]+\]\]|\$([a-z0-9][a-z0-9-]*)/gi
 
 function appendTextNodesToParagraph(
   text: string,
@@ -23,7 +27,8 @@ function appendTextNodesToParagraph(
 
 export function populateComposerFromSerializedValue(
   value: string,
-  commandsByReference: Map<string, NormalizedCommand>
+  commandsByReference: Map<string, NormalizedCommand>,
+  attachmentsById: Map<string, DraftChatAttachment> = new Map()
 ) {
   const root = $getRoot()
   const paragraph = $createParagraphNode()
@@ -31,12 +36,9 @@ export function populateComposerFromSerializedValue(
 
   root.clear()
 
-  for (const match of value.matchAll(SKILL_REFERENCE_PATTERN)) {
+  for (const match of value.matchAll(COMPOSER_TOKEN_PATTERN)) {
     const fullMatch = match[0]
-    const rawReference = match[1]
     const matchIndex = match.index ?? -1
-    const referenceName = rawReference.toLowerCase()
-    const command = commandsByReference.get(referenceName)
 
     if (matchIndex < 0) {
       continue
@@ -46,6 +48,30 @@ export function populateComposerFromSerializedValue(
     if (textBefore.length > 0) {
       appendTextNodesToParagraph(textBefore, paragraph)
     }
+
+    const attachmentMatch = fullMatch.match(ATTACHMENT_CHIP_PATTERN)
+    const attachmentId = attachmentMatch?.[0]
+      ? fullMatch.slice("[[nucleus-upload:".length, -"]]".length)
+      : null
+
+    if (attachmentId) {
+      const attachment = attachmentsById.get(attachmentId)
+
+      if (attachment) {
+        paragraph.append(
+          $createUploadChipNode(attachment.id, attachment.kind, attachment.label)
+        )
+      } else {
+        appendTextNodesToParagraph(fullMatch, paragraph)
+      }
+
+      lastIndex = matchIndex + fullMatch.length
+      continue
+    }
+
+    const rawReference = match[1]
+    const referenceName = rawReference?.toLowerCase() ?? ""
+    const command = commandsByReference.get(referenceName)
 
     if (command?.referenceName) {
       paragraph.append($createSkillChipNode(command.referenceName, command.name))
@@ -68,6 +94,10 @@ export function populateComposerFromSerializedValue(
 function serializeComposerNode(node: LexicalNode): string {
   if ($isSkillChipNode(node)) {
     return `$${node.getReferenceName()}`
+  }
+
+  if ($isUploadChipNode(node)) {
+    return buildAttachmentChipToken(node.getAttachmentId())
   }
 
   if ($isLineBreakNode(node)) {

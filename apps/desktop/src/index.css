@@ -338,10 +338,24 @@
 
 @keyframes dot-pulse {
   0%, 100% {
-    opacity: 0.2;
+    opacity: 0.06;
+    transform: scale(0.5);
+  }
+  15% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1.5);
   }
   50% {
-    opacity: 1;
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  65% {
+    opacity: 0.06;
+    transform: scale(0.5);
   }
 }
 
@@ -351,6 +365,25 @@
   }
   50% {
     opacity: 1;
+  }
+}
+
+@keyframes dot-connect {
+  0%, 100% {
+    opacity: 0.16;
+    transform: scale(0.8);
+  }
+  35% {
+    opacity: 0.42;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 0.78;
+    transform: scale(1.08);
+  }
+  70% {
+    opacity: 0.34;
+    transform: scale(0.92);
   }
 }
 

@@ -22,6 +22,7 @@ import type {
   GitWorktreeSummary,
   ProjectFileSystemEvent,
   ReadFileAsDataUrlOptions,
+  RemovePathOptions,
   SkillsSyncResponse,
   TerminalCreateSessionEnvironment,
   TerminalDataEvent,
@@ -61,11 +62,15 @@ contextBridge.exposeInMainWorld("nucleus", {
       ipcRenderer.invoke(IPC_CHANNELS.fsReadFileAsDataUrl, path, options) as Promise<string>,
     writeTextFile: (path: string, content: string, options?: WriteTextFileOptions) =>
       ipcRenderer.invoke(IPC_CHANNELS.fsWriteTextFile, path, content, options) as Promise<void>,
+    writeDataUrlFile: (path: string, dataUrl: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.fsWriteDataUrlFile, path, dataUrl) as Promise<void>,
     exists: (path: string) => ipcRenderer.invoke(IPC_CHANNELS.fsExists, path) as Promise<boolean>,
     readDir: (path: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.fsReadDir, path) as Promise<DesktopDirEntry[]>,
     mkdir: (path: string, options?: { recursive?: boolean }) =>
       ipcRenderer.invoke(IPC_CHANNELS.fsMkdir, path, options) as Promise<void>,
+    removePath: (path: string, options?: RemovePathOptions) =>
+      ipcRenderer.invoke(IPC_CHANNELS.fsRemovePath, path, options) as Promise<void>,
     homeDir: () => ipcRenderer.invoke(IPC_CHANNELS.fsHomeDir) as Promise<string>,
     getPathForFile: (file: File) => {
       try {
@@ -200,6 +205,12 @@ contextBridge.exposeInMainWorld("nucleus", {
         IPC_CHANNELS.gitMergePullRequest,
         projectPath
       ) as Promise<GitMergePullRequestResult>,
+    ensureInfoExcludeEntries: (projectPath: string, entries: string[]) =>
+      ipcRenderer.invoke(
+        IPC_CHANNELS.gitEnsureInfoExcludeEntries,
+        projectPath,
+        entries
+      ) as Promise<void>,
     runStackedAction: (projectPath: string, input: GitRunStackedActionInput) =>
       ipcRenderer.invoke(
         IPC_CHANNELS.gitRunStackedAction,
