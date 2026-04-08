@@ -3,12 +3,9 @@
 ## One-time setup
 
 1. Add GitHub repository secrets for publishing and code signing.
-   - `KEYGEN_TOKEN` for publishing desktop artifacts to Keygen
+   - `GH_TOKEN` or the default `GITHUB_TOKEN` for release publishing
    - macOS signing/notarization secrets if you want trusted macOS installers
    - Windows signing secrets if you want signed NSIS installers
-2. Configure the Keygen product used by Nucleus.
-   - For internal testing, prefer an `OPEN` distribution strategy so testers can install and update without license auth.
-   - When you later move to paid or gated access, switch distribution to licensed access and provide an authorization header to the updater.
 
 ## Optional code signing
 
@@ -21,7 +18,7 @@
 1. Bump the version in `apps/desktop/package.json`.
 2. Commit the version bump.
 3. Create and push a tag like `v0.2.0`.
-4. GitHub Actions builds macOS and Windows installers, uploads them to Keygen, and publishes Electron update metadata (`latest.yml`, `latest-mac.yml`) to the configured Keygen channel.
+4. GitHub Actions builds macOS and Windows installers, uploads them to the GitHub Release, and publishes Electron update metadata (`latest.yml`, `latest-mac.yml`).
 
 ## Local release build
 
@@ -33,6 +30,5 @@ bun run desktop:dist
 
 ## In-app updates
 
-- The packaged app checks Keygen through `electron-updater`.
-- Internal builds can override the update channel with `NUCLEUS_UPDATE_CHANNEL`.
-- If distribution is gated later, set `NUCLEUS_UPDATE_AUTH_HEADER` in the packaged app directory or user data `.env` file so the updater can authenticate its requests.
+- The packaged app checks GitHub Releases through `electron-updater`.
+- When GitHub Releases contains a newer compatible build, Nucleus shows an in-app update banner, downloads the installer, and installs it directly.

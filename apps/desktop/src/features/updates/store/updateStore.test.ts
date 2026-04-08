@@ -77,7 +77,7 @@ describe("useAppUpdateStore.checkForUpdates", () => {
   test("keeps silent startup failures out of the visible error state", async () => {
     checkForUpdatesMock.mockRejectedValue(
       new Error(
-        "In-app updates are unavailable in this build. Install Nucleus from a packaged release build to use the updater."
+        "In-app updates are unavailable in this build. Install Nucleus from a signed GitHub release to use the updater."
       )
     )
 
@@ -91,7 +91,7 @@ describe("useAppUpdateStore.checkForUpdates", () => {
   test("surfaces explicit update-check failures to the user", async () => {
     checkForUpdatesMock.mockRejectedValue(
       new Error(
-        "In-app updates are unavailable in this build. Install Nucleus from a packaged release build to use the updater."
+        "In-app updates are unavailable in this build. Install Nucleus from a signed GitHub release to use the updater."
       )
     )
 

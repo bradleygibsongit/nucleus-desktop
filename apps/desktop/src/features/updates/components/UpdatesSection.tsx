@@ -33,7 +33,7 @@ export function UpdatesSection() {
     phase === "available"
       ? `Version ${availableUpdate?.version} is available`
       : phase === "checking"
-        ? "Checking the release feed"
+        ? "Checking GitHub Releases"
         : phase === "downloading"
           ? contentLength
             ? `Downloading ${formatBytes(downloadedBytes)} of ${formatBytes(contentLength)}`
@@ -60,11 +60,11 @@ export function UpdatesSection() {
               <p className="text-sm font-medium tracking-tight text-card-foreground">{statusLabel}</p>
             </div>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Nucleus checks the configured Keygen release feed for compatible installer updates and can install them in-app.
+              Nucleus checks GitHub Releases for signed installer updates and can install them in-app.
             </p>
             <div className="mt-3 space-y-1.5 text-sm text-muted-foreground">
               <div>Last checked: {formatCheckedAt(lastCheckedAt)}</div>
-              <div>Source: Keygen release feed</div>
+              <div>Source: GitHub Releases for bradleygibsongit/nucleus-desktop</div>
               {availableUpdate ? <div>Current version: {availableUpdate.currentVersion}</div> : null}
               {availableUpdate ? <div>Latest version: {availableUpdate.version}</div> : null}
             </div>

@@ -9,10 +9,8 @@ import { capture, captureException } from "./analytics"
 
 const { autoUpdater } = electronUpdater
 const APP_UPDATE_CONFIG = "app-update.yml"
-const UPDATE_AUTH_HEADER_ENV = "NUCLEUS_UPDATE_AUTH_HEADER"
-const UPDATE_CHANNEL_ENV = "NUCLEUS_UPDATE_CHANNEL"
 const UPDATE_UNAVAILABLE_MESSAGE =
-  "In-app updates are unavailable in this build. Download the latest Nucleus release manually to update."
+  "In-app updates are unavailable in this build. Download the latest GitHub release manually to update."
 const PRIVATE_GITHUB_RELEASES_MESSAGE =
   "Automatic updates are unavailable because this build checks a private or inaccessible GitHub Releases feed. Publish updates from a public release feed or install the latest release manually."
 
@@ -51,11 +49,6 @@ function normalizeUpdateError(error: unknown): Error {
   return error
 }
 
-function readConfiguredEnv(name: string): string | null {
-  const value = process.env[name]?.trim()
-  return value ? value : null
-}
-
 export class UpdaterService {
   private availableUpdate: UpdateInfo | null = null
   private isBound = false
@@ -80,7 +73,6 @@ export class UpdaterService {
       throw new Error(UPDATE_UNAVAILABLE_MESSAGE)
     }
 
-    this.configureProvider()
     this.bindEvents()
 
     this.availableUpdate = null
@@ -119,7 +111,6 @@ export class UpdaterService {
       throw new Error("There is no pending app update to install.")
     }
 
-    this.configureProvider()
     capture("update_install_started", {
       target_version: this.availableUpdate.version,
       current_version: app.getVersion(),
@@ -136,18 +127,6 @@ export class UpdaterService {
 
     await autoUpdater.downloadUpdate()
     autoUpdater.quitAndInstall()
-  }
-
-  private configureProvider(): void {
-    const authHeader = readConfiguredEnv(UPDATE_AUTH_HEADER_ENV)
-    if (authHeader) {
-      autoUpdater.addAuthHeader(authHeader)
-    }
-
-    const channel = readConfiguredEnv(UPDATE_CHANNEL_ENV)
-    if (channel) {
-      autoUpdater.channel = channel
-    }
   }
 
   private bindEvents(): void {
