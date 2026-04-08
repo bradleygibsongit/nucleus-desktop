@@ -1,10 +1,14 @@
-import { ArrowUp02, Brain, CaretDown, CheckCircle, Circle, DocumentValidation, Stop, X, Zap } from "@/components/icons"
+import { ArrowUp02, Brain, CaretDown, CheckCircle, Circle, DocumentValidation, Paperclip, Stop, X, Zap } from "@/components/icons"
+import { desktop } from "@/desktop/client"
 import {
   useState,
   useRef,
   useCallback,
   useMemo,
   useEffect,
+  type ChangeEvent as ReactChangeEvent,
+  type ClipboardEvent as ReactClipboardEvent,
+  type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type FormEvent,
@@ -30,6 +34,7 @@ import { Loader } from "./ai-elements/loader"
 import { ComposerEditorSurface } from "./composer/ComposerEditorSurface"
 import { ApprovalPromptSurface } from "./composer/ApprovalPromptSurface"
 import { StructuredPromptSurface } from "./composer/StructuredPromptSurface"
+import { ComposerFloatingOverlay } from "./composer/ComposerFloatingOverlay"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -55,10 +60,12 @@ import {
   type LexicalNode,
 } from "lexical"
 import { $createSkillChipNode, $isSkillChipNode, SkillChipNode } from "./SkillChipNode"
+import { $isUploadChipNode, $createUploadChipNode, UploadChipNode } from "./UploadChipNode"
 import { cn } from "@/lib/utils"
 import { useCurrentProjectWorktree } from "@/features/shared/hooks"
 import { useChatStore } from "../store"
 import { useSettingsStore } from "@/features/settings/store/settingsStore"
+import { useTabStore } from "@/features/editor/store"
 import {
   formatShortcutBinding,
   getShortcutBinding,
@@ -72,17 +79,29 @@ import {
   resolveSessionSelectedModelId,
 } from "./chatInputModelSelection"
 import { ModelLogo, getModelLogoKind, type ModelLogoKind } from "./ModelLogo"
+import {
+  collectAttachmentIdsFromComposerValue,
+  createDraftAttachment,
+  getComposerTextInput,
+  isLargeTextPaste,
+  type DraftChatAttachment,
+} from "./composer/attachments"
+import { getActiveSlashCommandQuery } from "./chatInputSlashCommands"
+import { normalizeChatInputAttachments, noopSetChatInputAttachments } from "./chatInputAttachments"
 
 interface ChatInputProps {
   sessionId?: string | null
   input: string
   setInput: (value: string) => void
+  attachments?: DraftChatAttachment[]
+  setAttachments?: (attachments: DraftChatAttachment[]) => void
   isLocked?: boolean
   placement?: "docked" | "intro"
   allowSlashCommands?: boolean
   onSubmit: (
     text: string,
     options?: {
+      attachments?: DraftChatAttachment[]
       agent?: string
       collaborationMode?: "default" | "plan"
       model?: string
@@ -131,6 +150,8 @@ export function ChatInput({
   sessionId = null,
   input,
   setInput,
+  attachments: rawAttachments,
+  setAttachments = noopSetChatInputAttachments,
   isLocked = false,
   placement = "docked",
   allowSlashCommands = true,
@@ -143,11 +164,14 @@ export function ChatInput({
   onAnswerPrompt,
   onDismissPrompt,
 }: ChatInputProps) {
-  const { selectedWorktreeId } = useCurrentProjectWorktree()
+  const attachments = normalizeChatInputAttachments(rawAttachments)
+  const { selectedWorktreeId, selectedWorktreePath } = useCurrentProjectWorktree()
   const projectChat = useChatStore((state) =>
     selectedWorktreeId ? state.getProjectChat(selectedWorktreeId) : null
   )
+  const createOptimisticSession = useChatStore((state) => state.createOptimisticSession)
   const setSessionModel = useChatStore((state) => state.setSessionModel)
+  const openChatSession = useTabStore((state) => state.openChatSession)
   const initializeSettings = useSettingsStore((state) => state.initialize)
   const codexDefaultModel = useSettingsStore((state) => state.codexDefaultModel)
   const codexDefaultReasoningEffort = useSettingsStore((state) => state.codexDefaultReasoningEffort)
@@ -164,8 +188,7 @@ export function ChatInput({
   const [isImeComposing, setIsImeComposing] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [dismissedMenuKey, setDismissedMenuKey] = useState<string | null>(null)
-  const [slashQuery, setSlashQuery] = useState("")
-  const [isSlashMenuOpen, setIsSlashMenuOpen] = useState(false)
+  const [isSlashMenuDismissed, setIsSlashMenuDismissed] = useState(false)
   const [isPlanModeEnabled, setIsPlanModeEnabled] = useState(false)
   const [reasoningEffortOverride, setReasoningEffortOverride] = useState<RuntimeReasoningEffort | null>(null)
   const [fastModeOverride, setFastModeOverride] = useState<boolean | null>(null)
@@ -174,6 +197,7 @@ export function ChatInput({
   const [currentPromptQuestionIndex, setCurrentPromptQuestionIndex] = useState(0)
   const { models: availableModels, isLoading: isLoadingModels } = useModels(selectedHarnessId)
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const focusChatInputShortcut = useMemo(() => getShortcutBinding("focus-chat-input"), [])
   const planModeShortcut = useMemo(() => getShortcutBinding("toggle-plan-mode"), [])
   const planModeShortcutLabel = useMemo(
@@ -181,9 +205,27 @@ export function ChatInput({
     [planModeShortcut]
   )
   const editorRef = useRef<LexicalEditor | null>(null)
+  const composerMenuAnchorRef = useRef<HTMLDivElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const serializedComposerValueRef = useRef(input)
   const previousCommandSignatureRef = useRef("")
   const skipNextPlanToggleClickRef = useRef(false)
+  const suppressNextSubmitRef = useRef(false)
+  const submittedAttachmentIdsRef = useRef<Set<string>>(new Set())
+  const latestAttachmentsRef = useRef<DraftChatAttachment[]>(attachments)
+  const attachmentsById = useMemo(
+    () => new Map(attachments.map((attachment) => [attachment.id, attachment] as const)),
+    [attachments]
+  )
+  const composerTextInput = useMemo(() => getComposerTextInput(input), [input])
+  const slashCommandQuery = useMemo(
+    () => getActiveSlashCommandQuery(composerTextInput),
+    [composerTextInput]
+  )
+
+  useEffect(() => {
+    latestAttachmentsRef.current = attachments
+  }, [attachments])
 
   const togglePlanMode = useCallback(() => {
     setIsPlanModeEnabled((current) => !current)
@@ -324,22 +366,22 @@ export function ChatInput({
         ? "Fast mode is on. Codex will prefer faster responses with higher credit usage."
         : "Fast mode is off. Enable it for faster Codex responses on GPT-5.4."
   const isPlanModeAvailable = true
-  const skillCommands = useMemo(
-    () => commands.filter((command) => !!command.referenceName),
+  const insertableCommands = useMemo(
+    () => commands.filter((command) => command.execution === "insert" && !!command.referenceName),
     [commands]
   )
   const commandsByReference = useMemo(
     () =>
       new Map(
-        skillCommands.flatMap((command) =>
+        insertableCommands.flatMap((command) =>
           command.referenceName ? [[command.referenceName.toLowerCase(), command] as const] : []
         )
       ),
-    [skillCommands]
+    [insertableCommands]
   )
   const commandSignature = useMemo(
-    () => skillCommands.map((command) => command.referenceName).filter(Boolean).join("|"),
-    [skillCommands]
+    () => insertableCommands.map((command) => command.referenceName).filter(Boolean).join("|"),
+    [insertableCommands]
   )
 
   const isStreaming = status === "streaming"
@@ -360,22 +402,29 @@ export function ChatInput({
     ? currentPromptQuestionIndex === activeQuestionPrompt.questions.length - 1
     : false
 
-  const atMenuKey = input.startsWith("@") ? `at:${input}` : null
+  const atMenuKey = composerTextInput.startsWith("@") ? `at:${composerTextInput}` : null
   const showSlashMenu =
-    allowSlashCommands && !isPromptActive && !isComposerLocked && isSlashMenuOpen && !isStreaming
+    allowSlashCommands &&
+    !isPromptActive &&
+    !isComposerLocked &&
+    !isStreaming &&
+    slashCommandQuery !== null &&
+    !isSlashMenuDismissed
 
   const showAtMenu =
     !isPromptActive &&
     !isComposerLocked &&
-    input.startsWith("@") &&
+    composerTextInput.startsWith("@") &&
     !isStreaming &&
     dismissedMenuKey !== atMenuKey
-  const atQuery = showAtMenu ? input.slice(1) : ""
+  const atQuery = showAtMenu ? composerTextInput.slice(1) : ""
   const canSubmit = activeQuestionPrompt
     ? !!currentPromptQuestion && currentPromptQuestionAnswered
     : activeApprovalPrompt
       ? false
-    : input.trim().length > 0 && !isStreaming && !isComposerLocked
+    : (composerTextInput.trim().length > 0 || attachments.length > 0) &&
+        !isStreaming &&
+        !isComposerLocked
 
   useEffect(() => {
     void initializeSettings()
@@ -445,8 +494,7 @@ export function ChatInput({
 
   useEffect(() => {
     if (isPromptActive) {
-      setIsSlashMenuOpen(false)
-      setSlashQuery("")
+      setIsSlashMenuDismissed(false)
     }
   }, [isPromptActive])
 
@@ -455,8 +503,7 @@ export function ChatInput({
       return
     }
 
-    setIsSlashMenuOpen(false)
-    setSlashQuery("")
+    setIsSlashMenuDismissed(false)
     setDismissedMenuKey(null)
     setIsImeComposing(false)
     editorRef.current?.blur()
@@ -465,6 +512,12 @@ export function ChatInput({
       document.activeElement.blur()
     }
   }, [isComposerLocked])
+
+  useEffect(() => {
+    if (slashCommandQuery === null) {
+      setIsSlashMenuDismissed(false)
+    }
+  }, [slashCommandQuery])
 
   useEffect(() => {
     if (
@@ -505,10 +558,10 @@ export function ChatInput({
     }
 
     editor.update(() => {
-      populateComposerFromSerializedValue(input, commandsByReference)
+      populateComposerFromSerializedValue(input, commandsByReference, attachmentsById)
     })
     serializedComposerValueRef.current = input
-  }, [commandSignature, commandsByReference, input, isPromptActive])
+  }, [attachmentsById, commandSignature, commandsByReference, input, isPromptActive])
 
   // Search files when @ query changes
   useEffect(() => {
@@ -523,15 +576,15 @@ export function ChatInput({
   const filteredCommands = useMemo(() => {
     if (!showSlashMenu) return []
     
-    const lowerQuery = slashQuery.toLowerCase()
-    if (!lowerQuery) return skillCommands
+    const lowerQuery = slashCommandQuery?.toLowerCase() ?? ""
+    if (!lowerQuery) return commands
     
-    return skillCommands.filter(
+    return commands.filter(
       (cmd) =>
         cmd.name.toLowerCase().includes(lowerQuery) ||
         cmd.description.toLowerCase().includes(lowerQuery)
     )
-  }, [showSlashMenu, skillCommands, slashQuery])
+  }, [commands, showSlashMenu, slashCommandQuery])
 
   // Filter agents based on query
   const filteredAgents = useMemo(() => {
@@ -561,8 +614,33 @@ export function ChatInput({
     setSelectedIndex(0)
   }, [filteredCommands.length, atMenuTotalItems])
 
+  const runSystemSlashCommand = useCallback(
+    (command: NormalizedCommand) => {
+      if (command.action === "new-chat") {
+        if (!selectedWorktreeId || !selectedWorktreePath) {
+          return
+        }
+
+        const session = createOptimisticSession(selectedWorktreeId, selectedWorktreePath)
+        if (session) {
+          setInput("")
+          setDismissedMenuKey(null)
+          setIsSlashMenuDismissed(false)
+          openChatSession(session.id, session.title)
+        }
+      }
+    },
+    [createOptimisticSession, openChatSession, selectedWorktreeId, selectedWorktreePath, setInput]
+  )
+
   const handleSelectCommand = useCallback(
     (command: NormalizedCommand) => {
+      if (command.execution === "run") {
+        suppressNextSubmitRef.current = true
+        runSystemSlashCommand(command)
+        return
+      }
+
       const referenceName = command.referenceName
       const editor = editorRef.current
 
@@ -572,6 +650,10 @@ export function ChatInput({
 
       focusComposer()
       editor.update(() => {
+        if (getActiveSlashCommandQuery(getComposerTextInput(serializedComposerValueRef.current)) !== null) {
+          $getRoot().clear()
+        }
+
         let selection = $getSelection()
 
         if (!$isRangeSelection(selection)) {
@@ -589,10 +671,10 @@ export function ChatInput({
         ])
       })
       setDismissedMenuKey(null)
-      setIsSlashMenuOpen(false)
-      setSlashQuery("")
+      setIsSlashMenuDismissed(false)
+      suppressNextSubmitRef.current = true
     },
-    [focusComposer]
+    [focusComposer, runSystemSlashCommand]
   )
 
   const handleSelectAgent = useCallback(
@@ -617,9 +699,206 @@ export function ChatInput({
     [focusComposer, setInput]
   )
 
+  const removeDraftAttachmentsFromDisk = useCallback(async (removedAttachments: DraftChatAttachment[]) => {
+    await Promise.all(
+      removedAttachments.map(async (attachment) => {
+        try {
+          await desktop.fs.removePath(attachment.absolutePath, { force: true })
+        } catch (error) {
+          console.warn("[chat] Failed to remove staged attachment:", attachment.absolutePath, error)
+        }
+      })
+    )
+  }, [])
+
+  const insertAttachmentChips = useCallback(
+    (nextAttachments: DraftChatAttachment[]) => {
+      const editor = editorRef.current
+
+      if (!editor || nextAttachments.length === 0) {
+        return
+      }
+
+      editor.update(() => {
+        let selection = $getSelection()
+
+        if (!$isRangeSelection(selection)) {
+          $getRoot().selectEnd()
+          selection = $getSelection()
+        }
+
+        if (!$isRangeSelection(selection)) {
+          return
+        }
+
+        for (const attachment of nextAttachments) {
+          selection.insertNodes([
+            $createUploadChipNode(attachment.id, attachment.kind, attachment.label),
+            $createTextNode(" "),
+          ])
+        }
+      })
+    },
+    []
+  )
+
+  const appendDraftAttachments = useCallback(
+    (nextAttachments: DraftChatAttachment[]) => {
+      if (nextAttachments.length === 0) {
+        return
+      }
+
+      setUploadError(null)
+      const mergedAttachments = [...latestAttachmentsRef.current, ...nextAttachments]
+      latestAttachmentsRef.current = mergedAttachments
+      setAttachments(mergedAttachments)
+      requestAnimationFrame(() => {
+        focusComposer()
+        insertAttachmentChips(nextAttachments)
+      })
+    },
+    [focusComposer, insertAttachmentChips, setAttachments]
+  )
+
+  const ensureAttachmentStageRoot = useCallback(async () => {
+    if (!selectedWorktreePath) {
+      throw new Error("Select a project workspace before adding uploads.")
+    }
+
+    await desktop.git.ensureInfoExcludeEntries(selectedWorktreePath, ["/.nucleus/"])
+    return selectedWorktreePath
+  }, [selectedWorktreePath])
+
+  const readBrowserFileAsDataUrl = useCallback((file: Blob) => {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+
+      reader.onerror = () => {
+        reject(new Error("Failed to read the selected file."))
+      }
+      reader.onload = () => {
+        if (typeof reader.result === "string") {
+          resolve(reader.result)
+          return
+        }
+
+        reject(new Error("Failed to read the selected file."))
+      }
+
+      reader.readAsDataURL(file)
+    })
+  }, [])
+
+  const stageDataUrlAttachment = useCallback(
+    async ({
+      kind,
+      label,
+      fileName,
+      dataUrl,
+      mediaType,
+      sizeBytes,
+    }: {
+      kind: DraftChatAttachment["kind"]
+      label: string
+      fileName: string
+      dataUrl: string
+      mediaType?: string
+      sizeBytes?: number
+    }) => {
+      const worktreePath = await ensureAttachmentStageRoot()
+      const attachment = createDraftAttachment({
+        kind,
+        label,
+        worktreePath,
+        fileName,
+        mediaType,
+        sizeBytes,
+      })
+
+      await desktop.fs.writeDataUrlFile(attachment.absolutePath, dataUrl)
+      return attachment
+    },
+    [ensureAttachmentStageRoot]
+  )
+
+  const stageTextAttachment = useCallback(
+    async (text: string) => {
+      const worktreePath = await ensureAttachmentStageRoot()
+      const attachment = createDraftAttachment({
+        kind: "pasted_text",
+        label: "Pasted text",
+        worktreePath,
+        fileName: "pasted-text.txt",
+        mediaType: "text/plain",
+        sizeBytes: new TextEncoder().encode(text).length,
+      })
+
+      await desktop.fs.writeTextFile(attachment.absolutePath, text)
+      return attachment
+    },
+    [ensureAttachmentStageRoot]
+  )
+
+  const stageBrowserFiles = useCallback(
+    async (files: File[]) => {
+      const stagedAttachments: DraftChatAttachment[] = []
+
+      for (const file of files) {
+        const sourcePath = desktop.fs.getPathForFile(file)
+        const dataUrl = sourcePath
+          ? await desktop.fs.readFileAsDataUrl(sourcePath, {
+              mimeType: file.type || undefined,
+            })
+          : await readBrowserFileAsDataUrl(file)
+        const kind = file.type.startsWith("image/") ? "image" : "file"
+        const attachment = await stageDataUrlAttachment({
+          kind,
+          label: file.name,
+          fileName: file.name,
+          dataUrl,
+          mediaType: file.type || undefined,
+          sizeBytes: file.size,
+        })
+
+        stagedAttachments.push(attachment)
+      }
+
+      return stagedAttachments
+    },
+    [readBrowserFileAsDataUrl, stageDataUrlAttachment]
+  )
+
+  const reconcileDraftAttachments = useCallback(
+    (nextValue: string) => {
+      const retainedIds = new Set(collectAttachmentIdsFromComposerValue(nextValue))
+      const removedAttachments = attachments.filter((attachment) => !retainedIds.has(attachment.id))
+
+      if (removedAttachments.length === 0) {
+        return
+      }
+
+      const submittedIds = submittedAttachmentIdsRef.current
+      const attachmentsToDelete = removedAttachments.filter(
+        (attachment) => !submittedIds.has(attachment.id)
+      )
+
+      const nextAttachments = attachments.filter((attachment) => retainedIds.has(attachment.id))
+      latestAttachmentsRef.current = nextAttachments
+      setAttachments(nextAttachments)
+
+      if (attachmentsToDelete.length > 0) {
+        void removeDraftAttachmentsFromDisk(attachmentsToDelete)
+      }
+
+      if (removedAttachments.some((attachment) => submittedIds.has(attachment.id))) {
+        submittedAttachmentIdsRef.current = new Set()
+      }
+    },
+    [attachments, removeDraftAttachmentsFromDisk, setAttachments]
+  )
+
   const closeSlashMenu = useCallback(() => {
-    setIsSlashMenuOpen(false)
-    setSlashQuery("")
+    setIsSlashMenuDismissed(true)
   }, [])
 
   const closeAtMenu = useCallback(() => {
@@ -628,7 +907,7 @@ export function ChatInput({
     }
   }, [atMenuKey])
 
-  const deleteAdjacentSkillChip = useCallback(() => {
+  const deleteAdjacentChip = useCallback(() => {
     const editor = editorRef.current
 
     if (!editor) {
@@ -688,7 +967,7 @@ export function ChatInput({
         }
       }
 
-      if (!$isSkillChipNode(previousNode)) {
+      if (!$isSkillChipNode(previousNode) && !$isUploadChipNode(previousNode)) {
         return
       }
 
@@ -903,6 +1182,11 @@ export function ChatInput({
     (e?: FormEvent) => {
       e?.preventDefault()
 
+      if (suppressNextSubmitRef.current) {
+        suppressNextSubmitRef.current = false
+        return
+      }
+
       if (isComposerLocked) {
         return
       }
@@ -932,6 +1216,18 @@ export function ChatInput({
         return
       }
 
+      const activeSlashCommandQuery = allowSlashCommands
+        ? getActiveSlashCommandQuery(composerTextInput)
+        : null
+
+      if (activeSlashCommandQuery !== null) {
+        const selectedCommand = filteredCommands[selectedIndex] ?? filteredCommands[0]
+        if (selectedCommand) {
+          handleSelectCommand(selectedCommand)
+        }
+        return
+      }
+
       // If @ menu is open, select the item
       if (showAtMenu && atMenuTotalItems > 0) {
         if (selectedIndex < filteredAgents.length) {
@@ -944,7 +1240,10 @@ export function ChatInput({
 
       if (!canSubmit) return
 
-      const trimmedInput = input.trim()
+      const trimmedInput = composerTextInput.trim()
+      const attachmentsForSubmit = latestAttachmentsRef.current.filter((attachment) =>
+        collectAttachmentIdsFromComposerValue(input).includes(attachment.id)
+      )
       if (allowSlashCommands && trimmedInput.startsWith("/") && !trimmedInput.includes(" ")) {
         const commandName = trimmedInput.slice(1)
         const matchingCommand = commands.find((command) => command.name === commandName)
@@ -962,13 +1261,15 @@ export function ChatInput({
       }
 
       // Check if message starts with @agent pattern
-      const agentMatch = input.match(/^@(\w+)\s+(.*)$/s)
+      const agentMatch = composerTextInput.match(/^@(\w+)\s+(.*)$/s)
       const collaborationMode = isPlanModeAvailable
         ? (isPlanModeEnabled ? "plan" : "default")
         : undefined
+      submittedAttachmentIdsRef.current = new Set(attachmentsForSubmit.map((attachment) => attachment.id))
       if (agentMatch) {
         const [, agentName, message] = agentMatch
         onSubmit(message.trim(), {
+          attachments: attachmentsForSubmit,
           agent: agentName,
           collaborationMode,
           model: effectiveModel?.id ?? undefined,
@@ -976,7 +1277,8 @@ export function ChatInput({
           fastMode: collaborationMode ? fastMode : false,
         })
       } else {
-        onSubmit(input.trim(), {
+        onSubmit(trimmedInput, {
+          attachments: attachmentsForSubmit,
           collaborationMode,
           model: effectiveModel?.id ?? undefined,
           reasoningEffort: collaborationMode ? reasoningEffort : null,
@@ -986,6 +1288,7 @@ export function ChatInput({
     },
     [
       canSubmit,
+      composerTextInput,
       input,
       isPromptActive,
       onSubmit,
@@ -1011,6 +1314,10 @@ export function ChatInput({
       filteredFiles,
       handleSelectAgent,
       handleSelectFile,
+      showSlashMenu,
+      filteredCommands,
+      selectedIndex,
+      handleSelectCommand,
       allowSlashCommands,
       isComposerLocked,
     ]
@@ -1031,25 +1338,9 @@ export function ChatInput({
         e.key === "Backspace" &&
         !showSlashMenu &&
         !showAtMenu &&
-        deleteAdjacentSkillChip()
+        deleteAdjacentChip()
       ) {
         e.preventDefault()
-        return
-      }
-
-      if (
-        allowSlashCommands &&
-        e.key === "/" &&
-        !e.ctrlKey &&
-        !e.metaKey &&
-        !e.altKey &&
-        !showAtMenu
-      ) {
-        e.preventDefault()
-        setDismissedMenuKey(null)
-        setIsSlashMenuOpen(true)
-        setSlashQuery("")
-        setSelectedIndex(0)
         return
       }
 
@@ -1073,17 +1364,6 @@ export function ChatInput({
           closeSlashMenu()
           return
         }
-        if (e.key === "Backspace") {
-          e.preventDefault()
-
-          if (slashQuery.length > 0) {
-            setSlashQuery((current) => current.slice(0, -1))
-          } else {
-            closeSlashMenu()
-          }
-
-          return
-        }
         if (e.key === "Tab") {
           e.preventDefault()
           const selectedCommand = filteredCommands[selectedIndex]
@@ -1094,26 +1374,11 @@ export function ChatInput({
         }
         if (e.key === "Enter" && !e.shiftKey && !isImeComposing) {
           e.preventDefault()
+          e.stopPropagation()
           const selectedCommand = filteredCommands[selectedIndex]
           if (selectedCommand) {
             handleSelectCommand(selectedCommand)
           }
-          return
-        }
-        if (e.key === " " && slashQuery.length === 0) {
-          e.preventDefault()
-          closeSlashMenu()
-          return
-        }
-        if (
-          e.key.length === 1 &&
-          !e.ctrlKey &&
-          !e.metaKey &&
-          !e.altKey
-        ) {
-          e.preventDefault()
-          setSlashQuery((current) => `${current}${e.key}`)
-          setSelectedIndex(0)
           return
         }
       }
@@ -1160,9 +1425,8 @@ export function ChatInput({
       isImeComposing,
       isComposerLocked,
       isPromptActive,
-      allowSlashCommands,
       showSlashMenu,
-      slashQuery.length,
+      slashCommandQuery,
       filteredCommands,
       selectedIndex,
       closeSlashMenu,
@@ -1172,7 +1436,7 @@ export function ChatInput({
       filteredAgents,
       filteredFiles,
       closeAtMenu,
-      deleteAdjacentSkillChip,
+      deleteAdjacentChip,
     ]
   )
 
@@ -1180,30 +1444,148 @@ export function ChatInput({
     (editorState: EditorState) => {
       const nextValue = editorState.read(() => serializeComposerState())
       serializedComposerValueRef.current = nextValue
+      reconcileDraftAttachments(nextValue)
 
       if (nextValue !== input) {
         setDismissedMenuKey(null)
         setInput(nextValue)
       }
     },
-    [input, setInput]
+    [input, reconcileDraftAttachments, setInput]
   )
 
   const composerInitialConfig = useMemo(
     () => ({
       namespace: "nucleus-chat-composer",
-      nodes: [SkillChipNode],
+      nodes: [SkillChipNode, UploadChipNode],
       onError(error: Error) {
         throw error
       },
       editorState() {
-        populateComposerFromSerializedValue(input, commandsByReference)
+        populateComposerFromSerializedValue(input, commandsByReference, attachmentsById)
       },
     }),
-    [commandsByReference, input]
+    [attachmentsById, commandsByReference, input]
   )
 
   const placeholder = getChatInputPlaceholder(placement)
+
+  const handleUploadFiles = useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) {
+        return
+      }
+
+      try {
+        const stagedAttachments = await stageBrowserFiles(files)
+        appendDraftAttachments(stagedAttachments)
+      } catch (error) {
+        const message =
+          error instanceof Error && error.message.trim().length > 0
+            ? error.message
+            : "Failed to stage the selected upload."
+        setUploadError(message)
+      }
+    },
+    [appendDraftAttachments, stageBrowserFiles]
+  )
+
+  const handleUploadInputChange = useCallback(
+    async (event: ReactChangeEvent<HTMLInputElement>) => {
+      const nextFiles = Array.from(event.target.files ?? [])
+      event.target.value = ""
+      await handleUploadFiles(nextFiles)
+    },
+    [handleUploadFiles]
+  )
+
+  const handleComposerPaste = useCallback(
+    async (event: ReactClipboardEvent<HTMLDivElement>) => {
+      if (isComposerLocked || isPromptActive) {
+        return
+      }
+
+      const clipboardItems = Array.from(event.clipboardData.items)
+      const imageItem = clipboardItems.find((item) => item.type.startsWith("image/"))
+
+      if (imageItem) {
+        const imageFile = imageItem.getAsFile()
+        if (!imageFile) {
+          return
+        }
+
+        event.preventDefault()
+
+        try {
+          const dataUrl = await readBrowserFileAsDataUrl(imageFile)
+          const attachment = await stageDataUrlAttachment({
+            kind: "image",
+            label: "Pasted image",
+            fileName: "pasted-image.png",
+            dataUrl,
+            mediaType: "image/png",
+            sizeBytes: imageFile.size,
+          })
+
+          appendDraftAttachments([attachment])
+        } catch (error) {
+          setUploadError(
+            error instanceof Error && error.message.trim().length > 0
+              ? error.message
+              : "Failed to stage the pasted image."
+          )
+        }
+        return
+      }
+
+      const plainText = event.clipboardData.getData("text/plain")
+      if (!plainText || !isLargeTextPaste(plainText)) {
+        return
+      }
+
+      event.preventDefault()
+
+      try {
+        const attachment = await stageTextAttachment(plainText)
+        appendDraftAttachments([attachment])
+      } catch (error) {
+        setUploadError(
+          error instanceof Error && error.message.trim().length > 0
+            ? error.message
+            : "Failed to stage the pasted text."
+        )
+      }
+    },
+    [
+      appendDraftAttachments,
+      isComposerLocked,
+      isPromptActive,
+      readBrowserFileAsDataUrl,
+      stageDataUrlAttachment,
+      stageTextAttachment,
+    ]
+  )
+
+  const handleComposerDragOver = useCallback((event: ReactDragEvent<HTMLDivElement>) => {
+    if (event.dataTransfer.files.length === 0) {
+      return
+    }
+
+    event.preventDefault()
+    event.dataTransfer.dropEffect = "copy"
+  }, [])
+
+  const handleComposerDrop = useCallback(
+    async (event: ReactDragEvent<HTMLDivElement>) => {
+      if (event.dataTransfer.files.length === 0) {
+        return
+      }
+
+      event.preventDefault()
+      await handleUploadFiles(Array.from(event.dataTransfer.files))
+    },
+    [handleUploadFiles]
+  )
 
   const handleSelectModel = useCallback(
     (modelId: string | null) => {
@@ -1229,7 +1611,15 @@ export function ChatInput({
       )}
       aria-busy={isComposerLocked}
     >
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="sr-only"
+        onChange={handleUploadInputChange}
+      />
       <div
+        ref={composerMenuAnchorRef}
         className={cn(
           "relative overflow-hidden border bg-card shadow-sm",
           placement === "intro" ? "rounded-xl" : "rounded-2xl",
@@ -1300,7 +1690,7 @@ export function ChatInput({
 
         <div
           className={cn(
-            "relative px-4 pt-4 pb-4"
+            "relative px-4 pt-3 pb-3"
           )}
         >
           {isComposerLocked ? (
@@ -1335,7 +1725,7 @@ export function ChatInput({
               />
             ) : null
           ) : (
-            <>
+            <div>
               <ComposerEditorSurface
                 editorRef={editorRef}
                 initialConfig={composerInitialConfig}
@@ -1343,26 +1733,29 @@ export function ChatInput({
                 isStreaming={isStreaming}
                 onChange={handleComposerChange}
                 onKeyDown={handleKeyDown}
+                onPaste={handleComposerPaste}
+                onDragOver={handleComposerDragOver}
+                onDrop={handleComposerDrop}
                 onCompositionStart={() => setIsImeComposing(true)}
                 onCompositionEnd={() => setIsImeComposing(false)}
                 placeholder={placeholder}
               />
 
-              {showSlashMenu && (
-                <div className="mb-3">
+              {showSlashMenu ? (
+                <ComposerFloatingOverlay anchorRef={composerMenuAnchorRef}>
                   <SlashCommandMenu
                     commands={filteredCommands}
-                    query={slashQuery}
+                    query={slashCommandQuery ?? ""}
                     isLoading={isLoadingCommands}
                     onSelect={handleSelectCommand}
                     onClose={closeSlashMenu}
                     selectedIndex={selectedIndex}
                   />
-                </div>
-              )}
+                </ComposerFloatingOverlay>
+              ) : null}
 
-              {showAtMenu && (
-                <div className="mb-3">
+              {showAtMenu ? (
+                <ComposerFloatingOverlay anchorRef={composerMenuAnchorRef}>
                   <AtMentionMenu
                     agents={filteredAgents}
                     files={filteredFiles}
@@ -1373,13 +1766,19 @@ export function ChatInput({
                     onClose={closeAtMenu}
                     selectedIndex={selectedIndex}
                   />
-                </div>
-              )}
-            </>
+                </ComposerFloatingOverlay>
+              ) : null}
+            </div>
           )}
 
+          {!isPromptActive && !isComposerLocked && uploadError ? (
+            <div className="mt-3 rounded-lg border border-red-500/20 bg-red-500/8 px-3 py-2 text-sm text-red-600 dark:text-red-300">
+              {uploadError}
+            </div>
+          ) : null}
+
           {!isPromptActive && !isComposerLocked && (
-            <div className="mt-4 flex items-center gap-2">
+            <div className="mt-2 flex items-center gap-2">
               {selectorsRow && <DropdownMenu>
               <DropdownMenuTrigger
                 className="inline-flex h-8 items-center gap-2 px-1 text-sm text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
@@ -1427,35 +1826,6 @@ export function ChatInput({
               </DropdownMenuContent>
               </DropdownMenu>}
 
-              {selectorsRow && isCodexHarness && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() => setFastModeOverride((current) => (current == null ? !fastMode : !current))}
-                      aria-label={fastMode ? "Disable fast mode" : "Enable fast mode"}
-                      disabled={!supportsFastMode}
-                      className={cn(
-                        "inline-flex h-7 items-center justify-center gap-1 rounded-lg border border-transparent text-muted-foreground transition-colors",
-                        supportsFastMode ? "hover:text-foreground" : "cursor-not-allowed opacity-50",
-                        fastMode && supportsFastMode ? "bg-amber-500/10 px-2" : "w-7",
-                        fastMode &&
-                          supportsFastMode &&
-                          "text-amber-500 hover:text-amber-600 dark:text-amber-300 dark:hover:text-amber-200"
-                      )}
-                    >
-                      <Zap className="size-4 shrink-0" />
-                      {fastMode && supportsFastMode ? (
-                        <span className="overflow-hidden text-[10px] font-semibold uppercase tracking-[0.08em]">
-                          Fast
-                        </span>
-                      ) : null}
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">{fastModeTooltipLabel}</TooltipContent>
-                </Tooltip>
-              )}
-
               {selectorsRow && <DropdownMenu>
               <DropdownMenuTrigger className="inline-flex h-8 items-center gap-2 px-1 text-sm text-muted-foreground transition-colors hover:text-foreground cursor-pointer">
                 <span>{reasoningEffortLabel}</span>
@@ -1481,39 +1851,72 @@ export function ChatInput({
               </DropdownMenuContent>
               </DropdownMenu>}
 
-              {selectorsRow && isPlanModeAvailable && (
-                isPlanModeEnabled ? (
-                  <div className="inline-flex h-8 items-center gap-1 rounded-full bg-[var(--color-chat-plan-surface)] pl-2.5 pr-1 text-[var(--color-chat-plan-accent)]">
-                    <DocumentValidation className="size-4 shrink-0" />
-                    <span className="text-sm font-medium">Plan mode</span>
+              {selectorsRow && isCodexHarness && supportsFastMode && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
                     <button
                       type="button"
-                      onClick={disablePlanMode}
-                      aria-label="Disable plan mode"
-                      className="inline-flex size-6 items-center justify-center rounded-full text-[var(--color-chat-plan-accent)] transition-colors hover:bg-[var(--color-chat-plan-border)]/30"
+                      onClick={() => setFastModeOverride((current) => (current == null ? !fastMode : !current))}
+                      aria-label={fastMode ? "Disable fast mode" : "Enable fast mode"}
+                      className={cn(
+                        "inline-flex h-7 items-center justify-center gap-1 rounded-lg border border-transparent text-muted-foreground transition-colors",
+                        "hover:text-foreground",
+                        fastMode && supportsFastMode ? "bg-amber-500/10 px-2" : "w-7",
+                        fastMode &&
+                          supportsFastMode &&
+                          "text-amber-500 hover:text-amber-600 dark:text-amber-300 dark:hover:text-amber-200"
+                      )}
                     >
-                      <X className="size-3.5" />
+                      <Zap className="size-4 shrink-0" />
+                      {fastMode && supportsFastMode ? (
+                        <span className="overflow-hidden text-[10px] font-semibold uppercase tracking-[0.08em]">
+                          Fast
+                        </span>
+                      ) : null}
                     </button>
-                  </div>
-                ) : (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        onMouseDown={handlePlanModeMouseDown}
-                        onClick={handlePlanModeClick}
-                        aria-label="Toggle plan mode"
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-transparent text-muted-foreground hover:text-foreground"
-                      >
-                        <DocumentValidation className="size-4" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top">{`Plan mode (${planModeShortcutLabel})`}</TooltipContent>
-                  </Tooltip>
-                )
+                  </TooltipTrigger>
+                  <TooltipContent side="top">{fastModeTooltipLabel}</TooltipContent>
+                </Tooltip>
+              )}
+
+              {selectorsRow && isPlanModeAvailable && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onMouseDown={handlePlanModeMouseDown}
+                      onClick={handlePlanModeClick}
+                      aria-label={isPlanModeEnabled ? "Disable plan mode" : "Toggle plan mode"}
+                      className={cn(
+                        "inline-flex h-7 items-center justify-center gap-1 rounded-lg border border-transparent text-muted-foreground transition-colors",
+                        "hover:text-foreground",
+                        isPlanModeEnabled ? "bg-[var(--color-chat-plan-surface)] px-2" : "w-7",
+                        isPlanModeEnabled &&
+                          "text-[var(--color-chat-plan-accent)] hover:text-[var(--color-chat-plan-accent)]"
+                      )}
+                    >
+                      <DocumentValidation className="size-4 shrink-0" />
+                      {isPlanModeEnabled ? (
+                        <span className="overflow-hidden text-[10px] font-semibold uppercase tracking-[0.08em]">
+                          Plan
+                        </span>
+                      ) : null}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">{`Plan mode (${planModeShortcutLabel})`}</TooltipContent>
+                </Tooltip>
               )}
 
               <div className="ml-auto flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isStreaming}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-transparent text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Add upload"
+                >
+                  <Paperclip className="size-4" />
+                </button>
                 {isStreaming ? (
                 <button
                   type="button"

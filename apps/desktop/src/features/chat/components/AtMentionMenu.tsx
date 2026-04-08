@@ -61,7 +61,7 @@ export function AtMentionMenu({
       <div
         ref={containerRef}
         className={cn(
-          "absolute bottom-full left-0 right-0 mb-2 rounded-[6px] border border-border bg-card shadow-lg",
+          "w-full rounded-[6px] border border-border bg-card shadow-lg",
           className
         )}
       >
@@ -77,7 +77,7 @@ export function AtMentionMenu({
       <div
         ref={containerRef}
         className={cn(
-          "absolute bottom-full left-0 right-0 mb-2 rounded-[6px] border border-border bg-card shadow-lg",
+          "w-full rounded-[6px] border border-border bg-card shadow-lg",
           className
         )}
       >
@@ -92,7 +92,7 @@ export function AtMentionMenu({
     <div
       ref={containerRef}
       className={cn(
-        "absolute bottom-full left-0 right-0 mb-2 rounded-[6px] border border-border bg-card shadow-lg overflow-hidden",
+        "w-full rounded-[6px] border border-border bg-card shadow-lg overflow-hidden",
         className
       )}
     >

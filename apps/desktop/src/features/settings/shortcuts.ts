@@ -46,9 +46,9 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     description: "Switch the chat composer between default and plan mode.",
     category: "composer",
     defaultBinding: {
-      key: "P",
-      code: "KeyP",
-      modifiers: ["meta", "shift"],
+      key: "Tab",
+      code: "Tab",
+      modifiers: ["shift"],
     },
   },
 ]

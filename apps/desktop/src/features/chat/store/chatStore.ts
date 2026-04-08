@@ -1,7 +1,9 @@
 import { create } from "zustand"
 import { loadDesktopStore, type DesktopStoreHandle } from "@/desktop/client"
 import { useProjectStore } from "@/features/workspace/store"
+import { buildHarnessAttachmentText } from "../components/composer/attachments"
 import {
+  createUserMessage,
   createTextMessage,
   dedupeMessages,
   emitFileChanges,
@@ -41,6 +43,7 @@ import type {
   HarnessId,
   MessageWithParts,
   RuntimeAgent,
+  RuntimeAttachmentPart,
   RuntimeCommand,
   RuntimeFileSearchResult,
   RuntimeModel,
@@ -104,6 +107,7 @@ interface ChatState {
     sessionId: string,
     text: string,
     options?: {
+      attachments?: RuntimeAttachmentPart[]
       agent?: string
       collaborationMode?: CollaborationModeKind
       model?: string
@@ -934,14 +938,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const adapter = getHarnessAdapter(session.harnessId)
     const answeredPromptState = createAnsweredPromptState(activePrompt.prompt, response)
 
-    console.info("[chatStore] answerPrompt:start", {
-      sessionId,
-      promptId: response.promptId,
-      promptKind: activePrompt.prompt.kind,
-      responseKind: response.kind,
-      decision: response.kind === "approval" ? response.decision : null,
-    })
-
     set((state) => {
       return {
         activePromptBySession: {
@@ -964,22 +960,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
         Boolean(result.messages?.length) ||
         Boolean(result.childSessions?.length) ||
         result.prompt !== undefined
-
-      console.info("[chatStore] answerPrompt:result", {
-        sessionId,
-        promptId: response.promptId,
-        messages: result.messages?.length ?? 0,
-        childSessions: result.childSessions?.length ?? 0,
-        hasPrompt: result.prompt !== undefined,
-        didReceiveContinuation,
-      })
-
-      if (!didReceiveContinuation) {
-        console.warn("[chatStore] answerPrompt:empty-result", {
-          sessionId,
-          promptId: response.promptId,
-        })
-      }
 
       if (!getProjectSessionMatch(get().chatByWorktree, worktreeId, sessionId)) {
         return
@@ -1070,7 +1050,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   sendMessage: async (sessionId: string, text: string, options) => {
-    if (!text.trim()) {
+    const attachments = options?.attachments ?? []
+    const trimmedText = text.trim()
+
+    if (!trimmedText && attachments.length === 0) {
       return
     }
 
@@ -1081,8 +1064,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const { worktreeId, projectChat, session } = sessionMatch
     const adapter = getHarnessAdapter(session.harnessId)
-    const userMessage = createTextMessage(sessionId, "user", text.trim())
-    const nextSessionTitle = session.title?.trim() ? session.title : deriveSessionTitle(text)
+    const transportText = buildHarnessAttachmentText(trimmedText, attachments)
+    const userMessage = createUserMessage(sessionId, trimmedText, attachments)
+    const nextSessionTitle =
+      session.title?.trim() ? session.title : deriveSessionTitle(trimmedText, attachments)
     const nextSessionModel = options?.model?.trim() || session.model?.trim() || null
     let nextSession: RuntimeSession = {
       ...touchSession(session, nextSessionTitle),
@@ -1215,7 +1200,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       adapter.sendMessage({
         session: sessionToSend,
         projectPath: projectChat.worktreePath,
-        text: text.trim(),
+        text: transportText,
         agent: options?.agent,
         collaborationMode: options?.collaborationMode,
         model: options?.model,
@@ -1254,21 +1239,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
       finalizeSendResult(result)
     } catch (error) {
       if (shouldRecreateRemoteSession(session, error)) {
-        console.warn("[chatStore] sendMessage:recreate-session", {
-          sessionId,
-          remoteId: session.remoteId ?? session.id,
-          reason: String(error),
-        })
-
         try {
           const recreatedRemoteSession = await adapter.createSession(
             projectChat.worktreePath ?? session.projectPath ?? ""
           )
-          console.info("[chatStore] sendMessage:recreate-session:created", {
-            sessionId,
-            previousRemoteId: session.remoteId ?? session.id,
-            nextRemoteId: recreatedRemoteSession.remoteId ?? recreatedRemoteSession.id,
-          })
 
           const recoveredSession: RuntimeSession = {
             ...nextSession,
@@ -1291,14 +1265,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
           })
 
           const retriedResult = await runSend(recoveredSession)
-          console.info("[chatStore] sendMessage:recreate-session:retried", {
-            sessionId,
-            remoteId: recoveredSession.remoteId ?? recoveredSession.id,
-            messages: retriedResult.messages?.length ?? 0,
-            childSessions: retriedResult.childSessions?.length ?? 0,
-            hasPrompt: retriedResult.prompt !== undefined,
-          })
-
           if (!getProjectSessionMatch(get().chatByWorktree, worktreeId, sessionId)) {
             return
           }

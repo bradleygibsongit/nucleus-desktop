@@ -1,6 +1,11 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
-import { BookOpen } from "@/components/icons"
+import { BookOpen, InformationCircle, PencilSimple } from "@/components/icons"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/features/shared/components/ui/tooltip"
 import type { NormalizedCommand } from "../hooks/useCommands"
 
 export interface SlashCommandMenuProps {
@@ -24,6 +29,18 @@ export function SlashCommandMenu({
 }: SlashCommandMenuProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const selectedRef = useRef<HTMLDivElement>(null)
+  const sections = [
+    {
+      key: "system",
+      label: "System",
+      commands: commands.filter((command) => command.section === "system"),
+    },
+    {
+      key: "skills",
+      label: "Skills",
+      commands: commands.filter((command) => command.section === "skills"),
+    },
+  ].filter((section) => section.commands.length > 0)
 
   // Scroll selected item into view
   useEffect(() => {
@@ -44,16 +61,16 @@ export function SlashCommandMenu({
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [onClose])
 
-  if (isLoading) {
+  if (isLoading && commands.length === 0) {
     return (
       <div
         ref={containerRef}
         className={cn(
-          "absolute bottom-full left-0 right-0 z-20 mb-2 overflow-hidden rounded-xl border border-border bg-card shadow-sm",
+          "w-full overflow-hidden rounded-lg border border-border bg-card shadow-sm",
           className
         )}
       >
-        <div className="px-5 py-4 text-center text-sm text-muted-foreground">
+        <div className="px-3 py-2.5 text-center text-xs text-muted-foreground">
           Loading commands...
         </div>
       </div>
@@ -65,11 +82,11 @@ export function SlashCommandMenu({
       <div
         ref={containerRef}
         className={cn(
-          "absolute bottom-full left-0 right-0 z-20 mb-2 overflow-hidden rounded-xl border border-border bg-card shadow-sm",
+          "w-full overflow-hidden rounded-lg border border-border bg-card shadow-sm",
           className
         )}
       >
-        <div className="px-5 py-4 text-center text-sm text-muted-foreground">
+        <div className="px-3 py-2.5 text-center text-xs text-muted-foreground">
           No commands found
         </div>
       </div>
@@ -80,47 +97,92 @@ export function SlashCommandMenu({
     <div
       ref={containerRef}
       className={cn(
-        "absolute bottom-full left-0 right-0 z-20 mb-2 overflow-hidden rounded-xl border border-border bg-card shadow-sm",
+        "w-full overflow-hidden rounded-lg border border-border bg-card shadow-sm",
         className
       )}
     >
-      <div className="app-scrollbar max-h-72 overflow-y-auto px-2 pb-3">
-        <div className="px-3 pt-4 pb-2 text-sm font-medium uppercase tracking-[0.18em] text-muted-foreground/80">
-          Skills
-        </div>
-
-        {commands.map((cmd, index) => {
-          const isSelected = selectedIndex === index
+      <div className="app-scrollbar max-h-64 overflow-y-auto p-1">
+        {sections.map((section, sectionIndex) => {
+          let runningIndex = 0
+          for (let i = 0; i < sectionIndex; i += 1) {
+            runningIndex += sections[i]?.commands.length ?? 0
+          }
 
           return (
-            <div
-              key={cmd.name}
-              ref={isSelected ? selectedRef : undefined}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => onSelect(cmd)}
-              className={cn(
-                "mb-1 grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-xl px-3 py-3 text-sm last:mb-0",
-                isSelected
-                  ? "bg-accent text-accent-foreground"
-                  : "hover:bg-accent/50"
-              )}
-            >
-              <span className="flex size-9 items-center justify-center rounded-lg border border-border bg-muted text-skill-icon">
-                <BookOpen size={17} />
-              </span>
-
-              <span className="min-w-0">
-                <span className="block truncate font-medium text-foreground">{cmd.name}</span>
-                {cmd.description ? (
-                  <span className="block truncate text-muted-foreground">
-                    {cmd.description}
+            <div key={section.key} className={cn(sectionIndex > 0 && "mt-1.5")}>
+              <div className="px-2 pt-1.5 pb-1 text-[10px] font-medium uppercase tracking-[0.15em] text-muted-foreground/70">
+                {section.label}
+                {sectionIndex === 0 && query ? (
+                  <span className="ml-1.5 normal-case tracking-normal">
+                    — <span className="font-mono text-foreground/70">/{query}</span>
                   </span>
                 ) : null}
-              </span>
+              </div>
+
+              {section.commands.map((cmd, index) => {
+                const flatIndex = runningIndex + index
+                const isSelected = selectedIndex === flatIndex
+                const Icon = cmd.icon === "new-chat" ? PencilSimple : BookOpen
+
+                return (
+                  <div
+                    key={cmd.id}
+                    ref={isSelected ? selectedRef : undefined}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => onSelect(cmd)}
+                    className={cn(
+                      "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm",
+                      isSelected
+                        ? "bg-accent text-accent-foreground"
+                        : "hover:bg-accent/50"
+                    )}
+                  >
+                    <Icon size={14} className="shrink-0 text-muted-foreground" />
+
+                    <span className="min-w-0 truncate font-medium text-foreground">
+                      {cmd.name}
+                    </span>
+
+                    {cmd.description ? (
+                      <InfoTooltip description={cmd.description} />
+                    ) : null}
+                  </div>
+                )
+              })}
             </div>
           )
         })}
       </div>
     </div>
+  )
+}
+
+function InfoTooltip({ description }: { description: string }) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <Tooltip open={open} onOpenChange={setOpen}>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className="ml-auto shrink-0 rounded p-0.5 text-muted-foreground/50 transition-colors hover:text-muted-foreground"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => {
+            e.stopPropagation()
+            setOpen((prev) => !prev)
+          }}
+          tabIndex={-1}
+        >
+          <InformationCircle size={14} />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent
+        side="right"
+        align="center"
+        className="max-w-64 text-xs"
+      >
+        {description}
+      </TooltipContent>
+    </Tooltip>
   )
 }

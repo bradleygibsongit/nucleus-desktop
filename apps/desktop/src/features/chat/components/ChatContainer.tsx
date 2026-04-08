@@ -55,6 +55,8 @@ function ChatComposerPane({
   const {
     input,
     setInput,
+    attachments,
+    setAttachments,
     status,
     activePrompt,
     answerPrompt,
@@ -75,6 +77,8 @@ function ChatComposerPane({
       sessionId={activeSessionId}
       input={input}
       setInput={setInput}
+      attachments={attachments}
+      setAttachments={setAttachments}
       onSubmit={async (text, options) => {
         await submit(text, options)
       }}

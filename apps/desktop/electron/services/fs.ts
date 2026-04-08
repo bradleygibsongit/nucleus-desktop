@@ -1,6 +1,6 @@
-import { cp, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises"
+import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises"
 import os from "node:os"
-import { basename, extname, join, relative, resolve, sep } from "node:path"
+import { basename, dirname, extname, join, relative, resolve, sep } from "node:path"
 import type {
   CopyPathsIntoDirectoryOptions,
   DesktopDirEntry,
@@ -20,6 +20,16 @@ const MIME_TYPES_BY_EXTENSION: Record<string, string> = {
 }
 
 export class DesktopFsService {
+  private decodeDataUrl(dataUrl: string): Buffer {
+    const match = dataUrl.match(/^data:[^;,]+(?:;charset=[^;,]+)?;base64,(.+)$/)
+
+    if (!match) {
+      throw new Error("Invalid data URL. Expected a base64-encoded data URL.")
+    }
+
+    return Buffer.from(match[1], "base64")
+  }
+
   async readTextFile(path: string): Promise<string> {
     return readFile(path, "utf8")
   }
@@ -39,6 +49,11 @@ export class DesktopFsService {
     _options?: WriteTextFileOptions
   ): Promise<void> {
     await writeFile(path, content, "utf8")
+  }
+
+  async writeDataUrlFile(path: string, dataUrl: string): Promise<void> {
+    await mkdir(dirname(path), { recursive: true })
+    await writeFile(path, this.decodeDataUrl(dataUrl))
   }
 
   async exists(path: string): Promise<boolean> {
@@ -63,6 +78,16 @@ export class DesktopFsService {
 
   async mkdir(path: string, options?: { recursive?: boolean }): Promise<void> {
     await mkdir(path, { recursive: options?.recursive ?? false })
+  }
+
+  async removePath(
+    path: string,
+    options?: { recursive?: boolean; force?: boolean }
+  ): Promise<void> {
+    await rm(path, {
+      recursive: options?.recursive ?? false,
+      force: options?.force ?? false,
+    })
   }
 
   async copyPathsIntoDirectory(

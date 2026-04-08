@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { getChatInputPlaceholder } from "./chatInputConfig"
+import { getActiveSlashCommandQuery } from "./chatInputSlashCommands"
 import {
   resolveDefaultFastMode,
   resolveDefaultReasoningEffort,
@@ -91,5 +92,20 @@ describe("resolveDefaultFastMode", () => {
         supportsFastMode: false,
       })
     ).toBe(false)
+  })
+})
+
+describe("getActiveSlashCommandQuery", () => {
+  test("returns the current query when the composer only contains a slash command token", () => {
+    expect(getActiveSlashCommandQuery("/")).toBe("")
+    expect(getActiveSlashCommandQuery("/figma")).toBe("figma")
+    expect(getActiveSlashCommandQuery("/\n")).toBe("")
+    expect(getActiveSlashCommandQuery("/figma\n")).toBe("figma")
+  })
+
+  test("stops treating the input as a slash command once the user continues normal text", () => {
+    expect(getActiveSlashCommandQuery("/figma landing page")).toBeNull()
+    expect(getActiveSlashCommandQuery("please use /figma")).toBeNull()
+    expect(getActiveSlashCommandQuery("/figma\nnext line")).toBeNull()
   })
 })

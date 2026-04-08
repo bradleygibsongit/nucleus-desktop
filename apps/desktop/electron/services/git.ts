@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process"
 import { existsSync, realpathSync, statSync } from "node:fs"
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { promisify } from "node:util"
@@ -2495,6 +2495,55 @@ export class GitService {
       number: pullRequest.number,
       url: pullRequest.url,
     }
+  }
+
+  async ensureInfoExcludeEntries(projectPath: string, entries: string[]): Promise<void> {
+    const trimmedPath = ensureGitProjectPath(projectPath)
+    await runGitCommand(trimmedPath, ["rev-parse", "--show-toplevel"])
+
+    const normalizedEntries = Array.from(
+      new Set(
+        entries
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.length > 0)
+      )
+    )
+
+    if (normalizedEntries.length === 0) {
+      return
+    }
+
+    const rawExcludePath = await runGitCommand(trimmedPath, ["rev-parse", "--git-path", "info/exclude"])
+    const excludePath = path.isAbsolute(rawExcludePath)
+      ? rawExcludePath
+      : path.resolve(trimmedPath, rawExcludePath)
+    await mkdir(path.dirname(excludePath), { recursive: true })
+
+    let currentContents = ""
+
+    try {
+      currentContents = await readFile(excludePath, "utf8")
+    } catch (error) {
+      const fileError = error as NodeJS.ErrnoException
+      if (fileError.code !== "ENOENT") {
+        throw error
+      }
+    }
+
+    const existingEntries = new Set(
+      currentContents
+        .split(/\r?\n/)
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0)
+    )
+    const missingEntries = normalizedEntries.filter((entry) => !existingEntries.has(entry))
+
+    if (missingEntries.length === 0) {
+      return
+    }
+
+    const prefix = currentContents.length > 0 && !currentContents.endsWith("\n") ? "\n" : ""
+    await appendFile(excludePath, `${prefix}${missingEntries.join("\n")}\n`, "utf8")
   }
 
   async runStackedAction(

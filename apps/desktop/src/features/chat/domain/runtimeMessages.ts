@@ -1,5 +1,10 @@
 import { nanoid } from "nanoid"
-import type { MessageWithParts, RuntimeSession } from "../types"
+import type {
+  MessageWithParts,
+  RuntimeAttachmentPart,
+  RuntimeMessagePart,
+  RuntimeSession,
+} from "../types"
 
 export function createTextMessage(
   sessionId: string,
@@ -24,6 +29,49 @@ export function createTextMessage(
       },
     ],
   }
+}
+
+export function createUserMessage(
+  sessionId: string,
+  text: string,
+  attachments: RuntimeAttachmentPart[] = []
+): MessageWithParts {
+  const messageId = nanoid()
+  const trimmedText = text.trim()
+  const parts: RuntimeMessagePart[] = []
+
+  if (trimmedText) {
+    parts.push({
+      id: nanoid(),
+      type: "text",
+      text: trimmedText,
+    })
+  }
+
+  parts.push(...attachments)
+
+  return {
+    info: {
+      id: messageId,
+      sessionId,
+      role: "user",
+      createdAt: Date.now(),
+    },
+    parts,
+  }
+}
+
+export function getMessageTextContent(parts: RuntimeMessagePart[]): string {
+  return parts
+    .filter((part): part is Extract<RuntimeMessagePart, { type: "text" }> => part.type === "text")
+    .map((part) => part.text)
+    .join("")
+}
+
+export function getMessageAttachmentParts(parts: RuntimeMessagePart[]): RuntimeAttachmentPart[] {
+  return parts.filter(
+    (part): part is RuntimeAttachmentPart => part.type === "attachment"
+  )
 }
 
 export function remapMessagesToSession(
@@ -76,6 +124,10 @@ function getMessagePartsSignature(message: MessageWithParts): string {
     .map((part) => {
       if (part.type === "text") {
         return `text:${part.text}`
+      }
+
+      if (part.type === "attachment") {
+        return `attachment:${part.kind}:${part.relativePath}:${part.label}`
       }
 
       return `tool:${part.tool}:${JSON.stringify(part.state)}`

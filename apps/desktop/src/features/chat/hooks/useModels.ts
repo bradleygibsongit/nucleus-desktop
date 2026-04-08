@@ -1,36 +1,28 @@
-import { useState, useEffect, useCallback } from "react"
-import { getHarnessAdapter } from "../runtime/harnesses"
-import type { HarnessId, RuntimeModel } from "../types"
+import { useEffect } from "react"
+import { DEFAULT_HARNESS_ID } from "../runtime/harnesses"
+import type { HarnessId } from "../types"
+import {
+  EMPTY_HARNESS_MODEL_ENTRY,
+  useHarnessModelStore,
+} from "../store/harnessModelStore"
 
 export function useModels(harnessId: HarnessId | null) {
-  const [models, setModels] = useState<RuntimeModel[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const fetchModels = useCallback(async () => {
-    setIsLoading(true)
-    setError(null)
-
-    try {
-      const response = await getHarnessAdapter(harnessId ?? "codex").listModels()
-      setModels(response)
-    } catch (err) {
-      console.error("[useModels] Failed to fetch models:", err)
-      setError(String(err))
-      setModels([])
-    } finally {
-      setIsLoading(false)
-    }
-  }, [harnessId])
+  const normalizedHarnessId = harnessId ?? DEFAULT_HARNESS_ID
+  const modelsEntry = useHarnessModelStore(
+    (state) => state.entries[normalizedHarnessId] ?? EMPTY_HARNESS_MODEL_ENTRY
+  )
+  const ensureModels = useHarnessModelStore((state) => state.ensureModels)
+  const refreshModels = useHarnessModelStore((state) => state.refreshModels)
 
   useEffect(() => {
-    fetchModels()
-  }, [fetchModels])
+    void ensureModels(normalizedHarnessId)
+  }, [ensureModels, normalizedHarnessId])
 
   return {
-    models,
-    isLoading,
-    error,
-    refetch: fetchModels,
+    models: modelsEntry.models,
+    isLoading: modelsEntry.isLoading,
+    isRefreshing: modelsEntry.isRefreshing,
+    error: modelsEntry.error,
+    refetch: () => refreshModels(normalizedHarnessId),
   }
 }

@@ -15,6 +15,7 @@ import { useRightSidebar } from "./useRightSidebar"
 import { SidebarShell } from "./SidebarShell"
 import { SourceControlActionGroup } from "./AppHeader"
 import { RightSidebarEmptyState } from "./RightSidebarEmptyState"
+import { LayoutGroup, motion } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { prewarmProjectData } from "@/features/shared/utils/prewarmProjectData"
 
@@ -211,52 +212,61 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
 
       {/* Tab header */}
       <div className="shrink-0 px-3 py-1.5">
-        <div className="flex items-center gap-1">
-          {RIGHT_SIDEBAR_TABS.map(({ key, label }) => {
-            const isActive = activeTab === key
+        <LayoutGroup id="right-sidebar-tabs">
+          <div className="flex items-center gap-1">
+            {RIGHT_SIDEBAR_TABS.map(({ key, label }) => {
+              const isActive = activeTab === key
 
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setActiveTab(key)}
-                onPointerEnter={() => handleTabIntent(key)}
-                className={cn(
-                  "inline-flex h-7 items-center gap-1 rounded-lg px-2 text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-[var(--sidebar-item-active)] text-sidebar-accent-foreground"
-                    : "text-sidebar-foreground/56 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground"
-                )}
-              >
-                <span>{label}</span>
-                {key === "changes" && projectChanges.length > 0 ? (
-                  <span
-                    className={cn(
-                      "text-[11px] leading-none",
-                      isActive
-                        ? "text-sidebar-accent-foreground/70"
-                        : "text-sidebar-foreground/40"
-                    )}
-                  >
-                    {projectChanges.length}
-                  </span>
-                ) : null}
-                {key === "checks" && checksTabBadgeCount > 0 ? (
-                  <span
-                    className={cn(
-                      "text-[11px] leading-none",
-                      isActive
-                        ? "text-sidebar-accent-foreground/70"
-                        : "text-sidebar-foreground/40"
-                    )}
-                  >
-                    {checksTabBadgeCount}
-                  </span>
-                ) : null}
-              </button>
-            )
-          })}
-        </div>
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setActiveTab(key)}
+                  onPointerEnter={() => handleTabIntent(key)}
+                  className={cn(
+                    "relative inline-flex h-7 items-center gap-1 rounded-lg px-2 text-sm font-medium transition-colors",
+                    isActive
+                      ? "text-sidebar-accent-foreground"
+                      : "text-sidebar-foreground/56 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground"
+                  )}
+                >
+                  {isActive && (
+                    <motion.div
+                      layoutId="rightSidebarActiveTab"
+                      className="absolute inset-0 rounded-lg bg-[var(--sidebar-item-active)]"
+                      transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.5 }}
+                    />
+                  )}
+                  <span className="relative z-10">{label}</span>
+                  {key === "changes" && projectChanges.length > 0 ? (
+                    <span
+                      className={cn(
+                        "relative z-10 text-[11px] leading-none",
+                        isActive
+                          ? "text-sidebar-accent-foreground/70"
+                          : "text-sidebar-foreground/40"
+                      )}
+                    >
+                      {projectChanges.length}
+                    </span>
+                  ) : null}
+                  {key === "checks" && checksTabBadgeCount > 0 ? (
+                    <span
+                      className={cn(
+                        "relative z-10 text-[11px] leading-none",
+                        isActive
+                          ? "text-sidebar-accent-foreground/70"
+                          : "text-sidebar-foreground/40"
+                      )}
+                    >
+                      {checksTabBadgeCount}
+                    </span>
+                  ) : null}
+                </button>
+              )
+            })}
+          </div>
+        </LayoutGroup>
       </div>
 
       {/* Changes toolbar — fixed below tabs, only visible on changes tab with groups */}

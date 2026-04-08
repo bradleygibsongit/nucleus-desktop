@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test"
 
 const storeData = new Map<string, unknown>()
 let pendingHarnessTurn: Promise<{ messages?: Array<{ info: { id: string; sessionId: string; role: "assistant"; createdAt: number }; parts: Array<{ id: string; type: "text"; text: string }> }> }> | null = null
+let lastHarnessTurnInput: { text: string } | null = null
 
 const desktopStore = {
   get: async <T>(key: string): Promise<T | null> =>
@@ -88,7 +89,10 @@ mock.module("../runtime/harnesses", () => ({
     listCommands: async () => [],
     listModels: async () => [],
     searchFiles: async () => [],
-    sendMessage: async () => pendingHarnessTurn ?? { messages: [] },
+    sendMessage: async (input: { text: string }) => {
+      lastHarnessTurnInput = input
+      return pendingHarnessTurn ?? { messages: [] }
+    },
     answerPrompt: async () => ({ messages: [] }),
     executeCommand: async () => ({ messages: [] }),
     abortSession: async () => {},
@@ -116,6 +120,7 @@ describe("chatStore worktree scoping", () => {
   beforeEach(() => {
     storeData.clear()
     pendingHarnessTurn = null
+    lastHarnessTurnInput = null
     resetChatStore()
   })
 
@@ -380,5 +385,50 @@ describe("chatStore worktree scoping", () => {
     })
 
     await sendPromise
+  })
+
+  test("sends attachment context through text transport while persisting local attachment parts", async () => {
+    const session = useChatStore.getState().createOptimisticSession("worktree-1", "/tmp/worktree-1")
+
+    expect(session).not.toBeNull()
+
+    await useChatStore.getState().sendMessage(session!.id, "", {
+      attachments: [
+        {
+          id: "attachment-1",
+          type: "attachment",
+          kind: "image",
+          label: "diagram.png",
+          relativePath: ".nucleus/chat-inputs/2026-04-07/attachment-1-diagram.png",
+          absolutePath: "/tmp/worktree-1/.nucleus/chat-inputs/2026-04-07/attachment-1-diagram.png",
+          mediaType: "image/png",
+          sizeBytes: 128,
+        },
+      ],
+    })
+
+    expect(lastHarnessTurnInput?.text).toContain("Attached local context:")
+    expect(lastHarnessTurnInput?.text).toContain(
+      '- image "diagram.png": .nucleus/chat-inputs/2026-04-07/attachment-1-diagram.png'
+    )
+
+    const persisted = storeData.get("chatState") as {
+      chatByWorktree: Record<string, { sessions: Array<{ title?: string }> }>
+      messagesBySession: Record<
+        string,
+        Array<{
+          parts: Array<{ type: string; label?: string; relativePath?: string }>
+        }>
+      >
+    }
+
+    expect(persisted.chatByWorktree["worktree-1"]?.sessions[0]?.title).toBe("diagram.png")
+    expect(persisted.messagesBySession[session!.id]?.[0]?.parts).toEqual([
+      expect.objectContaining({
+        type: "attachment",
+        label: "diagram.png",
+        relativePath: ".nucleus/chat-inputs/2026-04-07/attachment-1-diagram.png",
+      }),
+    ])
   })
 })

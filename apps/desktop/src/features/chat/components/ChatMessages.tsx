@@ -19,7 +19,12 @@ import {
 import { CheckCircle, Copy, File } from "@/components/icons"
 import { LoadingDots } from "@/features/shared/components/ui/loading-dots"
 import { useStickToBottomContext } from "use-stick-to-bottom"
-import { ChatTimelineItem, InlineSubagentActivity } from "./ChatTimelineItem"
+import { ChatImagePreviewModal } from "./ChatImagePreviewModal"
+import {
+  ChatTimelineItem,
+  InlineSubagentActivity,
+  type ChatImagePreviewRequest,
+} from "./ChatTimelineItem"
 import { formatElapsedDuration, useElapsedDuration } from "./workDuration"
 import { TurnStepsDropdown } from "./TurnStepsDropdown"
 import {
@@ -33,6 +38,7 @@ import {
   type TimelineBlock,
 } from "./timelineActivity"
 import type { ChildSessionData } from "./agent-activity/AgentActivitySubagent"
+import { getMessageAttachmentParts, getMessageTextContent } from "../domain/runtimeMessages"
 
 interface ChatMessagesProps {
   threadKey: string
@@ -74,15 +80,14 @@ const ESTIMATED_CODE_LINE_HEIGHT_PX = 20
 const ESTIMATED_MARKDOWN_BLOCK_GAP_PX = 16
 
 function getMessageText(message: MessageWithParts): string {
-  return message.parts
-    .filter((part): part is Extract<typeof message.parts[number], { type: "text" }> => part.type === "text")
-    .map((part) => part.text)
-    .join("")
+  return getMessageTextContent(message.parts)
 }
 
 function hasRenderableMessageContent(message: MessageWithParts): boolean {
   return message.parts.some((part) =>
-    part.type === "tool" || (part.type === "text" && part.text.trim().length > 0)
+    part.type === "tool" ||
+    part.type === "attachment" ||
+    (part.type === "text" && part.text.trim().length > 0)
   )
 }
 
@@ -301,12 +306,21 @@ function estimateDisplayBlockHeight(
   const message = preparedBlock.block.message
   const toolPart = getToolPart(message.parts)
   const text = getMessageText(message)
+  const attachments = getMessageAttachmentParts(message.parts)
   let estimatedHeight = 0
 
   if (message.info.role === "user") {
     const userWidth = Math.max(240, Math.floor(contentWidth * USER_MESSAGE_WIDTH_RATIO) - 32)
     const lineCount = estimateWrappedTextLineCount(text, userWidth)
-    estimatedHeight = 34 + lineCount * ESTIMATED_TEXT_LINE_HEIGHT_PX
+    const attachmentsHeight = attachments.reduce((total, attachment) => {
+      return total + (attachment.kind === "image" ? 170 : 92)
+    }, 0)
+    estimatedHeight =
+      34 +
+      lineCount * ESTIMATED_TEXT_LINE_HEIGHT_PX +
+      attachmentsHeight +
+      (attachments.length > 0 && lineCount > 0 ? 12 : 0) +
+      Math.max(0, attachments.length - 1) * 8
   } else if (toolPart) {
     estimatedHeight =
       message.info.itemType === "fileChange"
@@ -431,11 +445,13 @@ export function ChatMessages({
     messageId: string
     durationMs: number
   } | null>(null)
+  const [previewImage, setPreviewImage] = useState<ChatImagePreviewRequest | null>(null)
   const previousStatusRef = useRef(status)
 
   useEffect(() => {
     setActiveWorkStartTime(status === "streaming" ? Date.now() : null)
     setLastCompletedWork(null)
+    setPreviewImage(null)
     previousStatusRef.current = status
   }, [threadKey])
 
@@ -508,6 +524,12 @@ export function ChatMessages({
   )
   const [preparedThreadKey, setPreparedThreadKey] = useState(threadKey)
   const isThreadPrepared = preparedThreadKey === threadKey
+  const handleOpenImagePreview = useMemo(
+    () => (preview: ChatImagePreviewRequest) => {
+      setPreviewImage(preview)
+    },
+    []
+  )
 
   if (!hasContent) {
     return null
@@ -534,6 +556,8 @@ export function ChatMessages({
             latestTurnFooterMessageId={latestTurnFooterMessageId}
             latestTurnStreamingTextMessageId={latestTurnStreamingTextMessageId}
             status={status}
+            worktreePath={selectedWorktree?.path ?? null}
+            onOpenImagePreview={handleOpenImagePreview}
           />
           {orphanChildSessions.length > 0 ? (
             <div className="space-y-3">
@@ -554,6 +578,15 @@ export function ChatMessages({
         </>
       </ConversationContent>
       <ConversationScrollButton />
+      <ChatImagePreviewModal
+        image={previewImage}
+        open={previewImage != null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPreviewImage(null)
+          }
+        }}
+      />
     </Conversation>
   )
 }
@@ -566,6 +599,8 @@ function HybridTimelineBlocks({
   latestTurnFooterMessageId,
   latestTurnStreamingTextMessageId,
   status,
+  worktreePath,
+  onOpenImagePreview,
 }: {
   preparedDisplayBlocks: PreparedDisplayBlock[]
   childSessions: Map<string, ChildSessionData>
@@ -574,6 +609,8 @@ function HybridTimelineBlocks({
   latestTurnFooterMessageId: string | null
   latestTurnStreamingTextMessageId: string | null
   status: "idle" | "streaming" | "error"
+  worktreePath?: string | null
+  onOpenImagePreview?: (preview: ChatImagePreviewRequest) => void
 }) {
   const { scrollRef } = useStickToBottomContext()
   const timelineRootRef = useRef<HTMLDivElement | null>(null)
@@ -713,6 +750,8 @@ function HybridTimelineBlocks({
                   latestTurnFooterMessageId={latestTurnFooterMessageId}
                   latestTurnStreamingTextMessageId={latestTurnStreamingTextMessageId}
                   status={status}
+                  worktreePath={worktreePath}
+                  onOpenImagePreview={onOpenImagePreview}
                 />
               </div>
             )
@@ -729,6 +768,8 @@ function HybridTimelineBlocks({
           latestTurnFooterMessageId={latestTurnFooterMessageId}
           latestTurnStreamingTextMessageId={latestTurnStreamingTextMessageId}
           status={status}
+          worktreePath={worktreePath}
+          onOpenImagePreview={onOpenImagePreview}
         />
       ))}
     </div>
@@ -743,6 +784,8 @@ function DisplayBlockRow({
   latestTurnFooterMessageId,
   latestTurnStreamingTextMessageId,
   status,
+  worktreePath,
+  onOpenImagePreview,
 }: {
   preparedBlock: PreparedDisplayBlock
   childSessions: Map<string, ChildSessionData>
@@ -751,6 +794,8 @@ function DisplayBlockRow({
   latestTurnFooterMessageId: string | null
   latestTurnStreamingTextMessageId: string | null
   status: "idle" | "streaming" | "error"
+  worktreePath?: string | null
+  onOpenImagePreview?: (preview: ChatImagePreviewRequest) => void
 }) {
   const block = preparedBlock.block
 
@@ -764,6 +809,8 @@ function DisplayBlockRow({
           messages={block.messages}
           childSessions={childSessions}
           approvalStateByMessageId={approvalStateByMessageId}
+          worktreePath={worktreePath}
+          onOpenImagePreview={onOpenImagePreview}
         />
       ) : block.type === "activityGroup" ? (
         <TurnStepsDropdown
@@ -772,6 +819,8 @@ function DisplayBlockRow({
           approvalStateByMessageId={approvalStateByMessageId}
           summary={getActivityGroupSummary(block)}
           defaultOpen={isActivityGroupActive(block)}
+          worktreePath={worktreePath}
+          onOpenImagePreview={onOpenImagePreview}
         />
       ) : (
         <>
@@ -783,6 +832,8 @@ function DisplayBlockRow({
               status === "streaming" &&
               block.message.info.id === latestTurnStreamingTextMessageId
             }
+            worktreePath={worktreePath}
+            onOpenImagePreview={onOpenImagePreview}
           />
           {completedFooterByMessageId.get(block.message.info.id) != null &&
           !(status === "streaming" && block.message.info.id === latestTurnFooterMessageId) ? (

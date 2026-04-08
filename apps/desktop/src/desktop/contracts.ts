@@ -272,6 +272,11 @@ export interface ReadFileAsDataUrlOptions {
   mimeType?: string
 }
 
+export interface RemovePathOptions {
+  recursive?: boolean
+  force?: boolean
+}
+
 export interface StoreValueMap {
   [key: string]: unknown
 }

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import {
   Bash,
   CaretDown,
@@ -14,12 +14,15 @@ import {
   type Icon,
 } from "@/components/icons"
 import { cn } from "@/lib/utils"
+import { desktop } from "@/desktop/client"
 import type {
   MessageWithParts,
+  RuntimeAttachmentPart,
   RuntimeApprovalDisplayState,
   RuntimeMessagePart,
   RuntimeToolPart,
 } from "../types"
+import { getMessageAttachmentParts, getMessageTextContent } from "../domain/runtimeMessages"
 import {
   Message as MessageComponent,
   MessageContent,
@@ -28,9 +31,16 @@ import {
 } from "./ai-elements/message"
 import type { ChildSessionData } from "./agent-activity/AgentActivitySubagent"
 import { getFileChangeEntries, getToolPart } from "./timelineActivity"
+import { UploadChip } from "./UploadChip"
 import {
   useViewportAnchorToggle,
 } from "./useViewportAnchorToggle"
+
+export interface ChatImagePreviewRequest {
+  absolutePath: string
+  label: string
+  mediaType?: string
+}
 
 interface ChatTimelineItemProps {
   message: MessageWithParts
@@ -38,13 +48,12 @@ interface ChatTimelineItemProps {
   approvalState?: RuntimeApprovalDisplayState | null
   isStreaming?: boolean
   withinGroup?: boolean
+  worktreePath?: string | null
+  onOpenImagePreview?: (preview: ChatImagePreviewRequest) => void
 }
 
 function getMessageText(parts: RuntimeMessagePart[]): string {
-  return parts
-    .filter((part): part is Extract<RuntimeMessagePart, { type: "text" }> => part.type === "text")
-    .map((part) => part.text)
-    .join("")
+  return getMessageTextContent(parts)
 }
 
 function TimelineTextBlock({
@@ -127,6 +136,40 @@ function TimelineTextBlock({
 function getBaseName(path: string): string {
   const segments = path.split(/[\\/]/).filter(Boolean)
   return segments[segments.length - 1] ?? path
+}
+
+function isAbsolutePath(path: string): boolean {
+  return path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path)
+}
+
+function joinPathSegments(basePath: string, relativePath: string): string {
+  const separator = basePath.includes("\\") ? "\\" : "/"
+  const normalizedBase = basePath.replace(/[\\/]+$/, "")
+  const normalizedRelative = relativePath.replace(/^[\\/]+/, "").replace(/[\\/]+/g, separator)
+
+  if (!normalizedRelative) {
+    return normalizedBase
+  }
+
+  return `${normalizedBase}${separator}${normalizedRelative}`
+}
+
+function resolvePreviewPath(path: string, worktreePath?: string | null): string | null {
+  const trimmedPath = path.trim()
+
+  if (!trimmedPath) {
+    return null
+  }
+
+  if (isAbsolutePath(trimmedPath)) {
+    return trimmedPath
+  }
+
+  if (!worktreePath) {
+    return null
+  }
+
+  return joinPathSegments(worktreePath, trimmedPath)
 }
 
 function countDiffLines(diff: string | undefined): { added: number; removed: number } {
@@ -254,6 +297,88 @@ function renderCommandSummary(toolPart: RuntimeToolPart) {
   )
 }
 
+function AttachmentImagePreview({
+  attachment,
+  className,
+}: {
+  attachment: RuntimeAttachmentPart
+  className?: string
+}) {
+  const [src, setSrc] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (attachment.kind !== "image") {
+      return
+    }
+
+    let isActive = true
+
+    void desktop.fs
+      .readFileAsDataUrl(attachment.absolutePath, {
+        mimeType: attachment.mediaType,
+      })
+      .then((nextSrc) => {
+        if (isActive) {
+          setSrc(nextSrc)
+        }
+      })
+      .catch((error) => {
+        console.warn("[chat] Failed to load image attachment preview:", attachment.absolutePath, error)
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [attachment.absolutePath, attachment.kind, attachment.mediaType])
+
+  if (!src) {
+    return (
+      <div className={cn("h-full w-full rounded-sm bg-white/8", className)} />
+    )
+  }
+
+  return (
+    <img
+      alt={attachment.label}
+      src={src}
+      className={cn("h-full w-full rounded-sm object-cover", className)}
+    />
+  )
+}
+
+function SentAttachmentChip({
+  attachment,
+  onOpenImagePreview,
+}: {
+  attachment: RuntimeAttachmentPart
+  onOpenImagePreview?: (preview: ChatImagePreviewRequest) => void
+}) {
+  if (attachment.kind === "image" && onOpenImagePreview) {
+    return (
+      <UploadChip
+        kind={attachment.kind}
+        label={attachment.label}
+        title={`${attachment.label}\n${attachment.relativePath}`}
+        onClick={() =>
+          onOpenImagePreview({
+            absolutePath: attachment.absolutePath,
+            label: attachment.label,
+            mediaType: attachment.mediaType,
+          })
+        }
+      />
+    )
+  }
+
+  return (
+    <UploadChip
+      kind={attachment.kind}
+      label={attachment.label}
+      title={`${attachment.label}\n${attachment.relativePath}`}
+    />
+  )
+}
+
 function renderFileChangeSummary(toolPart: RuntimeToolPart) {
   const output = toolPart.state.output
   const source =
@@ -323,13 +448,16 @@ function renderGenericToolSummary(message: MessageWithParts, toolPart: RuntimeTo
     case "collabAgentToolCall":
       return <span>Started subagent work</span>
     case "imageGeneration":
-      return <span>Generated an image</span>
-    case "imageView":
+      return <span>Generated image</span>
+    case "imageView": {
+      const imageName = getBaseName(String(input.path ?? toolPart.state.title ?? "image"))
       return (
-        <span>
-          Viewed {renderInlineCode(getBaseName(String(input.path ?? toolPart.state.title ?? "image")))}
+        <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
+          <span className="shrink-0">Image</span>
+          <span className="truncate">{imageName}</span>
         </span>
       )
+    }
     case "contextCompaction":
       return <span>Compacted context</span>
     default:
@@ -483,14 +611,17 @@ function InlineActivityRow({
   details,
   withinGroup = false,
   approvalState = null,
+  onPress,
 }: {
   icon?: Icon
   summary: ReactNode
   details?: ReactNode
   withinGroup?: boolean
   approvalState?: RuntimeApprovalDisplayState | null
+  onPress?: () => void
 }) {
   const canExpand = Boolean(details)
+  const isClickable = canExpand || Boolean(onPress)
   const [isOpen, setIsOpen] = useState(false)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const preserveViewportOnToggle = useViewportAnchorToggle()
@@ -520,15 +651,21 @@ function InlineActivityRow({
         approvalTone ? approvalTone.text : "text-muted-foreground"
       )}
     >
-      {canExpand ? (
+      {isClickable ? (
         <button
           ref={buttonRef}
           type="button"
-          onClick={() =>
-            preserveViewportOnToggle(buttonRef.current, () => {
-              setIsOpen((v) => !v)
-            })}
-          className="relative z-10 inline-flex max-w-full items-center gap-1.5 align-top text-left"
+          onClick={() => {
+            if (canExpand) {
+              preserveViewportOnToggle(buttonRef.current, () => {
+                setIsOpen((v) => !v)
+              })
+              return
+            }
+
+            onPress?.()
+          }}
+          className="relative z-10 inline-flex max-w-full items-center gap-1.5 align-top text-left hover:text-foreground/88"
         >
           {IconComponent ? (
             <IconComponent
@@ -540,14 +677,16 @@ function InlineActivityRow({
             />
           ) : null}
           <span className="min-w-0 flex-1">{summary}</span>
-          <span
-            className={cn(
-              "shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100",
-              isOpen && "opacity-100"
-            )}
-          >
-            {isOpen ? <CaretDown className="size-4" /> : <CaretRight className="size-4" />}
-          </span>
+          {canExpand ? (
+            <span
+              className={cn(
+                "shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100",
+                isOpen && "opacity-100"
+              )}
+            >
+              {isOpen ? <CaretDown className="size-4" /> : <CaretRight className="size-4" />}
+            </span>
+          ) : null}
         </button>
       ) : (
         <span className="inline-flex max-w-full items-center gap-1.5">
@@ -588,12 +727,16 @@ export function ToolTimelineRow({
   childSessions,
   withinGroup = false,
   approvalState = null,
+  worktreePath,
+  onOpenImagePreview,
 }: {
   message: MessageWithParts
   toolPart: RuntimeToolPart
   childSessions?: Map<string, ChildSessionData>
   withinGroup?: boolean
   approvalState?: RuntimeApprovalDisplayState | null
+  worktreePath?: string | null
+  onOpenImagePreview?: (preview: ChatImagePreviewRequest) => void
 }) {
   const details = useMemo(
     () => renderToolDetails(message, toolPart, childSessions),
@@ -619,6 +762,29 @@ export function ToolTimelineRow({
         summary={renderFileChangeSummary(toolPart)}
         withinGroup={withinGroup}
         approvalState={approvalState}
+      />
+    )
+  }
+
+  if (message.info.itemType === "imageView") {
+    const rawPath = String(toolPart.state.input.path ?? toolPart.state.title ?? "").trim()
+    const resolvedPath = resolvePreviewPath(rawPath, worktreePath)
+
+    return (
+      <InlineActivityRow
+        icon={Image}
+        summary={renderGenericToolSummary(message, toolPart)}
+        withinGroup={withinGroup}
+        approvalState={approvalState}
+        onPress={
+          resolvedPath && onOpenImagePreview
+            ? () =>
+                onOpenImagePreview({
+                  absolutePath: resolvedPath,
+                  label: getBaseName(rawPath) || "Image",
+                })
+            : undefined
+        }
       />
     )
   }
@@ -652,19 +818,33 @@ export function ChatTimelineItem({
   approvalState = null,
   isStreaming = false,
   withinGroup = false,
+  worktreePath,
+  onOpenImagePreview,
 }: ChatTimelineItemProps) {
   const text = getMessageText(message.parts)
+  const attachments = getMessageAttachmentParts(message.parts)
   const toolPart = getToolPart(message.parts)
 
   if (message.info.role === "user") {
-    if (!text.trim()) {
+    if (!text.trim() && attachments.length === 0) {
       return null
     }
 
     return (
       <MessageComponent from="user">
-        <MessageContent>
-          <MessageUserContent>{text}</MessageUserContent>
+        <MessageContent className="gap-3">
+          {text.trim() ? <MessageUserContent>{text}</MessageUserContent> : null}
+          {attachments.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {attachments.map((attachment) => (
+                <SentAttachmentChip
+                  key={attachment.id}
+                  attachment={attachment}
+                  onOpenImagePreview={onOpenImagePreview}
+                />
+              ))}
+            </div>
+          ) : null}
         </MessageContent>
       </MessageComponent>
     )
@@ -678,6 +858,8 @@ export function ChatTimelineItem({
         childSessions={childSessions}
         withinGroup={withinGroup}
         approvalState={approvalState}
+        worktreePath={worktreePath}
+        onOpenImagePreview={onOpenImagePreview}
       />
     )
   }

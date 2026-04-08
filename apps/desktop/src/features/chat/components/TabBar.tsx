@@ -8,6 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/features/shared/components/ui/dropdown-menu"
+import { LayoutGroup } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { getTerminalTabLabel } from "@/features/terminal/utils/terminalTabs"
 import { TabItem } from "./TabItem"
@@ -51,25 +52,27 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose }: TabBarPro
   return (
     <div className="flex h-10 items-center border-b border-sidebar-border bg-sidebar px-2 gap-0.5">
       <div className="flex h-full flex-1 items-center overflow-x-auto gap-0.5">
-        {tabs.map((tab) => {
-          let harnessId: HarnessId | undefined
-          if (tab.type === "chat-session" && tab.sessionId && worktreeChat) {
-            const session = worktreeChat.sessions.find((s) => s.id === tab.sessionId)
-            harnessId = session?.harnessId
-          }
+        <LayoutGroup>
+          {tabs.map((tab) => {
+            let harnessId: HarnessId | undefined
+            if (tab.type === "chat-session" && tab.sessionId && worktreeChat) {
+              const session = worktreeChat.sessions.find((s) => s.id === tab.sessionId)
+              harnessId = session?.harnessId
+            }
 
-          return (
-            <TabItem
-              key={tab.id}
-              type={tab.type}
-              title={tab.type === "terminal" ? getTerminalTabLabel(tab, tabs) : tab.title}
-              harnessId={harnessId}
-              isActive={tab.id === activeTabId}
-              onClick={() => onTabChange(tab.id)}
-              onClose={onTabClose ? () => onTabClose(tab.id) : undefined}
-            />
-          )
-        })}
+            return (
+              <TabItem
+                key={tab.id}
+                type={tab.type}
+                title={tab.type === "terminal" ? getTerminalTabLabel(tab, tabs) : tab.title}
+                harnessId={harnessId}
+                isActive={tab.id === activeTabId}
+                onClick={() => onTabChange(tab.id)}
+                onClose={onTabClose ? () => onTabClose(tab.id) : undefined}
+              />
+            )
+          })}
+        </LayoutGroup>
 
         <DropdownMenu>
           <DropdownMenuTrigger

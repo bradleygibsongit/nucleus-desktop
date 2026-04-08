@@ -80,6 +80,19 @@ export interface RuntimeTextPart {
   text: string;
 }
 
+export type RuntimeAttachmentKind = "image" | "file" | "pasted_text";
+
+export interface RuntimeAttachmentPart {
+  id: string;
+  type: "attachment";
+  kind: RuntimeAttachmentKind;
+  label: string;
+  relativePath: string;
+  absolutePath: string;
+  mediaType?: string;
+  sizeBytes?: number;
+}
+
 export type ToolExecutionStatus = "pending" | "running" | "completed" | "error";
 
 export interface RuntimeToolState {
@@ -100,7 +113,7 @@ export interface RuntimeToolPart {
   state: RuntimeToolState;
 }
 
-export type RuntimeMessagePart = RuntimeTextPart | RuntimeToolPart;
+export type RuntimeMessagePart = RuntimeTextPart | RuntimeAttachmentPart | RuntimeToolPart;
 
 export interface MessageWithParts {
   info: RuntimeMessage;

@@ -7,6 +7,7 @@ import { RightSidebarProvider } from "./RightSidebarContext"
 import { CenterToolbar } from "./CenterToolbar"
 import type { SettingsSectionId } from "@/features/settings/config"
 import { AppUpdateBootstrap } from "@/features/updates/components/AppUpdateBootstrap"
+import { HarnessBootstrap } from "@/features/chat/components/HarnessBootstrap"
 
 export function AppLayout() {
   const [activeView, setActiveView] = useState<"chat" | "settings" | "automations">("chat")
@@ -15,6 +16,7 @@ export function AppLayout() {
   return (
     <SidebarProvider>
       <RightSidebarProvider>
+        <HarnessBootstrap />
         <AppUpdateBootstrap />
         <div className="flex h-screen overflow-hidden bg-background text-foreground">
           <LeftSidebar

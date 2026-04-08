@@ -1,6 +1,7 @@
 import { GitBranch, CaretRight } from "@/components/icons"
 import { SearchableSelect } from "@/features/shared/components/ui/searchable-select"
 import { useProjectGitBranches } from "@/features/shared/hooks"
+import { ProjectIcon } from "@/features/workspace/components/ProjectIcon"
 import { useProjectStore } from "@/features/workspace/store"
 import { cn } from "@/lib/utils"
 
@@ -19,6 +20,9 @@ export function BranchTargetSelector({
     enabled: Boolean(worktreePath),
   })
   const setTargetBranch = useProjectStore((state) => state.setTargetBranch)
+  const project = useProjectStore((state) =>
+    projectId ? state.projects.find((candidate) => candidate.id === projectId) ?? null : null
+  )
 
   if (!projectId || !worktreePath) {
     return null
@@ -38,7 +42,9 @@ export function BranchTargetSelector({
           isLoading && "text-muted-foreground"
         )}
       >
-        <GitBranch size={14} className="shrink-0 text-muted-foreground" />
+        <span className="flex size-4 shrink-0 items-center justify-center">
+          <ProjectIcon project={project} size={14} className="shrink-0 rounded-[4px] text-muted-foreground" />
+        </span>
         <span className="truncate">{currentBranch}</span>
       </div>
 
