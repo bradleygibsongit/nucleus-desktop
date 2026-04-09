@@ -54,7 +54,6 @@ interface AppUpdateStoreState {
   blockedDialogOpen: boolean
   toastDismissedForStatus: AppUpdateState["status"] | null
   initialize: () => Promise<void>
-  refreshState: () => Promise<AppUpdateState>
   checkForUpdates: () => Promise<AppUpdateCheckResult>
   installUpdate: (options?: { force?: boolean }) => Promise<AppUpdateActionResult>
   dismissUpdate: () => Promise<void>
@@ -96,12 +95,6 @@ export const useAppUpdateStore = create<AppUpdateStoreState>((set, get) => ({
     })
 
     return initializePromise
-  },
-
-  refreshState: async () => {
-    const updateState = await desktop.app.getUpdateState()
-    set({ updateState, blockedDialogOpen: updateState.status === "blocked" })
-    return updateState
   },
 
   checkForUpdates: async () => {
