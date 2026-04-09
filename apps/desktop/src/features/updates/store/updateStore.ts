@@ -79,12 +79,10 @@ export const useAppUpdateStore = create<AppUpdateStoreState>((set, get) => ({
       return initializePromise
     }
 
-    set({ hasInitialized: true })
-
     initializePromise = (async () => {
       try {
         const updateState = await desktop.app.getUpdateState()
-        set({ updateState })
+        set({ updateState, hasInitialized: true })
       } catch (error) {
         set((state) => ({
           updateState: toErroredUpdateState(state.updateState, error, "check"),
@@ -145,7 +143,7 @@ export const useAppUpdateStore = create<AppUpdateStoreState>((set, get) => ({
   setUpdateState: (updateState) =>
     set((state) => ({
       updateState,
-      blockedDialogOpen: updateState.status === "blocked" ? true : state.blockedDialogOpen,
+      blockedDialogOpen: updateState.status === "blocked",
       toastDismissedForStatus:
         state.toastDismissedForStatus === updateState.status
           ? state.toastDismissedForStatus

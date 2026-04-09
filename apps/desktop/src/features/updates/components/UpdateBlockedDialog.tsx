@@ -26,11 +26,6 @@ export function UpdateBlockedDialog() {
       open={blockedDialogOpen}
       onOpenChange={(open) => {
         if (!open) {
-          if (updateState.status === "blocked") {
-            void dismissUpdate()
-            return
-          }
-
           closeBlockedDialog()
         }
       }}

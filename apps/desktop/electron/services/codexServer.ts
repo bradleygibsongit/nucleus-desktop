@@ -264,8 +264,6 @@ export class CodexServerService {
       throw new Error("Codex App Server is not connected")
     }
 
-    this.trackOutgoingMessage(message)
-
     await new Promise<void>((resolve, reject) => {
       this.process?.stdin.write(`${message}\n`, (error) => {
         if (error) {
@@ -275,6 +273,8 @@ export class CodexServerService {
         resolve()
       })
     })
+
+    this.trackOutgoingMessage(message)
   }
 
   dispose(): void {
@@ -290,7 +290,7 @@ export class CodexServerService {
   }
 
   getActiveTurnCount(): number {
-    return this.activeTurnIds.size
+    return this.activeTurnIds.size + this.pendingTurnStartRequestIds.size
   }
 
   private trackOutgoingMessage(rawMessage: string): void {

@@ -157,6 +157,21 @@ describe("useAppUpdateStore", () => {
     expect(useAppUpdateStore.getState().updateState).toEqual(initialUpdateState)
   })
 
+  test("allows initialization to retry after a failed first attempt", async () => {
+    getUpdateStateMock
+      .mockRejectedValueOnce(new Error("Bridge offline"))
+      .mockResolvedValueOnce(initialUpdateState)
+
+    await useAppUpdateStore.getState().initialize()
+    expect(useAppUpdateStore.getState().hasInitialized).toBe(false)
+
+    await useAppUpdateStore.getState().initialize()
+
+    expect(getUpdateStateMock).toHaveBeenCalledTimes(2)
+    expect(useAppUpdateStore.getState().hasInitialized).toBe(true)
+    expect(useAppUpdateStore.getState().updateState).toEqual(initialUpdateState)
+  })
+
   test("mirrors manual check results from the main process", async () => {
     const result = await useAppUpdateStore.getState().checkForUpdates()
 
@@ -208,5 +223,20 @@ describe("useAppUpdateStore", () => {
     expect(dismissUpdateMock).toHaveBeenCalled()
     expect(useAppUpdateStore.getState().blockedDialogOpen).toBe(false)
     expect(useAppUpdateStore.getState().updateState.status).toBe("ready")
+  })
+
+  test("closes the blocked dialog when a later snapshot is no longer blocked", () => {
+    useAppUpdateStore.setState({
+      blockedDialogOpen: true,
+    })
+
+    useAppUpdateStore.getState().setUpdateState({
+      ...initialUpdateState,
+      status: "ready",
+      downloadedVersion: "0.2.0",
+      canInstall: true,
+    })
+
+    expect(useAppUpdateStore.getState().blockedDialogOpen).toBe(false)
   })
 })

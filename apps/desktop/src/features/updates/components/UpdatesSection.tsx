@@ -1,9 +1,10 @@
 import { CheckCircle, Refresh } from "@/components/icons"
+import type { AppUpdateState } from "@/desktop/client"
 import { Button } from "@/features/shared/components/ui/button"
 import { useAppUpdateStore } from "@/features/updates/store/updateStore"
 import { formatUpdateTime, getUpdateStatusLabel } from "./updatePresentation"
 
-function renderReleaseNotes(message: string | null, status: string) {
+function renderReleaseNotes(message: string | null, status: AppUpdateState["status"]) {
   if (!message) {
     return null
   }
@@ -29,7 +30,10 @@ export function UpdatesSection() {
   const currentVersion = updateState.currentVersion || "Unknown"
   const activeVersion =
     updateState.downloadedVersion ?? updateState.availableVersion ?? currentVersion
-  const showRestartAction = updateState.status === "ready"
+  const showRestartAction =
+    updateState.canInstall &&
+    updateState.status !== "downloading" &&
+    updateState.status !== "installing"
   const showDismissAction = updateState.canDismiss && updateState.status !== "downloading"
   const showErrorDetail = updateState.status === "error" && updateState.message
 

@@ -206,6 +206,32 @@ describe("UpdaterService", () => {
     expect(autoUpdater.quitAndInstall).toHaveBeenCalledWith(false, true)
   })
 
+  test("does not replace a blocked install snapshot with a new update check", async () => {
+    autoUpdater.checkForUpdates.mockImplementation(async () => {
+      emitUpdaterEvent("checking-for-update")
+      emitUpdaterEvent("update-available", { version: "0.2.0" })
+      emitUpdaterEvent("update-downloaded", { version: "0.2.0" })
+    })
+
+    const service = new UpdaterService(() => {}, {
+      getActiveUpdateWork: () => ({
+        activeTurns: 1,
+        activeTerminalSessions: 0,
+        labels: ["1 active coding turn"],
+      }),
+    })
+
+    await service.checkForUpdates()
+    await service.installUpdate()
+    autoUpdater.checkForUpdates.mockClear()
+
+    const result = await service.checkForUpdates({ manual: false })
+
+    expect(result.checked).toBe(false)
+    expect(result.state.status).toBe("blocked")
+    expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled()
+  })
+
   test("returns to an install error state when quitAndInstall throws", async () => {
     autoUpdater.checkForUpdates.mockImplementation(async () => {
       emitUpdaterEvent("checking-for-update")

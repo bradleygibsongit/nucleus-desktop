@@ -146,6 +146,7 @@ export class UpdaterService {
     if (
       this.state.status === "checking" ||
       this.state.status === "downloading" ||
+      this.state.status === "blocked" ||
       this.state.status === "installing" ||
       this.state.status === "ready"
     ) {

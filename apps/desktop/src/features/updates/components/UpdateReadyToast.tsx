@@ -12,6 +12,8 @@ function DismissButton({ onClick }: { onClick: () => void }) {
       variant="ghost"
       size="icon-sm"
       className="size-5 shrink-0 text-muted-foreground"
+      aria-label="Dismiss update notification"
+      title="Dismiss"
       onClick={onClick}
     >
       <X size={12} />
