@@ -13,10 +13,16 @@ describe("getWorktreeActivityStatus", () => {
               createdAt: 1,
               updatedAt: 2,
             },
+            {
+              id: "session-selected-elsewhere",
+              harnessId: "claude-code",
+              createdAt: 3,
+              updatedAt: 4,
+            },
           ],
-          activeSessionId: "session-running",
+          activeSessionId: "session-selected-elsewhere",
           archivedSessionIds: [],
-          selectedHarnessId: "codex",
+          selectedHarnessId: "claude-code",
         },
         {
           "session-running": {
@@ -24,7 +30,7 @@ describe("getWorktreeActivityStatus", () => {
             unread: true,
           },
           "session-selected-elsewhere": {
-            status: "idle",
+            status: "connecting",
             unread: false,
           },
         }
