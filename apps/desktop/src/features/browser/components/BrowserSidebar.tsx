@@ -211,7 +211,7 @@ export function BrowserSidebar() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 w-full flex-col">
       <form onSubmit={handleSubmit} className="shrink-0 px-1.5">
         <div className="flex items-center gap-1.5">
           <Button

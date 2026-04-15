@@ -50,12 +50,46 @@ const CODEX_REASONING_SUMMARY = "detailed" as const
 const CODEX_MODEL_CACHE_TTL_MS = 30 * 60 * 1000
 const CODEX_REASONING_SUMMARY_PARAM = "reasoning.summary"
 
-function isUnsupportedReasoningSummaryError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false
+function extractErrorText(error: unknown): string {
+  if (typeof error === "string") {
+    return error
   }
 
-  const message = error.message
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  if (error && typeof error === "object") {
+    try {
+      return JSON.stringify(error)
+    } catch {
+      return String(error)
+    }
+  }
+
+  return String(error)
+}
+
+function isUnsupportedReasoningSummaryError(error: unknown): boolean {
+  const rawMessage = extractErrorText(error)
+  const candidates = [rawMessage]
+
+  try {
+    const parsed = JSON.parse(rawMessage) as {
+      error?: {
+        code?: string
+        message?: string
+        param?: string
+      }
+    }
+    candidates.push(
+      parsed.error?.message ?? "",
+      parsed.error?.code ?? "",
+      parsed.error?.param ?? ""
+    )
+  } catch {}
+
+  const message = candidates.join("\n")
   return (
     message.includes(CODEX_REASONING_SUMMARY_PARAM) &&
     (message.includes("unsupported_parameter") || message.includes("Unsupported parameter"))

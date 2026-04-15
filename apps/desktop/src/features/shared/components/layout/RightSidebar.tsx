@@ -299,6 +299,16 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
               : "app-scrollbar-sm overflow-y-auto px-1.5 py-1.5"
           )}
         >
+          <div
+            className={cn(
+              "min-h-0 w-full flex-1",
+              activeTab === "browser" ? "flex" : "hidden"
+            )}
+            aria-hidden={activeTab === "browser" ? undefined : true}
+          >
+            <BrowserSidebar />
+          </div>
+
           {activeTab === "files" ? (
             isInitialLoad || isFileTreeLoading ? (
               <div className="flex items-center justify-center py-8">
@@ -339,9 +349,7 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
                 )}
               </div>
             )
-          ) : activeTab === "browser" ? (
-            <BrowserSidebar />
-          ) : activeTab === "changes" ? (
+          ) : activeTab === "browser" ? null : activeTab === "changes" ? (
             !selectedWorktree ? (
               <RightSidebarEmptyState
                 title="No project selected"
