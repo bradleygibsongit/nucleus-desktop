@@ -155,7 +155,7 @@ export function ProjectActionsControl() {
           onClick={openCreateModal}
           size="sm"
           variant="outline"
-          className="h-7 rounded-lg border-border/70 bg-card px-2 text-foreground shadow-none hover:bg-accent"
+          className="h-7 border-border/70 px-2 text-foreground shadow-none"
         >
           <Plus size={14} className="text-muted-foreground" />
           <span>Add action</span>
@@ -163,28 +163,32 @@ export function ProjectActionsControl() {
       ) : (
         <div
           ref={actionGroupRef}
-          className="inline-flex h-7 items-stretch overflow-hidden rounded-lg border border-border/70 bg-card shadow-none"
+          className="inline-flex items-center gap-0"
         >
-          <button
+          <Button
             type="button"
             onClick={() => void runAction(primaryAction)}
             disabled={runningActionId === primaryAction.id}
             className={cn(
-              "inline-flex h-full min-w-0 items-center gap-1.5 border-0 bg-transparent px-2 text-sm font-medium text-foreground transition-colors",
-              "hover:bg-accent/80 disabled:cursor-wait disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+              "h-7 max-w-[172px] min-w-0 justify-start rounded-r-none border-r-0 shadow-none",
+              runningActionId === primaryAction.id && "cursor-wait",
             )}
+            variant="outline"
+            size="sm"
           >
             <ProjectActionIcon action={primaryAction} size={16} className="shrink-0 text-muted-foreground" />
             <span className="max-w-[120px] truncate">{primaryAction.name}</span>
-          </button>
-          <div className="w-px shrink-0 bg-border/80" aria-hidden="true" />
+          </Button>
           <DropdownMenu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
             <DropdownMenuTrigger
               render={
-                <button
+                <Button
                   type="button"
-                  className="inline-flex h-full w-8 items-center justify-center border-0 bg-transparent px-0 text-muted-foreground transition-colors hover:bg-accent/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                  variant="outline"
+                  size="icon-sm"
+                  className="h-7 w-8 rounded-l-none shadow-none"
                   aria-label="Open project actions menu"
+                  disabled={runningActionId != null}
                 />
               }
             >
@@ -194,7 +198,7 @@ export function ProjectActionsControl() {
               ref={actionMenuRef}
               align="end"
               sideOffset={8}
-              className="w-48 border border-border/70 bg-card p-1 shadow-lg"
+              className="w-44 border border-border/70 bg-card p-0.5 shadow-lg"
             >
               {actions.map((action) => (
                 <DropdownMenuItem
@@ -203,19 +207,19 @@ export function ProjectActionsControl() {
                     setIsMenuOpen(false)
                     void runAction(action, true)
                   }}
-                  className="group/action-item min-h-8 gap-2 px-2 py-1"
+                  className="group/action-item min-h-7 gap-1.5 px-1.5 py-0.5"
                 >
                   <ProjectActionIcon action={action} size={16} className="shrink-0" />
                   <span className="min-w-0 flex-1 truncate font-medium">{action.name}</span>
                   {action.hotkey ? (
-                    <DropdownMenuShortcut className="group-hover/action-item:hidden">
+                    <DropdownMenuShortcut className="text-xs tracking-normal group-hover/action-item:hidden">
                       {formatShortcutBinding(action.hotkey)}
                     </DropdownMenuShortcut>
                   ) : null}
                   <button
                     type="button"
                     aria-label={`Edit ${action.name}`}
-                    className="hidden size-6 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent group-hover/action-item:flex"
+                    className="hidden size-5 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent group-hover/action-item:flex"
                     onMouseDown={(event) => {
                       event.preventDefault()
                       event.stopPropagation()
@@ -230,13 +234,13 @@ export function ProjectActionsControl() {
                   </button>
                 </DropdownMenuItem>
               ))}
-              <DropdownMenuSeparator className="my-2" />
+              <DropdownMenuSeparator className="my-1" />
               <DropdownMenuItem
                 onClick={() => {
                   setIsMenuOpen(false)
                   openCreateModal()
                 }}
-                className="min-h-8 gap-2 px-2 py-1 font-medium"
+                className="min-h-7 gap-1.5 px-1.5 py-0.5 font-medium"
               >
                 <Plus size={14} className="text-muted-foreground" />
                 <span>Add action</span>

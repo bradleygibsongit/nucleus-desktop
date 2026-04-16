@@ -731,14 +731,14 @@ export function SourceControlActionGroup({
             <DropdownMenuContent
               align="end"
               sideOffset={8}
-              className="w-48 border border-border/70 bg-card p-1 shadow-lg"
+              className="w-44 border border-border/70 bg-card p-0.5 shadow-lg"
             >
               {menuItems.map((item) => (
                 <DropdownMenuItem
                   key={item.id}
                   disabled={item.disabled}
                   onClick={() => void handleMenuItem(item)}
-                  className="min-h-8 gap-2 px-2 py-1"
+                  className="min-h-7 gap-1.5 px-1.5 py-0.5"
                 >
                   <GitActionIcon icon={item.icon} />
                   <span>{item.label}</span>

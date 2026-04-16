@@ -16,8 +16,11 @@ import type {
   GitFileStatus,
   GitMergePullRequestResult,
   GitPullRequestCheck,
+  GitPullRequestComment,
   GitPullRequest,
   GitPullRequestChecksResponse,
+  GitPullRequestReviewComment,
+  GitPullRequestReview,
   GitPullResult,
   GitRenameWorktreeInput,
   GitRenameWorktreeResult,
@@ -1053,6 +1056,64 @@ type RawPullRequestChecksResult = {
   error: string | null
 }
 
+type RawPullRequestReview = {
+  id?: string | null
+  state?: string | null
+  body?: string | null
+  submittedAt?: string | null
+  author?: {
+    login?: string | null
+    avatarUrl?: string | null
+  } | null
+  authorAssociation?: string | null
+  commit?: {
+    oid?: string | null
+  } | null
+}
+
+type RawPullRequestComment = {
+  id?: string | null
+  body?: string | null
+  createdAt?: string | null
+  url?: string | null
+  author?: {
+    login?: string | null
+    avatarUrl?: string | null
+  } | null
+  authorAssociation?: string | null
+}
+
+type RawPullRequestReviewThreadComment = {
+  id?: string | null
+  body?: string | null
+  path?: string | null
+  state?: string | null
+  publishedAt?: string | null
+  createdAt?: string | null
+  url?: string | null
+  diffHunk?: string | null
+  originalLine?: number | null
+  originalStartLine?: number | null
+  line?: number | null
+  startLine?: number | null
+  replyTo?: {
+    id?: string | null
+  } | null
+  author?: {
+    login?: string | null
+    avatarUrl?: string | null
+  } | null
+}
+
+type RawPullRequestReviewThread = {
+  id?: string | null
+  isResolved?: boolean | null
+  isOutdated?: boolean | null
+  comments?: {
+    nodes?: RawPullRequestReviewThreadComment[] | null
+  } | null
+}
+
 type GitHubActionsCheckTarget = {
   runId: string
   jobId?: string
@@ -1279,10 +1340,6 @@ async function getRawPullRequestChecks(
   options?: { requiredOnly?: boolean }
 ): Promise<RawPullRequestChecksResult> {
   try {
-    logGitDebug("[git] getRawPullRequestChecks:start", {
-      projectPath,
-      pullRequestNumber,
-    })
     const output = await runGhJsonCommandWithAllowedExitCodes(
       projectPath,
       [
@@ -1310,11 +1367,6 @@ async function getRawPullRequestChecks(
     }
 
     const checks = JSON.parse(output) as RawPullRequestCheck[]
-    logGitDebug("[git] getRawPullRequestChecks:success", {
-      projectPath,
-      pullRequestNumber,
-      checks,
-    })
     return {
       checks,
       error: null,
@@ -1322,13 +1374,7 @@ async function getRawPullRequestChecks(
   } catch (error) {
     const errorMessage = formatGhError(error, "Unable to load pull request checks from GitHub.")
     const shouldSuppressError = isBenignMissingChecksError(errorMessage)
-    if (shouldSuppressError) {
-      logGitDebug("[git] getRawPullRequestChecks:benign-missing-required-checks", {
-        projectPath,
-        pullRequestNumber,
-        error: errorMessage,
-      })
-    } else {
+    if (!shouldSuppressError) {
       console.warn("[git] getRawPullRequestChecks:error", {
         projectPath,
         pullRequestNumber,
@@ -1339,6 +1385,275 @@ async function getRawPullRequestChecks(
       checks: [],
       error: shouldSuppressError ? null : errorMessage,
     }
+  }
+}
+
+function normalizePullRequestReviewState(
+  value: string | null | undefined
+): GitPullRequestReview["state"] {
+  switch ((value ?? "").toUpperCase()) {
+    case "APPROVED":
+      return "APPROVED"
+    case "CHANGES_REQUESTED":
+      return "CHANGES_REQUESTED"
+    case "COMMENTED":
+      return "COMMENTED"
+    case "DISMISSED":
+      return "DISMISSED"
+    case "PENDING":
+      return "PENDING"
+    default:
+      return "UNKNOWN"
+  }
+}
+
+async function getRawPullRequestReviews(
+  projectPath: string,
+  pullRequestNumber: number,
+  pullRequestUrl: string | null | undefined
+): Promise<RawPullRequestReview[]> {
+  const repository = parseOwnerAndRepoFromPullRequestUrl(pullRequestUrl)
+  if (!repository) {
+    console.warn("[git] getRawPullRequestReviews:error", {
+      projectPath,
+      pullRequestNumber,
+      error: "Unable to determine repository owner/name for pull request reviews.",
+    })
+    return []
+  }
+
+  try {
+    const output = await runGhCommand(projectPath, [
+      "api",
+      "graphql",
+      "-f",
+      "query=query($owner:String!,$repo:String!,$number:Int!){ repository(owner:$owner,name:$repo){ pullRequest(number:$number){ reviews(first:100){ nodes { id state body submittedAt authorAssociation commit { oid } author { login avatarUrl } } } } } }",
+      "-F",
+      `owner=${repository.owner}`,
+      "-F",
+      `repo=${repository.repo}`,
+      "-F",
+      `number=${pullRequestNumber}`,
+    ])
+
+    if (!output.trim()) {
+      return []
+    }
+
+    const parsed = JSON.parse(output) as {
+      data?: {
+        repository?: {
+          pullRequest?: {
+            reviews?: {
+              nodes?: RawPullRequestReview[] | null
+            } | null
+          } | null
+        } | null
+      } | null
+    }
+    return parsed.data?.repository?.pullRequest?.reviews?.nodes ?? []
+  } catch (error) {
+    console.warn("[git] getRawPullRequestReviews:error", {
+      projectPath,
+      pullRequestNumber,
+      error: formatGhError(error, "Unable to load pull request reviews from GitHub."),
+    })
+    return []
+  }
+}
+
+async function getRawPullRequestComments(
+  projectPath: string,
+  pullRequestNumber: number,
+  pullRequestUrl: string | null | undefined
+): Promise<RawPullRequestComment[]> {
+  const repository = parseOwnerAndRepoFromPullRequestUrl(pullRequestUrl)
+  if (!repository) {
+    console.warn("[git] getRawPullRequestComments:error", {
+      projectPath,
+      pullRequestNumber,
+      error: "Unable to determine repository owner/name for pull request comments.",
+    })
+    return []
+  }
+
+  try {
+    const output = await runGhCommand(projectPath, [
+      "api",
+      "graphql",
+      "-f",
+      "query=query($owner:String!,$repo:String!,$number:Int!){ repository(owner:$owner,name:$repo){ pullRequest(number:$number){ comments(first:100){ nodes { id body createdAt url authorAssociation author { login avatarUrl } } } } } }",
+      "-F",
+      `owner=${repository.owner}`,
+      "-F",
+      `repo=${repository.repo}`,
+      "-F",
+      `number=${pullRequestNumber}`,
+    ])
+
+    if (!output.trim()) {
+      return []
+    }
+
+    const parsed = JSON.parse(output) as {
+      data?: {
+        repository?: {
+          pullRequest?: {
+            comments?: {
+              nodes?: RawPullRequestComment[] | null
+            } | null
+          } | null
+        } | null
+      } | null
+    }
+    return parsed.data?.repository?.pullRequest?.comments?.nodes ?? []
+  } catch (error) {
+    console.warn("[git] getRawPullRequestComments:error", {
+      projectPath,
+      pullRequestNumber,
+      error: formatGhError(error, "Unable to load pull request comments from GitHub."),
+    })
+    return []
+  }
+}
+
+function parseOwnerAndRepoFromPullRequestUrl(
+  value: string | null | undefined
+): { owner: string; repo: string } | null {
+  if (!value) {
+    return null
+  }
+
+  try {
+    const parsed = new URL(value)
+    const [owner, repo] = parsed.pathname.split("/").filter(Boolean)
+    if (!owner || !repo) {
+      return null
+    }
+
+    return { owner, repo }
+  } catch {
+    return null
+  }
+}
+
+async function getRawPullRequestReviewComments(
+  projectPath: string,
+  pullRequestNumber: number,
+  pullRequestUrl: string | null | undefined
+): Promise<GitPullRequestReviewComment[]> {
+  const repository = parseOwnerAndRepoFromPullRequestUrl(pullRequestUrl)
+  if (!repository) {
+    console.warn("[git] getRawPullRequestReviewComments:error", {
+      projectPath,
+      pullRequestNumber,
+      error: "Unable to determine repository owner/name for pull request review threads.",
+    })
+    return []
+  }
+
+  try {
+    const output = await runGhCommand(projectPath, [
+      "api",
+      "graphql",
+      "-f",
+      "query=query($owner:String!,$repo:String!,$number:Int!){ repository(owner:$owner,name:$repo){ pullRequest(number:$number){ reviewThreads(first:100){ nodes { id isResolved isOutdated comments(first:50){ nodes { id body path state publishedAt createdAt url diffHunk originalLine originalStartLine line startLine replyTo { id } author { login avatarUrl } } } } } } } }",
+      "-F",
+      `owner=${repository.owner}`,
+      "-F",
+      `repo=${repository.repo}`,
+      "-F",
+      `number=${pullRequestNumber}`,
+    ])
+
+    if (!output.trim()) {
+      return []
+    }
+
+    const parsed = JSON.parse(output) as {
+      data?: {
+        repository?: {
+          pullRequest?: {
+            reviewThreads?: {
+              nodes?: RawPullRequestReviewThread[] | null
+            } | null
+          } | null
+        } | null
+      } | null
+    }
+
+    return (
+      parsed.data?.repository?.pullRequest?.reviewThreads?.nodes?.flatMap((thread) => {
+        const threadId = thread.id?.trim()
+        if (!threadId) {
+          return []
+        }
+
+        return (thread.comments?.nodes ?? []).map((comment) => ({
+          id:
+            comment.id?.trim() ||
+            `${threadId}:${comment.author?.login?.trim() || "unknown"}:${comment.createdAt ?? "unknown"}`,
+          threadId,
+          authorLogin: comment.author?.login?.trim() || "unknown",
+          authorAvatarUrl: comment.author?.avatarUrl?.trim() || null,
+          body: comment.body?.trim() || null,
+          path: comment.path?.trim() || null,
+          state: comment.state?.trim() || null,
+          createdAt: comment.createdAt ?? null,
+          publishedAt: comment.publishedAt ?? null,
+          url: comment.url?.trim() || null,
+          diffHunk: comment.diffHunk?.trim() || null,
+          line: typeof comment.line === "number" ? comment.line : null,
+          startLine: typeof comment.startLine === "number" ? comment.startLine : null,
+          originalLine: typeof comment.originalLine === "number" ? comment.originalLine : null,
+          originalStartLine:
+            typeof comment.originalStartLine === "number" ? comment.originalStartLine : null,
+          isResolved: thread.isResolved === true,
+          isOutdated: thread.isOutdated === true,
+          replyToId: comment.replyTo?.id?.trim() || null,
+        }))
+      }) ?? []
+    )
+  } catch (error) {
+    console.warn("[git] getRawPullRequestReviewComments:error", {
+      projectPath,
+      pullRequestNumber,
+      error: formatGhError(error, "Unable to load pull request review comments from GitHub."),
+    })
+    return []
+  }
+}
+
+function mapPullRequestReview(rawReview: RawPullRequestReview): GitPullRequestReview {
+  const authorLogin = rawReview.author?.login?.trim() || "unknown"
+  const submittedAt = rawReview.submittedAt ?? null
+  const commitOid = rawReview.commit?.oid?.trim() || null
+  const state = normalizePullRequestReviewState(rawReview.state)
+
+  return {
+    id: rawReview.id?.trim() || `${authorLogin}:${submittedAt ?? "unknown"}:${state}:${commitOid ?? ""}`,
+    authorLogin,
+    authorAvatarUrl: rawReview.author?.avatarUrl?.trim() || null,
+    authorAssociation: rawReview.authorAssociation?.trim() || null,
+    body: rawReview.body?.trim() || null,
+    state,
+    submittedAt,
+    commitOid,
+  }
+}
+
+function mapPullRequestComment(rawComment: RawPullRequestComment): GitPullRequestComment {
+  const authorLogin = rawComment.author?.login?.trim() || "unknown"
+  const createdAt = rawComment.createdAt ?? null
+
+  return {
+    id: rawComment.id?.trim() || `${authorLogin}:${createdAt ?? "unknown"}:${rawComment.url ?? ""}`,
+    authorLogin,
+    authorAvatarUrl: rawComment.author?.avatarUrl?.trim() || null,
+    authorAssociation: rawComment.authorAssociation?.trim() || null,
+    body: rawComment.body?.trim() || null,
+    createdAt,
+    url: rawComment.url?.trim() || null,
   }
 }
 
@@ -2307,18 +2622,31 @@ export class GitService {
     if (!pullRequest || pullRequest.state !== "open") {
       return {
         checks: [],
+        reviews: [],
+        comments: [],
+        reviewComments: [],
         pullRequestNumber: null,
         error: null,
       }
     }
 
-    const rawChecks = await getRawPullRequestChecks(trimmedPath, pullRequest.number)
+    const [rawChecks, rawReviews, rawComments, reviewComments] = await Promise.all([
+      getRawPullRequestChecks(trimmedPath, pullRequest.number),
+      getRawPullRequestReviews(trimmedPath, pullRequest.number, pullRequest.url),
+      getRawPullRequestComments(trimmedPath, pullRequest.number, pullRequest.url),
+      getRawPullRequestReviewComments(trimmedPath, pullRequest.number, pullRequest.url),
+    ])
     const checks = await Promise.all(
       rawChecks.checks.map((rawCheck) => mapPullRequestCheck(trimmedPath, rawCheck))
     )
+    const reviews = rawReviews.map((rawReview) => mapPullRequestReview(rawReview))
+    const comments = rawComments.map((rawComment) => mapPullRequestComment(rawComment))
 
     return {
       checks,
+      reviews,
+      comments,
+      reviewComments,
       pullRequestNumber: pullRequest.number,
       error: rawChecks.error,
     }

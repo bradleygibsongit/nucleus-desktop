@@ -73,6 +73,9 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
   const shouldLoadChecks = openPullRequest?.state === "open"
   const {
     checks: pullRequestChecks,
+    comments: pullRequestComments,
+    reviews: pullRequestReviews,
+    reviewComments: pullRequestReviewComments,
     isLoading: isPullRequestChecksLoading,
     loadError: pullRequestChecksError,
   } = useProjectGitPullRequestChecks(selectedWorktreePath, {
@@ -124,21 +127,7 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
       : null
     const nextChecksStatus = openPullRequest?.checksStatus ?? null
 
-    console.debug("[RightSidebar] checks:auto-open:evaluate", {
-      selectedWorktreePath,
-      activeTab,
-      isCollapsed,
-      pullRequestNumber: openPullRequest?.number ?? null,
-      pullRequestState: openPullRequest?.state ?? null,
-      checksStatus: nextChecksStatus,
-      previousChecksStatus,
-      pullRequestKey,
-    })
-
     if (pullRequestKey && shouldAutoOpenChecksTab(previousChecksStatus, nextChecksStatus)) {
-      console.debug("[RightSidebar] checks:auto-open:trigger", {
-        pullRequestKey,
-      })
       expand()
       setActiveTab("checks")
     }
@@ -389,6 +378,9 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
             <PullRequestChecksPanel
               pullRequest={openPullRequest}
               checks={pullRequestChecks}
+              comments={pullRequestComments}
+              reviews={pullRequestReviews}
+              reviewComments={pullRequestReviewComments}
               isLoading={isPullRequestChecksLoading}
               loadError={pullRequestChecksError ?? openPullRequest?.checksError ?? null}
             />

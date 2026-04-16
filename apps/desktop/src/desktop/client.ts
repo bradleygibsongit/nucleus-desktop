@@ -14,7 +14,10 @@ import type {
   GitPullRequestResolveReason,
   GitPullRequestChecksResponse,
   GitPullRequestCheck,
+  GitPullRequestComment,
   GitPullRequestCheckStatus,
+  GitPullRequestReviewComment,
+  GitPullRequestReview,
   GitPullResult,
   GitRenameWorktreeInput,
   GitRenameWorktreeResult,
@@ -75,6 +78,46 @@ class RendererStoreHandle implements DesktopStoreHandle {
 
 export function loadDesktopStore(file: string): Promise<DesktopStoreHandle> {
   return Promise.resolve(new RendererStoreHandle(file))
+}
+
+function normalizePullRequestChecksResponse(
+  projectPath: string,
+  value: GitPullRequestChecksResponse
+): GitPullRequestChecksResponse {
+  const response = (value ?? {}) as Partial<GitPullRequestChecksResponse>
+  const checks = Array.isArray(response.checks) ? response.checks : []
+  const hasReviewsArray = Array.isArray(response.reviews)
+  const hasCommentsArray = Array.isArray(response.comments)
+  const hasReviewCommentsArray = Array.isArray(response.reviewComments)
+  const reviews = hasReviewsArray ? response.reviews : []
+  const comments = hasCommentsArray ? response.comments : []
+  const reviewComments = hasReviewCommentsArray ? response.reviewComments : []
+  const pullRequestNumber =
+    typeof response.pullRequestNumber === "number" ? response.pullRequestNumber : null
+  const error = response.error ?? null
+
+  if (!hasReviewsArray || !hasCommentsArray || !hasReviewCommentsArray) {
+    const legacyBridgeMessage =
+      "The desktop bridge is still using the older pull request checks payload. Restart the desktop dev process to load reviews and comments."
+
+    return {
+      checks,
+      reviews,
+      comments,
+      reviewComments,
+      pullRequestNumber,
+      error: error ? `${error} ${legacyBridgeMessage}` : legacyBridgeMessage,
+    }
+  }
+
+  return {
+    checks,
+    reviews,
+    comments,
+    reviewComments,
+    pullRequestNumber,
+    error,
+  }
 }
 
 export const desktop = {
@@ -178,12 +221,17 @@ export const desktop = {
         console.warn("[desktop.git] getPullRequestChecks is unavailable in the current preload bridge")
         return Promise.resolve({
           checks: [],
+          reviews: [],
+          comments: [],
+          reviewComments: [],
           pullRequestNumber: null,
           error: "Pull request checks are unavailable in the current desktop bridge.",
         })
       }
 
-      return getPullRequestChecks(projectPath)
+      return getPullRequestChecks(projectPath).then((result) =>
+        normalizePullRequestChecksResponse(projectPath, result)
+      )
     },
     listWorktrees: (projectPath: string) => window.nucleus.git.listWorktrees(projectPath),
     createWorktree: (projectPath: string, input: GitCreateWorktreeInput) =>
@@ -236,7 +284,9 @@ export type {
   GitPullRequestResolveReason,
   GitPullRequestChecksResponse,
   GitPullRequestCheck,
+  GitPullRequestComment,
   GitPullRequestCheckStatus,
+  GitPullRequestReview,
   GitPullResult,
   GitRenameWorktreeInput,
   GitRenameWorktreeResult,

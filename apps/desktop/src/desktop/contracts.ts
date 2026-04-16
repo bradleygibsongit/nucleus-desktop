@@ -107,8 +107,61 @@ export interface GitPullRequestCheck {
   hasFailureDetails: boolean
 }
 
+export type GitPullRequestReviewState =
+  | "APPROVED"
+  | "CHANGES_REQUESTED"
+  | "COMMENTED"
+  | "DISMISSED"
+  | "PENDING"
+  | "UNKNOWN"
+
+export interface GitPullRequestReview {
+  id: string
+  authorLogin: string
+  authorAvatarUrl?: string | null
+  authorAssociation?: string | null
+  body?: string | null
+  state: GitPullRequestReviewState
+  submittedAt?: string | null
+  commitOid?: string | null
+}
+
+export interface GitPullRequestComment {
+  id: string
+  authorLogin: string
+  authorAvatarUrl?: string | null
+  authorAssociation?: string | null
+  body?: string | null
+  createdAt?: string | null
+  url?: string | null
+}
+
+export interface GitPullRequestReviewComment {
+  id: string
+  threadId: string
+  authorLogin: string
+  authorAvatarUrl?: string | null
+  body?: string | null
+  path?: string | null
+  state?: string | null
+  createdAt?: string | null
+  publishedAt?: string | null
+  url?: string | null
+  diffHunk?: string | null
+  line?: number | null
+  startLine?: number | null
+  originalLine?: number | null
+  originalStartLine?: number | null
+  isResolved: boolean
+  isOutdated: boolean
+  replyToId?: string | null
+}
+
 export interface GitPullRequestChecksResponse {
   checks: GitPullRequestCheck[]
+  reviews: GitPullRequestReview[]
+  comments: GitPullRequestComment[]
+  reviewComments: GitPullRequestReviewComment[]
   pullRequestNumber: number | null
   error?: string | null
 }

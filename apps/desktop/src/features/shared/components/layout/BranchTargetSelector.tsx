@@ -65,7 +65,7 @@ export function BranchTargetSelector({
         }}
         triggerVariant="ghost"
         className="min-w-0 items-center"
-        triggerClassName="max-w-[260px] gap-1.5 px-0 font-medium text-muted-foreground"
+        triggerClassName="max-w-[260px] gap-1.5 font-medium text-muted-foreground"
         dropdownClassName="w-[300px]"
         errorMessage={loadError}
       />

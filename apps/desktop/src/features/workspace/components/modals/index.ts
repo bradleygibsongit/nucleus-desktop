@@ -1,4 +1,3 @@
-export { QuickStartModal } from "./QuickStartModal"
 export { NewWorkspaceModal } from "./NewWorkspaceModal"
 export { ProjectSettingsModal } from "./ProjectSettingsModal"
 export { RemoveProjectModal } from "./RemoveProjectModal"

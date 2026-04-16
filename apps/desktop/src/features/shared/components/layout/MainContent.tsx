@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef } from "react"
 import { AutomationsPage } from "@/features/automations/components/AutomationsPage"
 import { ChatContainer, NewWorkspaceSetupView, TabBar } from "@/features/chat/components"
 import { FileViewer, ProjectDiffViewer } from "@/features/editor/components"
@@ -15,7 +15,6 @@ import { Terminal } from "@/features/terminal/components"
 import { getTerminalSessionId } from "@/features/terminal/utils/terminalTabs"
 import type { Tab } from "@/features/chat/types"
 import type { SettingsSectionId } from "@/features/settings/config"
-import { QuickStartModal } from "@/features/workspace/components/modals/QuickStartModal"
 import { getVisibleTab } from "./mainContentTabs"
 
 interface DiffTabContentProps {
@@ -73,10 +72,8 @@ interface MainContentProps {
 
 function NoWorkspaceSelectedState({
   onOpenProject,
-  onCreateProject,
 }: {
   onOpenProject: () => void
-  onCreateProject: () => void
 }) {
   return (
     <div className="relative flex h-full flex-col items-center justify-center px-6">
@@ -97,10 +94,7 @@ function NoWorkspaceSelectedState({
         </h1>
         <div className="mt-8 flex items-center gap-3">
           <Button type="button" className="cursor-pointer hover:bg-primary/80" onClick={onOpenProject}>
-            Open project
-          </Button>
-          <Button type="button" variant="secondary" className="cursor-pointer hover:bg-muted" onClick={onCreateProject}>
-            Create project
+            Add project
           </Button>
         </div>
       </div>
@@ -117,7 +111,6 @@ export function MainContent({ activeView, activeSettingsSection }: MainContentPr
   )
   const addProject = useProjectStore((state) => state.addProject)
   const newWorkspaceSetupProjectId = useProjectStore((state) => state.newWorkspaceSetupProjectId)
-  const [quickStartOpen, setQuickStartOpen] = useState(false)
   const {
     initialize,
     isInitialized,
@@ -325,9 +318,7 @@ export function MainContent({ activeView, activeSettingsSection }: MainContentPr
               await addProject(folderPath)
             }
           }}
-          onCreateProject={() => setQuickStartOpen(true)}
         />
-        <QuickStartModal open={quickStartOpen} onOpenChange={setQuickStartOpen} />
       </main>
     )
   }

@@ -1,10 +1,12 @@
 import { useState, useEffect, useMemo, useRef, type ReactNode } from "react"
 import { useShallow } from "zustand/react/shallow"
 import { Reorder } from "framer-motion"
+import { desktop } from "@/desktop/client"
 import {
   GearSix,
   DotsThree,
   GitBranch,
+  GitPullRequest,
   Plus,
   FolderSimplePlus,
   Sidebar,
@@ -24,7 +26,6 @@ import {
 import {
   NewWorkspaceModal,
   ProjectSettingsModal,
-  QuickStartModal,
   RemoveProjectModal,
   RemoveWorktreeModal,
 } from "@/features/workspace/components/modals"
@@ -48,6 +49,10 @@ import { ModelLogo } from "@/features/chat/components/ModelLogo"
 import { isWorktreeReady } from "@/features/workspace/utils/worktrees"
 import { prewarmProjectData } from "@/features/shared/utils/prewarmProjectData"
 import { getVisibleWorktreeActivityById } from "./worktreeActivity"
+import {
+  resolveSidebarBranchIndicator,
+  resolveSidebarPullRequestIndicator,
+} from "./sidebarGitIndicators"
 
 const OPEN_PROJECT_SETTINGS_EVENT = "nucleus:open-project-settings"
 
@@ -125,7 +130,6 @@ export function LeftSidebar({
   onOpenSettings,
   onSelectSettingsSection,
 }: LeftSidebarProps) {
-  const [quickStartOpen, setQuickStartOpen] = useState(false)
   const [newWorkspaceModalProject, setNewWorkspaceModalProject] = useState<Project | null>(null)
   const [projectSettingsProject, setProjectSettingsProject] = useState<Project | null>(null)
   const [projectPendingRemoval, setProjectPendingRemoval] = useState<Project | null>(null)
@@ -316,12 +320,24 @@ export function LeftSidebar({
         ),
     [expandedProjectIds, projects]
   )
+  const branchDataByWorktreePath = useProjectGitStore(
+    useShallow((state) =>
+      Object.fromEntries(
+        expandedReadyWorktreePaths.map((worktreePath) => [
+          worktreePath,
+          state.entriesByProjectPath[worktreePath]?.branchData ?? null,
+        ])
+      )
+    )
+  )
 
   useEffect(() => {
     for (const worktreePath of expandedReadyWorktreePaths) {
       ensureGitEntry(worktreePath)
       void requestGitRefresh(worktreePath, {
+        includeBranches: true,
         includeChanges: true,
+        quietBranches: true,
         quietChanges: true,
         debounceMs: 0,
       })
@@ -363,7 +379,9 @@ export function LeftSidebar({
 
     ensureGitEntry(worktree.path)
     void requestGitRefresh(worktree.path, {
+      includeBranches: true,
       includeChanges: true,
+      quietBranches: true,
       quietChanges: true,
       debounceMs: 0,
     })
@@ -469,6 +487,9 @@ export function LeftSidebar({
                 const isWorktreeReadyForSelection = isWorktreeReady(worktree)
                 const worktreeActivityStatus = worktreeActivityById[worktree.id] ?? null
                 const isWorktreeRunning = worktreeActivityStatus != null
+                const branchData = branchDataByWorktreePath[worktree.path] ?? null
+                const branchIndicator = resolveSidebarBranchIndicator(branchData)
+                const pullRequestIndicator = resolveSidebarPullRequestIndicator(branchData)
                 const removeWorktreeDisabledReason = getWorktreeRemovalDisabledReason({
                   worktree,
                 })
@@ -497,7 +518,7 @@ export function LeftSidebar({
                       }}
                       disabled={!isWorktreeReadyForSelection}
                       className={cn(
-                        "flex h-8 w-full min-w-0 items-center gap-2 rounded-md pl-8 pr-8 text-left",
+                        "flex h-8 w-full min-w-0 items-center gap-2 rounded-md pl-8 pr-14 text-left",
                         "text-sidebar-foreground/56 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground/80",
                         !isWorktreeReadyForSelection &&
                           "cursor-not-allowed opacity-60 hover:bg-transparent hover:text-sidebar-foreground/56",
@@ -509,7 +530,10 @@ export function LeftSidebar({
                           "flex size-4 shrink-0 items-center justify-center",
                           isWorktreeRunning
                             ? (isSelectedWorktree ? "text-sidebar-accent-foreground" : "text-sidebar-foreground/72")
-                            : "text-muted-foreground"
+                            : (branchIndicator?.colorClass ??
+                              (isSelectedWorktree
+                                ? "text-sidebar-accent-foreground/72"
+                                : "text-muted-foreground"))
                         )}
                       >
                         {isWorktreeRunning ? (
@@ -520,13 +544,47 @@ export function LeftSidebar({
                             className="shrink-0"
                           />
                         ) : (
-                          <GitBranch size={13} />
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-flex items-center justify-center">
+                                <GitBranch size={13} />
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="max-w-72 text-sm leading-5">
+                              {branchIndicator?.tooltip ?? worktree.branchName}
+                            </TooltipContent>
+                          </Tooltip>
                         )}
                       </span>
                       <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-none">
                         {worktree.name}
                       </span>
                     </button>
+
+                    {pullRequestIndicator ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            className={cn(
+                              "absolute top-1/2 right-8 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-sm transition hover:bg-[var(--sidebar-item-hover)]",
+                              pullRequestIndicator.colorClass
+                            )}
+                            aria-label={pullRequestIndicator.tooltip}
+                            onClick={(event) => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                              void desktop.shell.openExternal(pullRequestIndicator.url)
+                            }}
+                          >
+                            <GitPullRequest size={12} />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-72 text-sm leading-5">
+                          {pullRequestIndicator.tooltip}
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : null}
 
                     <DropdownMenu
                       onOpenChange={(open) => handleWorktreeMenuOpenChange(open, worktree)}
@@ -686,22 +744,14 @@ export function LeftSidebar({
             <div className="px-2 pb-2 pt-4">
               <div className="mb-2 flex items-center justify-between gap-2 px-2">
                 <span className={sectionLabelClass}>Workspaces</span>
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    className="flex h-6 w-6 items-center justify-center rounded text-sidebar-foreground/40 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground/68"
-                    aria-label="Add workspace"
-                  >
-                    <FolderSimplePlus size={14} />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent side="bottom" align="end" className="w-48">
-                    <DropdownMenuItem onClick={handleOpenProject}>
-                      <span>Open workspace</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setQuickStartOpen(true)}>
-                      <span>Quick start</span>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <button
+                  type="button"
+                  onClick={() => void handleOpenProject()}
+                  className="flex h-6 w-6 items-center justify-center rounded text-sidebar-foreground/40 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground/68"
+                  aria-label="Add project"
+                >
+                  <FolderSimplePlus size={14} />
+                </button>
               </div>
 
               {projects.length === 0 ? (
@@ -713,7 +763,7 @@ export function LeftSidebar({
                     onClick={handleOpenProject}
                     className="mt-1.5 text-primary hover:underline"
                   >
-                    Add a workspace
+                    Add a project
                   </button>
                 </div>
               ) : (
@@ -772,7 +822,6 @@ export function LeftSidebar({
           </div>
         )}
 
-        <QuickStartModal open={quickStartOpen} onOpenChange={setQuickStartOpen} />
         <NewWorkspaceModal
           open={newWorkspaceModalProject !== null}
           project={newWorkspaceModalProject}
@@ -834,8 +883,6 @@ export function LeftSidebar({
     >
       {sidebarHeader}
       {sidebarBody}
-
-      <QuickStartModal open={quickStartOpen} onOpenChange={setQuickStartOpen} />
       <NewWorkspaceModal
         open={newWorkspaceModalProject !== null}
         project={newWorkspaceModalProject}

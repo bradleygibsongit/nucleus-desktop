@@ -111,6 +111,9 @@ export function useProjectGitPullRequestChecks(
 
   return {
     checks: entry?.pullRequestChecks ?? [],
+    comments: entry?.pullRequestComments ?? [],
+    reviews: entry?.pullRequestReviews ?? [],
+    reviewComments: entry?.pullRequestReviewComments ?? [],
     isLoading: entry?.isPullRequestChecksLoading ?? false,
     loadError: entry?.pullRequestChecksError ?? null,
     refresh,

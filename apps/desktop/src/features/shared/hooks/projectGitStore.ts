@@ -5,6 +5,9 @@ import {
   type GitFileChange,
   type GitPullRequestCheck,
   type GitPullRequestChecksResponse,
+  type GitPullRequestComment,
+  type GitPullRequestReviewComment,
+  type GitPullRequestReview,
 } from "@/desktop/client"
 
 const WATCHER_REFRESH_DEBOUNCE_MS = 120
@@ -13,6 +16,9 @@ interface ProjectGitEntry {
   branchData: GitBranchesResponse | null
   changes: GitFileChange[]
   pullRequestChecks: GitPullRequestCheck[]
+  pullRequestComments: GitPullRequestComment[]
+  pullRequestReviews: GitPullRequestReview[]
+  pullRequestReviewComments: GitPullRequestReviewComment[]
   branchError: string | null
   changesError: string | null
   pullRequestChecksError: string | null
@@ -40,10 +46,25 @@ interface ProjectGitStoreState {
   ) => Promise<void>
 }
 
+function normalizePullRequestChecksPayload(
+  result: GitPullRequestChecksResponse
+): GitPullRequestChecksResponse {
+  return {
+    ...result,
+    checks: Array.isArray(result.checks) ? result.checks : [],
+    reviews: Array.isArray(result.reviews) ? result.reviews : [],
+    comments: Array.isArray(result.comments) ? result.comments : [],
+    reviewComments: Array.isArray(result.reviewComments) ? result.reviewComments : [],
+  }
+}
+
 const EMPTY_ENTRY: ProjectGitEntry = {
   branchData: null,
   changes: [],
   pullRequestChecks: [],
+  pullRequestComments: [],
+  pullRequestReviews: [],
+  pullRequestReviewComments: [],
   branchError: null,
   changesError: null,
   pullRequestChecksError: null,
@@ -181,31 +202,14 @@ async function refreshChanges(projectPath: string): Promise<GitFileChange[]> {
 async function refreshPullRequestChecks(projectPath: string) {
   const existingRequest = inFlightPullRequestChecksByProject.get(projectPath)
   if (existingRequest) {
-    console.debug("[projectGitStore] refreshPullRequestChecks:reuse", { projectPath })
     return existingRequest
   }
 
-  console.debug("[projectGitStore] refreshPullRequestChecks:start", { projectPath })
   const request = desktop.git.getPullRequestChecks(projectPath)
   inFlightPullRequestChecksByProject.set(projectPath, request)
 
   try {
-    const result = await request
-    console.debug("[projectGitStore] refreshPullRequestChecks:success", {
-      projectPath,
-      pullRequestNumber: result.pullRequestNumber,
-      error: result.error ?? null,
-      checks: result.checks.map((check) => ({
-        id: check.id,
-        name: check.name,
-        status: check.status,
-        hasFailureDetails: check.hasFailureDetails,
-      })),
-    })
-    return result
-  } catch (error) {
-    console.error("[projectGitStore] refreshPullRequestChecks:error", { projectPath, error })
-    throw error
+    return normalizePullRequestChecksPayload(await request)
   } finally {
     inFlightPullRequestChecksByProject.delete(projectPath)
   }
@@ -241,6 +245,24 @@ export const useProjectGitStore = create<ProjectGitStoreState>((set, get) => ({
             branchData
           )
             ? getEntry(state.entriesByProjectPath, projectPath).pullRequestChecks
+            : [],
+          pullRequestComments: shouldRetainPullRequestChecks(
+            getEntry(state.entriesByProjectPath, projectPath).branchData,
+            branchData
+          )
+            ? getEntry(state.entriesByProjectPath, projectPath).pullRequestComments
+            : [],
+          pullRequestReviews: shouldRetainPullRequestChecks(
+            getEntry(state.entriesByProjectPath, projectPath).branchData,
+            branchData
+          )
+            ? getEntry(state.entriesByProjectPath, projectPath).pullRequestReviews
+            : [],
+          pullRequestReviewComments: shouldRetainPullRequestChecks(
+            getEntry(state.entriesByProjectPath, projectPath).branchData,
+            branchData
+          )
+            ? getEntry(state.entriesByProjectPath, projectPath).pullRequestReviewComments
             : [],
           branchError: null,
           pullRequestChecksError: shouldRetainPullRequestChecks(
@@ -340,6 +362,24 @@ export const useProjectGitStore = create<ProjectGitStoreState>((set, get) => ({
                   )
                     ? getEntry(state.entriesByProjectPath, projectPath).pullRequestChecks
                     : [],
+                  pullRequestComments: shouldRetainPullRequestChecks(
+                    getEntry(state.entriesByProjectPath, projectPath).branchData,
+                    branchData
+                  )
+                    ? getEntry(state.entriesByProjectPath, projectPath).pullRequestComments
+                    : [],
+                  pullRequestReviews: shouldRetainPullRequestChecks(
+                    getEntry(state.entriesByProjectPath, projectPath).branchData,
+                    branchData
+                  )
+                    ? getEntry(state.entriesByProjectPath, projectPath).pullRequestReviews
+                    : [],
+                  pullRequestReviewComments: shouldRetainPullRequestChecks(
+                    getEntry(state.entriesByProjectPath, projectPath).branchData,
+                    branchData
+                  )
+                    ? getEntry(state.entriesByProjectPath, projectPath).pullRequestReviewComments
+                    : [],
                   branchError: null,
                   pullRequestChecksError: shouldRetainPullRequestChecks(
                     getEntry(state.entriesByProjectPath, projectPath).branchData,
@@ -408,6 +448,7 @@ export const useProjectGitStore = create<ProjectGitStoreState>((set, get) => ({
       tasks.push(
         refreshPullRequestChecks(projectPath)
           .then((result) => {
+            const normalizedResult = normalizePullRequestChecksPayload(result)
             set((state) => ({
               entriesByProjectPath: (() => {
                 const currentEntry = getEntry(state.entriesByProjectPath, projectPath)
@@ -416,8 +457,8 @@ export const useProjectGitStore = create<ProjectGitStoreState>((set, get) => ({
                 if (
                   !currentPullRequest ||
                   currentPullRequest.state !== "open" ||
-                  (result.pullRequestNumber != null &&
-                    currentPullRequest.number !== result.pullRequestNumber)
+                  (normalizedResult.pullRequestNumber != null &&
+                    currentPullRequest.number !== normalizedResult.pullRequestNumber)
                 ) {
                   return {
                     ...state.entriesByProjectPath,
@@ -432,8 +473,11 @@ export const useProjectGitStore = create<ProjectGitStoreState>((set, get) => ({
                   ...state.entriesByProjectPath,
                   [projectPath]: {
                     ...currentEntry,
-                    pullRequestChecks: result.error ? [] : result.checks,
-                    pullRequestChecksError: result.error ?? null,
+                    pullRequestChecks: normalizedResult.error ? [] : normalizedResult.checks,
+                    pullRequestComments: normalizedResult.comments,
+                    pullRequestReviews: normalizedResult.reviews,
+                    pullRequestReviewComments: normalizedResult.reviewComments,
+                    pullRequestChecksError: normalizedResult.error ?? null,
                     isPullRequestChecksLoading: false,
                   },
                 }
