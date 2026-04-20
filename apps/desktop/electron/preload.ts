@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, webUtils } from "electron"
 import { EVENT_CHANNELS, IPC_CHANNELS } from "./ipc/channels"
 import type {
   AppUpdateState,
+  AppWindowThemeSyncInput,
   CopyPathsIntoDirectoryOptions,
   DesktopDirEntry,
   GitActionProgressEvent,
@@ -63,6 +64,8 @@ contextBridge.exposeInMainWorld("nucleus", {
     installUpdate: (options?: { force?: boolean }) =>
       ipcRenderer.invoke(IPC_CHANNELS.appInstallUpdate, options) as Promise<unknown>,
     dismissUpdate: () => ipcRenderer.invoke(IPC_CHANNELS.appDismissUpdate) as Promise<unknown>,
+    syncWindowTheme: (input: AppWindowThemeSyncInput) =>
+      ipcRenderer.invoke(IPC_CHANNELS.appSyncWindowTheme, input) as Promise<void>,
     onUpdateState: (listener: (state: AppUpdateState) => void) =>
       subscribe(EVENT_CHANNELS.appUpdateState, listener),
   },

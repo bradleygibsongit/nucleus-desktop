@@ -172,10 +172,7 @@
     @apply bg-background text-foreground;
      }
 
-  .xterm,
-  .xterm .xterm-scrollable-element,
-  .xterm .xterm-viewport,
-  .xterm .xterm-screen {
+  .xterm {
     width: 100%;
     height: 100%;
   }

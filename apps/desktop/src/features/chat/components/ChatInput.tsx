@@ -2084,7 +2084,7 @@ export function ChatInput({
                           onClick={toggleFastMode}
                           className="flex items-center gap-2"
                         >
-                          <Zap className="size-4 text-[color:var(--color-warning)]" />
+                          <Zap weight="fill" className="size-3.5 text-[color:var(--color-warning)]" />
                           <span className="flex-1">Fast mode</span>
                           {fastMode ? <CheckCircle className="size-3.5 text-muted-foreground" /> : null}
                         </DropdownMenuItem>
@@ -2121,7 +2121,7 @@ export function ChatInput({
                 title={selectedModelLabel}
               >
                 {fastMode && supportsFastMode ? (
-                  <Zap className="size-[18px] shrink-0 text-[color:var(--color-warning)]" />
+                  <Zap weight="fill" className="size-4 shrink-0 text-[color:var(--color-warning)]" />
                 ) : (
                   <ModelLogo kind={selectedModelLogoKind} className="size-[18px] shrink-0" />
                 )}

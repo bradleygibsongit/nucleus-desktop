@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react"
-import { loadDesktopStore } from "@/desktop/client"
+import { desktop, loadDesktopStore } from "@/desktop/client"
 import {
   clampTextSizePx,
   DEFAULT_TEXT_SIZE_PX,
@@ -23,6 +23,7 @@ type AppearanceOverrides = {
 const listeners = new Set<() => void>()
 let mediaQueryList: MediaQueryList | null = null
 let mediaQueryCleanup: (() => void) | null = null
+let lastSyncedWindowThemeKey: string | null = null
 
 function getSystemAppearance(): ResolvedAppearance {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
@@ -55,6 +56,38 @@ function buildSnapshot(
 }
 
 let snapshot = buildSnapshot(DEFAULT_THEME_ID, DEFAULT_TEXT_SIZE_PX, "light")
+
+function shouldSyncWindowTheme(
+  previous: AppearanceSnapshot,
+  next: AppearanceSnapshot
+): boolean {
+  return (
+    previous.themeId !== next.themeId ||
+    previous.resolvedAppearance !== next.resolvedAppearance ||
+    previous.theme.tokens.background !== next.theme.tokens.background
+  )
+}
+
+function syncWindowTheme(next: AppearanceSnapshot): void {
+  const themeSource = next.themeId === "system" ? "system" : next.resolvedAppearance
+  const syncKey = `${themeSource}:${next.resolvedAppearance}:${next.theme.tokens.background}`
+
+  if (lastSyncedWindowThemeKey === syncKey) {
+    return
+  }
+
+  lastSyncedWindowThemeKey = syncKey
+
+  void desktop.app
+    .syncWindowTheme({
+      themeSource,
+      resolvedAppearance: next.resolvedAppearance,
+      backgroundColor: next.theme.tokens.background,
+    })
+    .catch((error) => {
+      console.warn("[appearance] Failed to sync native window theme:", error)
+    })
+}
 
 function notify(): void {
   for (const listener of listeners) {
@@ -118,8 +151,13 @@ export function applyAppearance(overrides: AppearanceOverrides = {}): Appearance
 }
 
 export function setAppearanceState(overrides: AppearanceOverrides, options?: { notify?: boolean }) {
+  const previous = snapshot
   snapshot = applyAppearance(overrides)
   syncSystemAppearanceListener(snapshot.themeId)
+
+  if (shouldSyncWindowTheme(previous, snapshot)) {
+    syncWindowTheme(snapshot)
+  }
 
   if (options?.notify !== false) {
     notify()

@@ -2,6 +2,7 @@ import type {
   AppUpdateActionResult,
   AppUpdateCheckResult,
   AppUpdateState,
+  AppWindowThemeSyncInput,
   CopyPathsIntoDirectoryOptions,
   DesktopDirEntry,
   GitActionProgressEvent,
@@ -127,6 +128,15 @@ export const desktop = {
     checkForUpdates: () => window.nucleus.app.checkForUpdates(),
     installUpdate: (options?: { force?: boolean }) => window.nucleus.app.installUpdate(options),
     dismissUpdate: () => window.nucleus.app.dismissUpdate(),
+    syncWindowTheme: (input: AppWindowThemeSyncInput) => {
+      const syncWindowTheme = window.nucleus.app.syncWindowTheme
+      if (typeof syncWindowTheme !== "function") {
+        console.warn("[desktop.app] syncWindowTheme is unavailable in the current preload bridge")
+        return Promise.resolve()
+      }
+
+      return syncWindowTheme(input)
+    },
     onUpdateState: (listener: (state: AppUpdateState) => void) =>
       window.nucleus.app.onUpdateState(listener),
   },

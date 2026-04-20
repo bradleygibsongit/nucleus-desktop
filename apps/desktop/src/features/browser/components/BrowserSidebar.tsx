@@ -211,9 +211,9 @@ export function BrowserSidebar() {
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col">
-      <form onSubmit={handleSubmit} className="shrink-0 px-1.5">
-        <div className="flex items-center gap-1.5">
+    <div className="flex h-full min-h-0 min-w-0 w-full flex-col">
+      <form onSubmit={handleSubmit} className="min-w-0 shrink-0 px-1.5">
+        <div className="flex min-w-0 items-center gap-1.5">
           <Button
             type="button"
             variant="ghost"
@@ -247,7 +247,7 @@ export function BrowserSidebar() {
           >
             <Refresh size={14} className={isLoading ? "animate-spin" : undefined} />
           </Button>
-          <InputGroup className="h-8 bg-background/70">
+          <InputGroup className="h-8 min-w-0 flex-1 bg-background/70">
             <InputGroupAddon align="inline-start" className="pl-2 pr-0 text-sidebar-foreground/42">
               <InputGroupText>
                 <Globe size={14} />
@@ -277,16 +277,16 @@ export function BrowserSidebar() {
       ) : null}
 
       {browserUrl ? (
-        <div className="mt-1.5 min-h-0 flex-1 overflow-hidden border-t border-sidebar-border/70 bg-background shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <div className="mt-1.5 min-h-0 min-w-0 flex-1 overflow-hidden border-t border-sidebar-border/70 bg-background shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           <webview
             ref={webviewRef}
             src={browserUrl}
             partition="persist:nucleus-browser"
-            className="h-full w-full bg-white"
+            className="h-full min-w-0 w-full bg-white"
           />
         </div>
       ) : (
-        <div className="mt-1.5 flex min-h-0 flex-1 border-t border-sidebar-border/70 bg-background">
+        <div className="mt-1.5 flex min-h-0 min-w-0 flex-1 border-t border-sidebar-border/70 bg-background">
           <RightSidebarEmptyState
             title="Open a page"
             description="Enter a URL above to load a site in the browser panel."

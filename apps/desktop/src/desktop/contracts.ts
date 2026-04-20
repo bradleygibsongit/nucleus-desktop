@@ -336,6 +336,12 @@ export interface AppUpdateCheckResult {
   state: AppUpdateState
 }
 
+export interface AppWindowThemeSyncInput {
+  themeSource: "system" | "light" | "dark"
+  resolvedAppearance: "light" | "dark"
+  backgroundColor: string
+}
+
 export interface ManagedSkill {
   id: string
   name: string

@@ -8,8 +8,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/features/shared/components/ui/dropdown-menu"
-import { Reorder } from "framer-motion"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { HorizontalOverflowFade } from "@/features/shared/components/ui"
+import { motion, Reorder } from "framer-motion"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
 import { getTerminalTabLabel } from "@/features/terminal/utils/terminalTabs"
 import { TabItem } from "./TabItem"
@@ -37,7 +38,11 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose }: TabBarPro
 
   const [draggedTabId, setDraggedTabId] = useState<string | null>(null)
   const [tabOrderPreview, setTabOrderPreview] = useState<string[] | null>(null)
+  const [activeIndicator, setActiveIndicator] = useState<{ x: number; width: number } | null>(null)
   const tabOrderRef = useRef<string[] | null>(null)
+  const viewportRef = useRef<HTMLDivElement | null>(null)
+  const contentRef = useRef<HTMLDivElement | null>(null)
+  const tabElementByIdRef = useRef(new Map<string, HTMLDivElement>())
   const enableLayoutAnimation = draggedTabId !== null
 
   const tabById = useMemo(() => new Map(tabs.map((tab) => [tab.id, tab])), [tabs])
@@ -66,6 +71,43 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose }: TabBarPro
     setTabOrderPreview(nextTabIds)
     tabOrderRef.current = nextTabIds
   }
+
+  const registerTabElement = useCallback((tabId: string, element: HTMLDivElement | null) => {
+    const nextMap = tabElementByIdRef.current
+
+    if (element) {
+      nextMap.set(tabId, element)
+      return
+    }
+
+    nextMap.delete(tabId)
+  }, [])
+
+  const syncActiveIndicator = useCallback(() => {
+    const activeElement = tabElementByIdRef.current.get(activeTabId)
+
+    if (!activeElement) {
+      setActiveIndicator(null)
+      return
+    }
+
+    const nextIndicator = {
+      x: activeElement.offsetLeft,
+      width: activeElement.offsetWidth,
+    }
+
+    setActiveIndicator((currentIndicator) => {
+      if (
+        currentIndicator &&
+        currentIndicator.x === nextIndicator.x &&
+        currentIndicator.width === nextIndicator.width
+      ) {
+        return currentIndicator
+      }
+
+      return nextIndicator
+    })
+  }, [activeTabId])
 
   const commitTabOrder = () => {
     const nextTabIds = tabOrderRef.current
@@ -96,15 +138,71 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose }: TabBarPro
     openTerminalTab(selectedWorktreeId)
   }
 
+  useLayoutEffect(() => {
+    syncActiveIndicator()
+
+    const frameId = requestAnimationFrame(() => {
+      syncActiveIndicator()
+    })
+
+    return () => {
+      cancelAnimationFrame(frameId)
+    }
+  }, [orderedTabIds, syncActiveIndicator])
+
+  useEffect(() => {
+    const contentElement = contentRef.current
+    const viewportElement = viewportRef.current
+    const activeElement = tabElementByIdRef.current.get(activeTabId)
+
+    if (!contentElement || !viewportElement || !activeElement || typeof ResizeObserver === "undefined") {
+      return
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      syncActiveIndicator()
+    })
+
+    resizeObserver.observe(contentElement)
+    resizeObserver.observe(viewportElement)
+    resizeObserver.observe(activeElement)
+
+    return () => {
+      resizeObserver.disconnect()
+    }
+  }, [activeTabId, orderedTabIds, syncActiveIndicator])
+
   return (
-    <div className="flex h-10 items-center border-b border-sidebar-border bg-sidebar px-2 gap-0.5">
-      <div className="app-scrollbar-hidden flex h-full flex-1 items-center overflow-x-auto gap-0.5">
+    <div className="flex h-9 items-center border-b border-sidebar-border bg-sidebar px-2 gap-0.5">
+      <HorizontalOverflowFade
+        className="h-full flex-1"
+        viewportClassName="h-full"
+        contentClassName="relative flex h-full items-center pr-3"
+        viewportRef={viewportRef}
+        contentRef={contentRef}
+      >
+        {activeIndicator ? (
+          <motion.div
+            aria-hidden="true"
+            className="absolute inset-y-1.5 z-0 rounded-md bg-[var(--sidebar-item-active)]"
+            animate={{
+              x: activeIndicator.x,
+              width: activeIndicator.width,
+            }}
+            transition={
+              enableLayoutAnimation
+                ? { duration: 0 }
+                : { type: "spring", stiffness: 500, damping: 35, mass: 0.5 }
+            }
+          />
+        ) : null}
+
         <Reorder.Group
           as="div"
           axis="x"
           values={orderedTabIds}
           onReorder={handleReorder}
-          className="flex h-full items-center gap-0.5"
+          className="relative z-10 flex h-full items-center gap-0.5"
         >
           {orderedTabIds.map((tabId) => {
             const tab = tabById.get(tabId)
@@ -138,11 +236,12 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose }: TabBarPro
                   cursor: "grabbing",
                 }}
                 className={cn(
-                  "relative isolate overflow-hidden rounded-md cursor-grab active:cursor-grabbing",
+                  "relative isolate rounded-md cursor-grab active:cursor-grabbing",
                   draggedTabId === tab.id && "opacity-65"
                 )}
                 onDragStart={() => setDraggedTabId(tab.id)}
                 onDragEnd={commitTabOrder}
+                ref={(element) => registerTabElement(tab.id, element)}
               >
                 <TabItem
                   type={tab.type}
@@ -151,6 +250,7 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose }: TabBarPro
                   activityStatus={sessionActivity?.status}
                   hasUnread={sessionActivity?.unread}
                   isActive={tab.id === activeTabId}
+                  showActiveIndicator={false}
                   onClick={() => onTabChange(tab.id)}
                   onClose={onTabClose ? () => onTabClose(tab.id) : undefined}
                 />
@@ -158,17 +258,16 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose }: TabBarPro
             )
           })}
         </Reorder.Group>
-
         <DropdownMenu>
           <DropdownMenuTrigger
             disabled={!selectedWorktreeId}
             className={cn(
-              "ml-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors",
+              "relative z-10 ml-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors",
               "text-muted-foreground hover:bg-muted/30 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
             )}
             aria-label="Open new tab menu"
           >
-            <Plus size={14} />
+            <Plus size={12} />
           </DropdownMenuTrigger>
           <DropdownMenuContent
             align="end"
@@ -192,7 +291,7 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose }: TabBarPro
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      </div>
+      </HorizontalOverflowFade>
     </div>
   )
 }

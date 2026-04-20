@@ -16,6 +16,7 @@ import { getChecksTabBadgeCount, shouldAutoOpenChecksTab } from "./pullRequestCh
 import { useRightSidebar } from "./useRightSidebar"
 import { SidebarShell } from "./SidebarShell"
 import { RightSidebarEmptyState } from "./RightSidebarEmptyState"
+import { HorizontalOverflowFade } from "@/features/shared/components/ui"
 import { LayoutGroup, motion } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { prewarmProjectData } from "@/features/shared/utils/prewarmProjectData"
@@ -44,7 +45,7 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
   const previousChecksStatusByPullRequestRef = useRef<
     Map<string, GitPullRequest["checksStatus"] | null>
   >(new Map())
-  const { isAvailable, isCollapsed, width, setWidth, activeTab, setActiveTab, expand, toggle } = useRightSidebar()
+  const { isAvailable, isCollapsed, width, setWidth, persistWidth, activeTab, setActiveTab, expand, toggle } = useRightSidebar()
   const { selectedWorktreeId, selectedWorktree, selectedWorktreePath } = useCurrentProjectWorktree()
   const {
     activeProjectPath,
@@ -209,7 +210,8 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
     <>
       <div className="shrink-0 px-3 py-1.5">
         <LayoutGroup id="right-sidebar-tabs">
-          <div className="flex items-center gap-1">
+          <HorizontalOverflowFade viewportClassName="w-full" contentClassName="pr-3">
+            <div className="flex items-center gap-1">
             {RIGHT_SIDEBAR_TABS.map(({ key, label, icon: Icon }) => {
               const isActive = activeTab === key
 
@@ -220,7 +222,7 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
                   onClick={() => setActiveTab(key)}
                   onPointerEnter={() => handleTabIntent(key)}
                   className={cn(
-                    "group relative inline-flex h-7 items-center gap-1 rounded-md px-1.5 py-1 text-xs",
+                    "group relative inline-flex h-6 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] leading-none",
                     !isResizingTabs && "transition-colors",
                     isActive
                       ? "text-sidebar-accent-foreground"
@@ -238,14 +240,14 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
                       }
                     />
                   )}
-                  <span className="relative z-10 flex items-center gap-1.5">
+                  <span className="relative z-10 flex items-center gap-1">
                     <Icon className="size-3.5 shrink-0" />
                     <span>{label}</span>
                   </span>
                   {key === "changes" && projectChanges.length > 0 ? (
                     <span
                       className={cn(
-                        "relative z-10 text-[10px] leading-none",
+                        "relative z-10 text-[9px] leading-none",
                         isActive
                           ? "text-sidebar-accent-foreground/70"
                           : "text-sidebar-foreground/40"
@@ -257,7 +259,7 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
                   {key === "checks" && checksTabBadgeCount > 0 ? (
                     <span
                       className={cn(
-                        "relative z-10 text-[10px] leading-none",
+                        "relative z-10 text-[9px] leading-none",
                         isActive
                           ? "text-sidebar-accent-foreground/70"
                           : "text-sidebar-foreground/40"
@@ -269,7 +271,8 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
                 </button>
               )
             })}
-          </div>
+            </div>
+          </HorizontalOverflowFade>
         </LayoutGroup>
       </div>
 
@@ -418,9 +421,10 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
       <SidebarShell
         width={width}
         setWidth={setWidth}
+        persistWidth={persistWidth}
         isCollapsed={isCollapsed}
         side="right"
-        sizeConstraintClass={activeTab === "browser" ? "min-w-[420px]" : "min-w-[300px]"}
+        sizeConstraintClass={activeTab === "browser" ? "min-w-[180px]" : "min-w-[300px]"}
       >
         {({ isResizing }) => (
           <>

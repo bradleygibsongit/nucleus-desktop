@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { randomUUID } from "node:crypto"
-import { app, BrowserWindow, ipcMain, nativeImage, shell } from "electron"
+import { app, BrowserWindow, ipcMain, nativeImage, nativeTheme, shell } from "electron"
 import { basename, dirname, join } from "node:path"
 import { EVENT_CHANNELS, IPC_CHANNELS } from "./ipc/channels"
 import { JsonStoreService } from "./services/store"
@@ -21,9 +21,20 @@ import {
   capture,
   shutdownAnalytics,
 } from "./services/analytics"
+import type { AppWindowThemeSyncInput } from "../src/desktop/contracts"
+import {
+  APPEARANCE_THEME_ID_KEY,
+  areWindowThemeStatesEqual,
+  getWindowControlsOverlayStyle,
+  resolveWindowThemeState,
+  SETTINGS_STORE_FILE,
+  type WindowThemeState,
+  normalizeWindowThemeState,
+} from "./services/windowTheme"
 
 let mainWindow: BrowserWindow | null = null
 const LEGACY_USER_DATA_DIRS = ["nucleus-desktop", "io.nucleus.desktop"] as const
+let windowThemeState: WindowThemeState = resolveWindowThemeState("system", false)
 
 function getDevAppIconPath(): string {
   return join(process.cwd(), "public", "brands", "nucleus-app-icon-desktop.png")
@@ -183,13 +194,48 @@ const updaterService = new UpdaterService(sendToRenderer, {
   restoreAfterInstallFailure: restoreAfterFailedUpdateInstall,
 })
 
+function applyWindowThemeState(nextThemeState: WindowThemeState): void {
+  const previousThemeState = windowThemeState
+
+  if (areWindowThemeStatesEqual(previousThemeState, nextThemeState)) {
+    return
+  }
+
+  const didThemeSourceChange = previousThemeState.themeSource !== nextThemeState.themeSource
+  const didWindowAppearanceChange =
+    previousThemeState.backgroundColor !== nextThemeState.backgroundColor ||
+    previousThemeState.resolvedAppearance !== nextThemeState.resolvedAppearance
+
+  windowThemeState = nextThemeState
+
+  if (didThemeSourceChange) {
+    nativeTheme.themeSource = nextThemeState.themeSource
+  }
+
+  if (!didWindowAppearanceChange) {
+    return
+  }
+
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.setBackgroundColor(nextThemeState.backgroundColor)
+
+    if (process.platform !== "darwin") {
+      window.setTitleBarOverlay(getWindowControlsOverlayStyle(nextThemeState))
+    }
+  }
+}
+
 function createWindow(): BrowserWindow {
+  if (windowThemeState.themeSource === "system") {
+    windowThemeState = resolveWindowThemeState("system", nativeTheme.shouldUseDarkColors)
+  }
+
   const window = new BrowserWindow({
     width: 1200,
     height: 800,
     minWidth: 800,
     minHeight: 600,
-    backgroundColor: "#1e1e1e",
+    backgroundColor: windowThemeState.backgroundColor,
     title: "Nucleus",
     icon: process.platform === "linux" || process.platform === "win32"
       ? getDevAppIconPath()
@@ -206,11 +252,7 @@ function createWindow(): BrowserWindow {
       process.platform === "darwin" ? { x: 16, y: 14 } : undefined,
     titleBarOverlay:
       process.platform !== "darwin"
-        ? {
-            color: "#1e1e1e",
-            symbolColor: "#9ca3af",
-            height: 44,
-          }
+        ? getWindowControlsOverlayStyle(windowThemeState)
         : false,
   })
 
@@ -254,6 +296,11 @@ function registerIpcHandlers(storeService: JsonStoreService): void {
     (_event, options?: { force?: boolean }) => updaterService.installUpdate(options)
   )
   ipcMain.handle(IPC_CHANNELS.appDismissUpdate, () => updaterService.dismissUpdate())
+  ipcMain.handle(IPC_CHANNELS.appSyncWindowTheme, (_event, input: AppWindowThemeSyncInput) => {
+    applyWindowThemeState(
+      normalizeWindowThemeState(input, nativeTheme.shouldUseDarkColors)
+    )
+  })
 
   ipcMain.handle(IPC_CHANNELS.dialogOpenProjectFolder, () => {
     if (!mainWindow) {
@@ -482,11 +529,27 @@ async function bootstrap(): Promise<void> {
   await initializeAnalytics()
 
   const storeService = new JsonStoreService(app.getPath("userData"))
+  applyWindowThemeState(
+    resolveWindowThemeState(
+      await storeService.get<string>(SETTINGS_STORE_FILE, APPEARANCE_THEME_ID_KEY),
+      nativeTheme.shouldUseDarkColors
+    )
+  )
   registerIpcHandlers(storeService)
 
   mainWindow = createWindow()
   updaterService.start()
   capture("app_launched", { version: app.getVersion(), platform: process.platform })
+
+  nativeTheme.on("updated", () => {
+    if (windowThemeState.themeSource !== "system") {
+      return
+    }
+
+    applyWindowThemeState(
+      resolveWindowThemeState(windowThemeState.themeSource, nativeTheme.shouldUseDarkColors)
+    )
+  })
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

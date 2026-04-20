@@ -6,6 +6,7 @@ import { SIDEBAR_CLOSE_DURATION_S, SIDEBAR_OPEN_DURATION_S } from "./layoutSizin
 interface SidebarShellProps {
   width: number
   setWidth: (width: number) => void
+  persistWidth?: () => void
   isCollapsed: boolean
   side: "left" | "right"
   sizeConstraintClass: string
@@ -18,6 +19,7 @@ interface SidebarShellProps {
 export function SidebarShell({
   width,
   setWidth,
+  persistWidth,
   isCollapsed,
   side,
   sizeConstraintClass,
@@ -26,7 +28,13 @@ export function SidebarShell({
   children,
   className,
 }: SidebarShellProps) {
-  const { handleResizeStart, isResizing } = useResizablePanel({ width, setWidth, isCollapsed, side })
+  const { handleResizeStart, isResizing } = useResizablePanel({
+    width,
+    setWidth,
+    persistWidth,
+    isCollapsed,
+    side,
+  })
   const content = typeof children === "function" ? children({ isResizing }) : children
   const isLeftSidebar = side === "left"
   const sidebarDirection = isLeftSidebar ? -10 : 10

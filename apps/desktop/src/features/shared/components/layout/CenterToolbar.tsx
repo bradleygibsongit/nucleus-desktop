@@ -52,7 +52,7 @@ export function CenterToolbar({ activeView = "chat" }: CenterToolbarProps) {
       style={noDragStyle}
       aria-label="Toggle left sidebar"
     >
-      <Sidebar size={14} />
+      <Sidebar size={14} weight={isLeftCollapsed ? "regular" : "fill"} />
     </Button>
   )
 
@@ -108,7 +108,11 @@ export function CenterToolbar({ activeView = "chat" }: CenterToolbarProps) {
                 style={noDragStyle}
                 aria-label="Toggle right sidebar"
               >
-                <Sidebar size={14} className="scale-x-[-1]" />
+                <Sidebar
+                  size={14}
+                  weight={isRightCollapsed ? "regular" : "fill"}
+                  className="scale-x-[-1]"
+                />
               </Button>
             ) : null}
           </div>
@@ -126,7 +130,11 @@ export function CenterToolbar({ activeView = "chat" }: CenterToolbarProps) {
               style={noDragStyle}
               aria-label="Toggle right sidebar"
             >
-              <Sidebar size={14} className="scale-x-[-1]" />
+              <Sidebar
+                size={14}
+                weight={isRightCollapsed ? "regular" : "fill"}
+                className="scale-x-[-1]"
+              />
             </Button>
           ) : null}
         </div>

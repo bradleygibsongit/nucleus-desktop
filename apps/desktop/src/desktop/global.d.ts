@@ -3,6 +3,7 @@ import type {
   AppUpdateActionResult,
   AppUpdateCheckResult,
   AppUpdateState,
+  AppWindowThemeSyncInput,
   CopyPathsIntoDirectoryOptions,
   DesktopDirEntry,
   GitActionProgressEvent,
@@ -62,6 +63,7 @@ declare global {
         checkForUpdates: () => Promise<AppUpdateCheckResult>
         installUpdate: (options?: { force?: boolean }) => Promise<AppUpdateActionResult>
         dismissUpdate: () => Promise<AppUpdateState>
+        syncWindowTheme: (input: AppWindowThemeSyncInput) => Promise<void>
         onUpdateState: (listener: (state: AppUpdateState) => void) => () => void
       }
       dialog: {

@@ -22,6 +22,7 @@ interface TerminalProps {
 }
 
 const INACTIVE_MESSAGE = "\x1b[90mSelect a project to open a terminal.\x1b[0m"
+const TERMINAL_REPAINT_SETTLE_MS = 140
 let preferDomTerminalRenderer = false
 
 function getTerminalRenderState(container: HTMLDivElement | null): TerminalRenderState {
@@ -119,6 +120,7 @@ export function Terminal({
   const isRestoringBufferRef = useRef(false)
   const lastSyncedSizeRef = useRef<{ cols: number; rows: number } | null>(null)
   const repaintFrameRef = useRef<number | null>(null)
+  const repaintSettleTimeoutRef = useRef<number | null>(null)
   const [connectionError, setConnectionError] = useState<string | null>(null)
 
   const updateTheme = useCallback(() => {
@@ -190,7 +192,7 @@ export function Terminal({
     term.refresh(0, Math.max(0, term.rows - 1))
   }, [])
 
-  const scheduleTerminalRepaint = useCallback((forceResizeSync = false) => {
+  const scheduleTerminalRepaint = useCallback((forceResizeSync = false, repaint = true) => {
     if (repaintFrameRef.current != null) {
       cancelAnimationFrame(repaintFrameRef.current)
     }
@@ -203,9 +205,22 @@ export function Terminal({
       }
 
       fitTerminal(forceResizeSync)
-      repaintTerminal()
+      if (repaint) {
+        repaintTerminal()
+      }
     })
   }, [fitTerminal, repaintTerminal])
+
+  const scheduleSettledTerminalRepaint = useCallback((forceResizeSync = false) => {
+    if (repaintSettleTimeoutRef.current != null) {
+      window.clearTimeout(repaintSettleTimeoutRef.current)
+    }
+
+    repaintSettleTimeoutRef.current = window.setTimeout(() => {
+      repaintSettleTimeoutRef.current = null
+      scheduleTerminalRepaint(forceResizeSync)
+    }, TERMINAL_REPAINT_SETTLE_MS)
+  }, [scheduleTerminalRepaint])
 
   useEffect(() => {
     if (!terminalRef.current || xtermRef.current) return
@@ -275,7 +290,8 @@ export function Terminal({
     })
 
     const resizeObserver = new ResizeObserver(() => {
-      scheduleTerminalRepaint()
+      scheduleTerminalRepaint(false, false)
+      scheduleSettledTerminalRepaint()
     })
     resizeObserver.observe(terminalRef.current)
 
@@ -288,6 +304,10 @@ export function Terminal({
         cancelAnimationFrame(repaintFrameRef.current)
         repaintFrameRef.current = null
       }
+      if (repaintSettleTimeoutRef.current != null) {
+        window.clearTimeout(repaintSettleTimeoutRef.current)
+        repaintSettleTimeoutRef.current = null
+      }
       try {
         webglAddon?.dispose()
       } catch {
@@ -298,7 +318,14 @@ export function Terminal({
       xtermRef.current = null
       fitAddonRef.current = null
     }
-  }, [fitTerminal, pushTerminalSize, repaintTerminal, scheduleTerminalRepaint, updateTheme])
+  }, [
+    fitTerminal,
+    pushTerminalSize,
+    repaintTerminal,
+    scheduleSettledTerminalRepaint,
+    scheduleTerminalRepaint,
+    updateTheme,
+  ])
 
   useEffect(() => {
     updateTheme()

@@ -1,5 +1,11 @@
-import { measureElement as measureVirtualElement, useVirtualizer } from "@tanstack/react-virtual"
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import {
+  useEffect,
+  useLayoutEffect,
+  memo,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import { vcsTextClassNames } from "@/features/shared/appearance"
 import type { Project, ProjectWorktree } from "@/features/workspace/types"
 import type {
@@ -12,14 +18,14 @@ import {
   Conversation,
   ConversationContent,
   ConversationScrollButton,
+  useConversationScrollContext,
 } from "./ai-elements/conversation"
 import {
   Message as MessageComponent,
   MessageContent,
 } from "./ai-elements/message"
-import { CheckCircle, Copy, File } from "@/components/icons"
+import { Check, Copy, File } from "@/components/icons"
 import { LoadingDots } from "@/features/shared/components/ui/loading-dots"
-import { useStickToBottomContext } from "use-stick-to-bottom"
 import { ChatImagePreviewModal } from "./ChatImagePreviewModal"
 import {
   ChatTimelineItem,
@@ -33,11 +39,10 @@ import {
   type TimelineFileChangeSummary,
 } from "./timelineViewModel"
 import {
-  getToolPart,
   type TimelineBlock,
 } from "./timelineActivity"
 import type { ChildSessionData } from "./agent-activity/AgentActivitySubagent"
-import { getMessageAttachmentParts, getMessageTextContent } from "../domain/runtimeMessages"
+import { getMessageTextContent } from "../domain/runtimeMessages"
 import { cn } from "@/lib/utils"
 
 interface ChatMessagesProps {
@@ -69,15 +74,13 @@ interface PreparedDisplayBlock {
   paddingTop: number
 }
 
-const ALWAYS_UNVIRTUALIZED_TAIL_BLOCKS = 8
+interface StablePreparedDisplayBlocksState {
+  byKey: Map<string, PreparedDisplayBlock>
+  result: PreparedDisplayBlock[]
+}
+
 const SAME_ROLE_BLOCK_GAP_PX = 12
 const ROLE_CHANGE_BLOCK_GAP_PX = 28
-const DEFAULT_TIMELINE_WIDTH_PX = 615
-const ESTIMATED_TEXT_LINE_HEIGHT_PX = 24
-const USER_MESSAGE_WIDTH_RATIO = 0.78
-const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 80
-const ESTIMATED_CODE_LINE_HEIGHT_PX = 20
-const ESTIMATED_MARKDOWN_BLOCK_GAP_PX = 16
 
 function getMessageText(message: MessageWithParts): string {
   return getMessageTextContent(message.parts)
@@ -219,189 +222,72 @@ function getDisplayBlockPaddingTop(
   return previousRole === currentRole ? SAME_ROLE_BLOCK_GAP_PX : ROLE_CHANGE_BLOCK_GAP_PX
 }
 
-function estimateWrappedTextLineCount(text: string, widthPx: number): number {
-  const normalized = text.trim()
-  if (!normalized) {
-    return 0
+function areMessageListsEqualById(
+  currentMessages: MessageWithParts[],
+  nextMessages: MessageWithParts[]
+): boolean {
+  if (currentMessages === nextMessages) {
+    return true
   }
 
-  const approximateCharactersPerLine = Math.max(18, Math.floor(widthPx / 7.4))
-
-  return normalized.split("\n").reduce((total, rawLine) => {
-    const line = rawLine.trimEnd()
-
-    if (!line.length) {
-      return total + 1
-    }
-
-    return total + Math.max(1, Math.ceil(line.length / approximateCharactersPerLine))
-  }, 0)
-}
-
-function countNonEmptyLines(text: string): number {
-  return text.split("\n").filter((line) => line.trim().length > 0).length
-}
-
-function estimateMarkdownBlockHeight(markdown: string, widthPx: number): number {
-  const trimmed = markdown.trim()
-  if (!trimmed) {
-    return ESTIMATED_TEXT_LINE_HEIGHT_PX
+  if (currentMessages.length !== nextMessages.length) {
+    return false
   }
 
-  const blocks = trimmed
-    .split(/\n{2,}/)
-    .map((block) => block.trim())
-    .filter(Boolean)
-
-  if (blocks.length === 0) {
-    return ESTIMATED_TEXT_LINE_HEIGHT_PX
-  }
-
-  let totalHeight = 0
-
-  for (const block of blocks) {
-    if (/^```/.test(block)) {
-      totalHeight += Math.max(2, countNonEmptyLines(block) - 1) * ESTIMATED_CODE_LINE_HEIGHT_PX + 20
-      continue
-    }
-
-    if (/^(?:[-*+] |\d+\. )/m.test(block)) {
-      totalHeight += estimateWrappedTextLineCount(block, widthPx - 24) * ESTIMATED_TEXT_LINE_HEIGHT_PX + 8
-      continue
-    }
-
-    if (/^> /m.test(block)) {
-      totalHeight += estimateWrappedTextLineCount(block.replace(/^>\s?/gm, ""), widthPx - 18) * ESTIMATED_TEXT_LINE_HEIGHT_PX + 8
-      continue
-    }
-
-    if (/^#{1,6}\s/m.test(block)) {
-      totalHeight += estimateWrappedTextLineCount(block.replace(/^#{1,6}\s+/gm, ""), widthPx) * (ESTIMATED_TEXT_LINE_HEIGHT_PX + 4)
-      continue
-    }
-
-    totalHeight += estimateWrappedTextLineCount(block, widthPx) * ESTIMATED_TEXT_LINE_HEIGHT_PX
-  }
-
-  return totalHeight + Math.max(0, blocks.length - 1) * ESTIMATED_MARKDOWN_BLOCK_GAP_PX
-}
-
-function estimateDisplayBlockHeight(
-  preparedBlock: PreparedDisplayBlock,
-  timelineWidthPx: number | null,
-  status: "idle" | "connecting" | "streaming" | "error",
-  latestTurnFooterMessageId: string | null,
-  completedFooterByMessageId: CompletedFooterStateByMessageId
-): number {
-  const contentWidth = Math.max(320, timelineWidthPx ?? DEFAULT_TIMELINE_WIDTH_PX)
-
-  if (preparedBlock.block.type === "turnStepsDropdown") {
-    return preparedBlock.paddingTop + 56
-  }
-
-  const message = preparedBlock.block.message
-  const toolPart = getToolPart(message.parts)
-  const text = getMessageText(message)
-  const attachments = getMessageAttachmentParts(message.parts)
-  let estimatedHeight = 0
-
-  if (message.info.role === "user") {
-    const userWidth = Math.max(240, Math.floor(contentWidth * USER_MESSAGE_WIDTH_RATIO) - 32)
-    const lineCount = estimateWrappedTextLineCount(text, userWidth)
-    const attachmentsHeight = attachments.reduce((total, attachment) => {
-      return total + (attachment.kind === "image" ? 170 : 92)
-    }, 0)
-    estimatedHeight =
-      34 +
-      lineCount * ESTIMATED_TEXT_LINE_HEIGHT_PX +
-      attachmentsHeight +
-      (attachments.length > 0 && lineCount > 0 ? 12 : 0) +
-      Math.max(0, attachments.length - 1) * 8
-  } else if (toolPart) {
-    estimatedHeight =
-      message.info.itemType === "fileChange"
-        ? 68
-        : message.info.itemType === "commandExecution"
-          ? 62
-          : 54
-  } else {
-    const assistantWidth = Math.max(320, contentWidth - 8)
-    estimatedHeight = 20 + estimateMarkdownBlockHeight(text, assistantWidth)
-
-    if (
-      message.info.itemType === "plan" ||
-      message.info.itemType === "approval" ||
-      message.info.itemType === "enteredReviewMode" ||
-      message.info.itemType === "exitedReviewMode"
-    ) {
-      estimatedHeight += 20
-    }
-  }
-
-  const completedFooter = completedFooterByMessageId.get(message.info.id)
-  const shouldRenderInlineCompletedFooter =
-    completedFooter != null &&
-    !(status === "streaming" && message.info.id === latestTurnFooterMessageId)
-
-  if (shouldRenderInlineCompletedFooter) {
-    const changedFilesCount = completedFooter?.changedFilesSummary?.entries.length ?? 0
-    estimatedHeight += changedFilesCount > 0 ? 56 : 36
-  }
-
-  return preparedBlock.paddingTop + Math.max(estimatedHeight, 52)
-}
-
-function getFirstUnvirtualizedBlockIndex(
-  preparedDisplayBlocks: PreparedDisplayBlock[],
-  status: "idle" | "connecting" | "streaming" | "error",
-  latestTurnFooterMessageId: string | null,
-  latestTurnStreamingTextMessageId: string | null
-): number {
-  const firstTailBlockIndex = Math.max(
-    preparedDisplayBlocks.length - ALWAYS_UNVIRTUALIZED_TAIL_BLOCKS,
-    0
+  return currentMessages.every(
+    (message, index) => message.info.id === nextMessages[index]?.info.id
   )
+}
 
-  if (status !== "streaming") {
-    return firstTailBlockIndex
+function isPreparedDisplayBlockUnchanged(
+  currentBlock: PreparedDisplayBlock,
+  nextBlock: PreparedDisplayBlock
+): boolean {
+  if (
+    currentBlock.key !== nextBlock.key ||
+    currentBlock.paddingTop !== nextBlock.paddingTop ||
+    currentBlock.block.type !== nextBlock.block.type
+  ) {
+    return false
   }
 
-  const currentTurnAnchorMessageId =
-    latestTurnStreamingTextMessageId ?? latestTurnFooterMessageId
-
-  if (!currentTurnAnchorMessageId) {
-    return firstTailBlockIndex
+  if (currentBlock.block.type === "turnStepsDropdown") {
+    return (
+      nextBlock.block.type === "turnStepsDropdown" &&
+      areMessageListsEqualById(currentBlock.block.messages, nextBlock.block.messages)
+    )
   }
 
-  let currentTurnAnchorIndex = -1
+  return (
+    nextBlock.block.type === "message" &&
+    currentBlock.block.message === nextBlock.block.message
+  )
+}
 
-  for (let index = preparedDisplayBlocks.length - 1; index >= 0; index -= 1) {
-    const preparedBlock = preparedDisplayBlocks[index]
-    if (
-      preparedBlock?.block.type === "message" &&
-      preparedBlock.block.message.info.id === currentTurnAnchorMessageId
-    ) {
-      currentTurnAnchorIndex = index
-      break
+function computeStablePreparedDisplayBlocks(
+  nextBlocks: PreparedDisplayBlock[],
+  previousState: StablePreparedDisplayBlocksState
+): StablePreparedDisplayBlocksState {
+  const nextByKey = new Map<string, PreparedDisplayBlock>()
+  let didChange = nextBlocks.length !== previousState.result.length
+
+  const result = nextBlocks.map((nextBlock, index) => {
+    const previousBlock = previousState.byKey.get(nextBlock.key)
+    const resolvedBlock =
+      previousBlock && isPreparedDisplayBlockUnchanged(previousBlock, nextBlock)
+        ? previousBlock
+        : nextBlock
+
+    nextByKey.set(nextBlock.key, resolvedBlock)
+
+    if (!didChange && previousState.result[index] !== resolvedBlock) {
+      didChange = true
     }
-  }
 
-  if (currentTurnAnchorIndex < 0) {
-    return firstTailBlockIndex
-  }
+    return resolvedBlock
+  })
 
-  for (let index = currentTurnAnchorIndex - 1; index >= 0; index -= 1) {
-    const candidate = preparedDisplayBlocks[index]?.block
-    if (!candidate || candidate.type !== "message") {
-      continue
-    }
-
-    if (candidate.message.info.role === "user") {
-      return Math.min(index, firstTailBlockIndex)
-    }
-  }
-
-  return Math.min(currentTurnAnchorIndex, firstTailBlockIndex)
+  return didChange ? { byKey: nextByKey, result } : previousState
 }
 
 export function ChatMessages({
@@ -519,6 +405,7 @@ export function ChatMessages({
       })),
     [displayBlocks]
   )
+  const stablePreparedDisplayBlocks = useStablePreparedDisplayBlocks(preparedDisplayBlocks)
   const [preparedThreadKey, setPreparedThreadKey] = useState(threadKey)
   const isThreadPrepared = preparedThreadKey === threadKey
   const handleOpenImagePreview = useMemo(
@@ -546,7 +433,7 @@ export function ChatMessages({
       <ConversationContent className="mx-auto flex w-full max-w-[682px] flex-col gap-0 px-6 pb-10">
         <>
           <HybridTimelineBlocks
-            preparedDisplayBlocks={preparedDisplayBlocks}
+            preparedDisplayBlocks={stablePreparedDisplayBlocks}
             childSessions={childSessionData}
             approvalStateByMessageId={approvalStateByMessageId}
             completedFooterByMessageId={resolvedCompletedFooterByMessageId}
@@ -607,154 +494,10 @@ function HybridTimelineBlocks({
   worktreePath?: string | null
   onOpenImagePreview?: (preview: ChatImagePreviewRequest) => void
 }) {
-  const { scrollRef } = useStickToBottomContext()
-  const timelineRootRef = useRef<HTMLDivElement | null>(null)
-  const [timelineWidthPx, setTimelineWidthPx] = useState<number | null>(null)
-
-  useLayoutEffect(() => {
-    const timelineRoot = timelineRootRef.current
-    if (!timelineRoot) {
-      return
-    }
-
-    const updateWidth = (nextWidth: number) => {
-      setTimelineWidthPx((previousWidth) => {
-        if (previousWidth !== null && Math.abs(previousWidth - nextWidth) < 0.5) {
-          return previousWidth
-        }
-
-        return nextWidth
-      })
-    }
-
-    updateWidth(timelineRoot.getBoundingClientRect().width)
-
-    if (typeof ResizeObserver === "undefined") {
-      return
-    }
-
-    const observer = new ResizeObserver(() => {
-      updateWidth(timelineRoot.getBoundingClientRect().width)
-    })
-    observer.observe(timelineRoot)
-
-    return () => {
-      observer.disconnect()
-    }
-  }, [preparedDisplayBlocks.length])
-
-  const firstUnvirtualizedBlockIndex = useMemo(
-    () =>
-      getFirstUnvirtualizedBlockIndex(
-        preparedDisplayBlocks,
-        status,
-        latestTurnFooterMessageId,
-        latestTurnStreamingTextMessageId
-      ),
-    [
-      latestTurnFooterMessageId,
-      latestTurnStreamingTextMessageId,
-      preparedDisplayBlocks,
-      status,
-    ]
-  )
-  const measurementScopeKey =
-    timelineWidthPx === null ? "width:unknown" : `width:${Math.round(timelineWidthPx)}`
-
-  const rowVirtualizer = useVirtualizer({
-    count: firstUnvirtualizedBlockIndex,
-    getScrollElement: () => scrollRef.current,
-    getItemKey: (index: number) =>
-      `${measurementScopeKey}:${preparedDisplayBlocks[index]?.key ?? String(index)}`,
-    estimateSize: (index: number) => {
-      const preparedBlock = preparedDisplayBlocks[index]
-      if (!preparedBlock) {
-        return 96
-      }
-
-      return estimateDisplayBlockHeight(
-        preparedBlock,
-        timelineWidthPx,
-        status,
-        latestTurnFooterMessageId,
-        completedFooterByMessageId
-      )
-    },
-    measureElement: measureVirtualElement,
-    useAnimationFrameWithResizeObserver: true,
-    overscan: 8,
-  })
-
-  useEffect(() => {
-    if (timelineWidthPx === null) {
-      return
-    }
-
-    rowVirtualizer.measure()
-  }, [rowVirtualizer, timelineWidthPx])
-  useEffect(() => {
-    rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = (
-      item,
-      _delta,
-      instance
-    ) => {
-      const viewportHeight = instance.scrollRect?.height ?? 0
-      const scrollOffset = instance.scrollOffset ?? 0
-      const itemIntersectsViewport =
-        item.end > scrollOffset && item.start < scrollOffset + viewportHeight
-
-      if (itemIntersectsViewport) {
-        return false
-      }
-
-      const remainingDistance = instance.getTotalSize() - (scrollOffset + viewportHeight)
-      return remainingDistance > AUTO_SCROLL_BOTTOM_THRESHOLD_PX
-    }
-
-    return () => {
-      rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = undefined
-    }
-  }, [rowVirtualizer])
-
-  const virtualItems = rowVirtualizer.getVirtualItems()
-  const tailBlocks = preparedDisplayBlocks.slice(firstUnvirtualizedBlockIndex)
-
   return (
-    <div ref={timelineRootRef} className="flex w-full flex-col">
-      {firstUnvirtualizedBlockIndex > 0 ? (
-        <div className="relative w-full" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
-          {virtualItems.map((virtualItem) => {
-            const preparedBlock = preparedDisplayBlocks[virtualItem.index]
-            if (!preparedBlock) {
-              return null
-            }
-
-            return (
-              <div
-                key={virtualItem.key}
-                ref={rowVirtualizer.measureElement}
-                className="absolute left-0 top-0 w-full"
-                data-index={virtualItem.index}
-                style={{ transform: `translateY(${virtualItem.start}px)` }}
-              >
-                <DisplayBlockRow
-                  preparedBlock={preparedBlock}
-                  childSessions={childSessions}
-                  approvalStateByMessageId={approvalStateByMessageId}
-                  completedFooterByMessageId={completedFooterByMessageId}
-                  latestTurnFooterMessageId={latestTurnFooterMessageId}
-                  latestTurnStreamingTextMessageId={latestTurnStreamingTextMessageId}
-                  status={status}
-                  worktreePath={worktreePath}
-                  onOpenImagePreview={onOpenImagePreview}
-                />
-              </div>
-            )
-          })}
-        </div>
-      ) : null}
-      {tailBlocks.map((preparedBlock) => (
-        <DisplayBlockRow
+    <div className="flex w-full flex-col">
+      {preparedDisplayBlocks.map((preparedBlock) => (
+        <MemoizedDisplayBlockRow
           key={preparedBlock.key}
           preparedBlock={preparedBlock}
           childSessions={childSessions}
@@ -769,6 +512,24 @@ function HybridTimelineBlocks({
       ))}
     </div>
   )
+}
+
+function useStablePreparedDisplayBlocks(
+  preparedDisplayBlocks: PreparedDisplayBlock[]
+): PreparedDisplayBlock[] {
+  const previousStateRef = useRef<StablePreparedDisplayBlocksState>({
+    byKey: new Map<string, PreparedDisplayBlock>(),
+    result: [],
+  })
+
+  return useMemo(() => {
+    const nextState = computeStablePreparedDisplayBlocks(
+      preparedDisplayBlocks,
+      previousStateRef.current
+    )
+    previousStateRef.current = nextState
+    return nextState.result
+  }, [preparedDisplayBlocks])
 }
 
 function DisplayBlockRow({
@@ -837,6 +598,21 @@ function DisplayBlockRow({
   )
 }
 
+const MemoizedDisplayBlockRow = memo(
+  DisplayBlockRow,
+  (previousProps, nextProps) =>
+    previousProps.preparedBlock === nextProps.preparedBlock &&
+    previousProps.childSessions === nextProps.childSessions &&
+    previousProps.approvalStateByMessageId === nextProps.approvalStateByMessageId &&
+    previousProps.completedFooterByMessageId === nextProps.completedFooterByMessageId &&
+    previousProps.latestTurnFooterMessageId === nextProps.latestTurnFooterMessageId &&
+    previousProps.latestTurnStreamingTextMessageId ===
+      nextProps.latestTurnStreamingTextMessageId &&
+    previousProps.status === nextProps.status &&
+    previousProps.worktreePath === nextProps.worktreePath &&
+    previousProps.onOpenImagePreview === nextProps.onOpenImagePreview
+)
+
 function ChatAutoScroll({
   threadKey,
   messages,
@@ -848,21 +624,16 @@ function ChatAutoScroll({
   status: "idle" | "connecting" | "streaming" | "error"
   onThreadPrepared: (threadKey: string) => void
 }) {
-  const { scrollToBottom, state } = useStickToBottomContext()
-  const previousLastMessageIdRef = useRef<string | null>(null)
-  const previousStatusRef = useRef<typeof status>(status)
-
+  const { forceScrollToBottom } = useConversationScrollContext()
   const lastMessage = messages[messages.length - 1] ?? null
   const lastMessageId = lastMessage?.info.id ?? null
+  const previousLastMessageIdRef = useRef<string | null>(lastMessageId)
+  const previousStatusRef = useRef<typeof status>(status)
 
   useLayoutEffect(() => {
-    const targetScrollTop = state.calculatedTargetScrollTop
-    state.scrollTop = targetScrollTop
-    state.lastScrollTop = targetScrollTop
-    previousLastMessageIdRef.current = lastMessageId
-    previousStatusRef.current = status
+    forceScrollToBottom("instant")
     onThreadPrepared(threadKey)
-  }, [lastMessageId, onThreadPrepared, state, status, threadKey])
+  }, [forceScrollToBottom, onThreadPrepared, threadKey])
 
   useEffect(() => {
     const previousLastMessageId = previousLastMessageIdRef.current
@@ -873,13 +644,13 @@ function ChatAutoScroll({
 
     if (userJustSentMessage || agentJustStartedResponding) {
       requestAnimationFrame(() => {
-        void scrollToBottom("instant")
+        forceScrollToBottom("instant")
       })
     }
 
     previousLastMessageIdRef.current = lastMessageId
     previousStatusRef.current = status
-  }, [lastMessage?.info.role, lastMessageId, scrollToBottom, status])
+  }, [forceScrollToBottom, lastMessage?.info.role, lastMessageId, status])
 
   return null
 }
@@ -956,10 +727,33 @@ function AssistantTurnFooter({
                   await navigator.clipboard.writeText(copyText)
                   setIsCopied(true)
                 }}
-                className="inline-flex h-5 w-5 items-center justify-center rounded-sm p-0.5 text-muted-foreground/88 transition-colors hover:bg-muted/55 hover:text-foreground"
-                aria-label="Copy message"
+                className={cn(
+                  "relative inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-sm p-0.5 text-muted-foreground/88",
+                  "transition-[background-color,color,transform] duration-150 ease-out hover:bg-muted/55 hover:text-foreground active:scale-[0.96]",
+                  isCopied && "text-foreground"
+                )}
+                aria-label={isCopied ? "Copied message" : "Copy message"}
               >
-                {isCopied ? <CheckCircle size={14} /> : <Copy size={15} />}
+                <Copy
+                  size={15}
+                  aria-hidden="true"
+                  className={cn(
+                    "absolute transition-[opacity,transform,filter] duration-180 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
+                    isCopied
+                      ? "translate-y-1 scale-[0.72] opacity-0 blur-[8px] motion-reduce:translate-y-0 motion-reduce:scale-100 motion-reduce:blur-0"
+                      : "translate-y-0 scale-100 opacity-100 blur-0"
+                  )}
+                />
+                <Check
+                  size={14}
+                  aria-hidden="true"
+                  className={cn(
+                    "absolute transition-[opacity,transform,filter] duration-180 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
+                    isCopied
+                      ? "translate-y-0 scale-100 opacity-100 blur-0"
+                      : "-translate-y-1 scale-[0.72] opacity-0 blur-[8px] motion-reduce:translate-y-0 motion-reduce:scale-100 motion-reduce:blur-0"
+                  )}
+                />
               </button>
             </>
           ) : null}

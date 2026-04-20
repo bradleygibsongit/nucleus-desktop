@@ -4,6 +4,7 @@ export const IPC_CHANNELS = {
   appCheckForUpdates: "app:checkForUpdates",
   appInstallUpdate: "app:installUpdate",
   appDismissUpdate: "app:dismissUpdate",
+  appSyncWindowTheme: "app:syncWindowTheme",
   dialogOpenProjectFolder: "dialog:openProjectFolder",
   fsReadTextFile: "fs:readTextFile",
   fsReadFileAsDataUrl: "fs:readFileAsDataUrl",

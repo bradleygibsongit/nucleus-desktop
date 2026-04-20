@@ -3,16 +3,24 @@ import { useCallback, useEffect, useRef, useState } from "react"
 interface UseResizablePanelOptions {
   width: number
   setWidth: (width: number) => void
+  persistWidth?: () => void
   isCollapsed: boolean
   /** "left" = drag right increases width; "right" = drag left increases width */
   side: "left" | "right"
 }
 
-export function useResizablePanel({ width, setWidth, isCollapsed, side }: UseResizablePanelOptions) {
+export function useResizablePanel({
+  width,
+  setWidth,
+  persistWidth,
+  isCollapsed,
+  side,
+}: UseResizablePanelOptions) {
   const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const [isResizing, setIsResizing] = useState(false)
 
   const stopResizing = useCallback(() => {
+    const didResize = resizeStateRef.current !== null
     resizeStateRef.current = null
     setIsResizing(false)
     document.documentElement.style.removeProperty("cursor")
@@ -21,7 +29,10 @@ export function useResizablePanel({ width, setWidth, isCollapsed, side }: UseRes
     document.body.style.removeProperty("cursor")
     document.body.style.removeProperty("user-select")
     document.body.style.removeProperty("-webkit-user-select")
-  }, [])
+    if (didResize) {
+      persistWidth?.()
+    }
+  }, [persistWidth])
 
   useEffect(() => {
     return () => {
