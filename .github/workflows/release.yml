@@ -28,6 +28,9 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       CSC_LINK: ${{ secrets.CSC_LINK }}
       CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
       APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -55,12 +58,33 @@ jobs:
           bun run --cwd apps/desktop build
           bun run --cwd apps/desktop prepare:runtime-env
           if [[ "${{ matrix.platform }}" == "macos-latest" ]]; then
-            # Temporary: mac builds are intentionally unsigned until the Apple Developer
-            # account / Developer ID setup is complete. These artifacts can be downloaded
-            # manually, but in-app auto-update install on macOS will fail ShipIt signature
-            # validation until this block is replaced with real signing + notarization.
-            unset CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
-            CSC_IDENTITY_AUTO_DISCOVERY=false ./node_modules/.bin/electron-builder --projectDir apps/desktop --publish never ${{ matrix.build_args }} -c.mac.identity=-
+            has_all() {
+              for value in "$@"; do
+                if [[ -z "$value" ]]; then
+                  return 1
+                fi
+              done
+              return 0
+            }
+
+            if ! has_all "$CSC_LINK" "$CSC_KEY_PASSWORD"; then
+              echo "Missing macOS Developer ID signing certificate secrets: CSC_LINK and CSC_KEY_PASSWORD." >&2
+              exit 1
+            fi
+
+            if has_all "$APPLE_API_KEY" "$APPLE_API_KEY_ID" "$APPLE_API_ISSUER"; then
+              key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+              printf '%s' "$APPLE_API_KEY" > "$key_path"
+              export APPLE_API_KEY="$key_path"
+              echo "macOS notarization enabled with App Store Connect API key."
+            elif has_all "$APPLE_ID" "$APPLE_APP_SPECIFIC_PASSWORD" "$APPLE_TEAM_ID"; then
+              echo "macOS notarization enabled with Apple ID credentials."
+            else
+              echo "Missing macOS notarization secrets. Provide APPLE_API_KEY, APPLE_API_KEY_ID, APPLE_API_ISSUER, or APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID." >&2
+              exit 1
+            fi
+
+            ./node_modules/.bin/electron-builder --projectDir apps/desktop --publish never ${{ matrix.build_args }}
           else
             ./node_modules/.bin/electron-builder --projectDir apps/desktop --publish never ${{ matrix.build_args }}
           fi

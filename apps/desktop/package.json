@@ -19,7 +19,7 @@
     "release": "bun run build && bun run prepare:runtime-env && electron-builder --publish onTag",
     "cli": "bun run index.ts",
     "typecheck": "tsc --noEmit",
-    "postinstall": "electron-builder install-app-deps"
+    "postinstall": "bun run ../../scripts/install-desktop-app-deps.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
