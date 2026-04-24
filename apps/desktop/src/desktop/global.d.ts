@@ -33,7 +33,9 @@ import type {
   RuntimeListAgentsInput,
   RuntimeListCommandsInput,
   RuntimeListModelsInput,
+  RuntimeSearchFilesInput,
   RuntimeModelsResult,
+  RuntimeFileSearchResultSet,
   RuntimeSendTurnInput,
   RuntimeSessionResult,
   RuntimeTurnUpdateEvent,
@@ -109,6 +111,7 @@ declare global {
         listModels: (input: RuntimeListModelsInput) => Promise<RuntimeModelsResult>
         listAgents: (input: RuntimeListAgentsInput) => Promise<RuntimeAgentsResult>
         listCommands: (input: RuntimeListCommandsInput) => Promise<RuntimeCommandsResult>
+        searchFiles: (input: RuntimeSearchFilesInput) => Promise<RuntimeFileSearchResultSet>
         sendTurn: (input: RuntimeSendTurnInput) => Promise<unknown>
         answerPrompt: (input: RuntimeAnswerPromptInput) => Promise<unknown>
         interruptTurn: (input: RuntimeInterruptTurnInput) => Promise<void>

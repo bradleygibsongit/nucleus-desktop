@@ -6,6 +6,7 @@ import {
   resolveDefaultReasoningEffort,
   resolveEffectiveComposerModelId,
   resolveSessionSelectedModelId,
+  shouldShowReasoningEffortSelector,
 } from "./chatInputModelSelection"
 
 describe("getChatInputPlaceholder", () => {
@@ -57,6 +58,18 @@ describe("resolveEffectiveComposerModelId", () => {
       })
     ).toBe("gpt-5.4-mini")
   })
+
+  test("uses the live composer selection when a draft session suppresses the persisted session model", () => {
+    expect(
+      resolveEffectiveComposerModelId({
+        activeSessionModelId: null,
+        composerSelectedModelId: "claude-opus-4-6",
+        defaultModelId: "claude-sonnet-4-6",
+        availableModelIds: ["claude-sonnet-4-6", "claude-opus-4-6"],
+        runtimeDefaultModelId: "claude-sonnet-4-6",
+      })
+    ).toBe("claude-opus-4-6")
+  })
 })
 
 describe("resolveDefaultReasoningEffort", () => {
@@ -92,6 +105,35 @@ describe("resolveDefaultFastMode", () => {
         supportsFastMode: false,
       })
     ).toBe(false)
+  })
+})
+
+describe("shouldShowReasoningEffortSelector", () => {
+  test("hides the effort selector when the harness does not support effort controls", () => {
+    expect(
+      shouldShowReasoningEffortSelector({
+        supportsReasoningEffort: false,
+        availableReasoningEfforts: ["low", "medium", "high"],
+      })
+    ).toBe(false)
+  })
+
+  test("hides the effort selector when the selected model exposes no effort options", () => {
+    expect(
+      shouldShowReasoningEffortSelector({
+        supportsReasoningEffort: true,
+        availableReasoningEfforts: [],
+      })
+    ).toBe(false)
+  })
+
+  test("shows the effort selector when the harness supports it and options are available", () => {
+    expect(
+      shouldShowReasoningEffortSelector({
+        supportsReasoningEffort: true,
+        availableReasoningEfforts: ["medium"],
+      })
+    ).toBe(true)
   })
 })
 

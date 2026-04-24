@@ -38,6 +38,7 @@ import type {
   RuntimeListAgentsInput,
   RuntimeListCommandsInput,
   RuntimeListModelsInput,
+  RuntimeSearchFilesInput,
   RuntimeModelsResult,
   RuntimeSendTurnInput,
   RuntimeSessionResult,
@@ -194,6 +195,7 @@ export const desktop = {
     listModels: (input: RuntimeListModelsInput) => window.nucleus.runtime.listModels(input),
     listAgents: (input: RuntimeListAgentsInput) => window.nucleus.runtime.listAgents(input),
     listCommands: (input: RuntimeListCommandsInput) => window.nucleus.runtime.listCommands(input),
+    searchFiles: (input: RuntimeSearchFilesInput) => window.nucleus.runtime.searchFiles(input),
     sendTurn: (input: RuntimeSendTurnInput) => window.nucleus.runtime.sendTurn(input),
     answerPrompt: (input: RuntimeAnswerPromptInput) => window.nucleus.runtime.answerPrompt(input),
     interruptTurn: (input: RuntimeInterruptTurnInput) =>

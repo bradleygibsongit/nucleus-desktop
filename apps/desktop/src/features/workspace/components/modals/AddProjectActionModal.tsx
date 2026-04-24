@@ -38,6 +38,7 @@ import {
   PROJECT_ACTION_ICON_OPTIONS,
   type ProjectActionIconName,
 } from "@/features/workspace/utils/projectActionIcons"
+import { cn } from "@/lib/utils"
 
 interface AddProjectActionModalProps {
   open: boolean
@@ -46,6 +47,15 @@ interface AddProjectActionModalProps {
   onOpenChange: (open: boolean) => void
   onActionSaved?: (action: ProjectAction) => void
 }
+
+const iconTriggerClassName =
+  "flex size-11 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/20 text-muted-foreground transition-colors hover:border-border hover:bg-muted/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 aria-expanded:bg-muted/30 aria-expanded:text-foreground"
+
+const iconPickerItemClassName =
+  "flex aspect-square w-full items-center justify-center rounded-md border border-transparent text-muted-foreground transition-colors hover:border-border hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+
+const iconPickerSelectedItemClassName =
+  "border-border/70 bg-accent text-accent-foreground shadow-[inset_0_1px_0_color-mix(in_oklab,var(--foreground)_8%,transparent)]"
 
 export function AddProjectActionModal({
   open,
@@ -160,8 +170,8 @@ export function AddProjectActionModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl">
-        <DialogHeader>
+      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-xl">
+        <DialogHeader className="border-b border-border/60 px-5 py-4 pr-12">
           <DialogTitle className="text-2xl font-semibold tracking-tight">
             {action ? "Edit Action" : "Add Action"}
           </DialogTitle>
@@ -172,20 +182,19 @@ export function AddProjectActionModal({
           </DialogDescription>
         </DialogHeader>
 
-        <DialogBody className="space-y-5">
+        <DialogBody className="mx-0 my-0 space-y-5 bg-card px-5 py-4">
           <div className="space-y-2">
             <Label htmlFor="project-action-name">Name</Label>
             <div className="flex items-center gap-3">
               <DropdownMenu open={isIconPickerOpen} onOpenChange={setIsIconPickerOpen}>
-              <DropdownMenuTrigger
+                <DropdownMenuTrigger
                   render={
                     <button
                       type="button"
-                      className={
-                        iconName
-                          ? "flex size-12 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-card text-muted-foreground transition hover:border-border hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-                          : "flex size-12 shrink-0 items-center justify-center rounded-xl border border-dashed border-border/80 bg-muted/20 text-muted-foreground transition hover:border-border hover:bg-accent/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-                      }
+                      className={cn(
+                        iconTriggerClassName,
+                        !iconName && "border-dashed"
+                      )}
                       aria-label="Choose action icon"
                       title={selectedIconLabel ? `Icon: ${selectedIconLabel}` : "Choose action icon"}
                     />
@@ -200,7 +209,7 @@ export function AddProjectActionModal({
                 <DropdownMenuContent
                   align="start"
                   sideOffset={8}
-                  className="w-[248px] border border-border/70 bg-card p-2 shadow-lg"
+                  className="w-[248px] bg-popover p-2 ring-border"
                 >
                   <div className="grid grid-cols-6 gap-1.5">
                     {PROJECT_ACTION_ICON_OPTIONS.map((option) => {
@@ -215,11 +224,10 @@ export function AddProjectActionModal({
                             setIconName(option.id)
                             setIsIconPickerOpen(false)
                           }}
-                          className={
-                            isSelected
-                              ? "flex aspect-square w-full items-center justify-center rounded-lg border border-foreground/10 bg-accent text-foreground"
-                              : "flex aspect-square w-full items-center justify-center rounded-lg border border-border/70 bg-card text-muted-foreground transition hover:border-border hover:bg-accent hover:text-foreground"
-                          }
+                          className={cn(
+                            iconPickerItemClassName,
+                            isSelected && iconPickerSelectedItemClassName
+                          )}
                           aria-label={`Select ${option.label} icon`}
                           title={option.label}
                         >
@@ -236,7 +244,7 @@ export function AddProjectActionModal({
                 onChange={(event) => setName(event.target.value)}
                 placeholder="Run tests"
                 autoFocus
-                className="h-11"
+                className="h-11 border-border/70 bg-muted/20 hover:border-border focus-visible:bg-card"
               />
             </div>
           </div>
@@ -249,9 +257,10 @@ export function AddProjectActionModal({
               onKeyDown={handleHotkeyKeyDown}
               onChange={() => undefined}
               placeholder="Press shortcut"
-              className="h-11"
+              aria-invalid={Boolean(hotkeyError)}
+              className="h-11 border-border/70 bg-muted/20 hover:border-border focus-visible:bg-card"
             />
-            <p className="text-sm text-muted-foreground">
+            <p className={cn("text-sm", hotkeyError ? "text-destructive" : "text-muted-foreground")}>
               {hotkeyError ?? "Press a shortcut. Use Backspace to clear."}
             </p>
           </div>
@@ -263,7 +272,7 @@ export function AddProjectActionModal({
               value={command}
               onChange={(event) => setCommand(event.target.value)}
               placeholder={"bun test\nbun run lint"}
-              className="min-h-32 resize-y font-mono text-sm"
+              className="min-h-32 resize-y border-border/70 bg-muted/20 font-mono text-sm hover:border-border focus-visible:bg-card"
             />
             <p className="text-sm text-muted-foreground">
               Actions run sequentially. Each non-empty line is sent to the terminal as its own command.
@@ -271,7 +280,7 @@ export function AddProjectActionModal({
           </div>
         </DialogBody>
 
-        <DialogFooter>
+        <DialogFooter className="mx-0 mb-0 rounded-none border-border/60 bg-card px-5 py-3">
           {action ? (
             <Button
               type="button"

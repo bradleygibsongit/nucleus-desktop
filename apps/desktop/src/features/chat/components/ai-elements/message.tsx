@@ -105,7 +105,7 @@ export const MessageContent = ({
   <div
     className={cn(
       "flex w-full min-w-0 flex-col gap-4 overflow-hidden text-sm text-foreground",
-      "group-[.is-user]:w-auto group-[.is-user]:max-w-[min(42rem,78%)] group-[.is-user]:self-end group-[.is-user]:gap-0 group-[.is-user]:rounded-[18px] group-[.is-user]:bg-[color:var(--color-message-user-bubble)] group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-sm group-[.is-user]:leading-6 group-[.is-user]:text-[color:var(--color-message-user-bubble-foreground)]",
+      "group-[.is-user]:w-auto group-[.is-user]:max-w-[min(42rem,78%)] group-[.is-user]:self-end group-[.is-user]:gap-0 group-[.is-user]:rounded-[14px] group-[.is-user]:bg-[color:var(--color-message-user-bubble)] group-[.is-user]:px-3 group-[.is-user]:py-2 group-[.is-user]:text-sm group-[.is-user]:leading-6 group-[.is-user]:text-[color:var(--color-message-user-bubble-foreground)]",
       className
     )}
     {...props}

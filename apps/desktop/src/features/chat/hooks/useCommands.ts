@@ -81,6 +81,8 @@ const BUILTIN_PREVIEW_COMMANDS: NormalizedCommand[] = [
   },
 ]
 
+const commandCache = new Map<string, NormalizedCommand[]>()
+
 function buildProviderCommandDescription(description: string, inputHint?: string): string {
   const trimmedDescription = description.trim()
   const trimmedHint = inputHint?.trim()
@@ -97,12 +99,25 @@ export function useCommands(
   projectActions: ProjectAction[] = [],
   projectPath?: string | null
 ) {
-  const [commands, setCommands] = useState<NormalizedCommand[]>(ACTION_COMMANDS)
+  const cacheKey = `${harnessId ?? "codex"}::${projectPath ?? ""}::${projectActions
+    .map((action) => action.id)
+    .join("|")}`
+  const [commands, setCommands] = useState<NormalizedCommand[]>(
+    () => commandCache.get(cacheKey) ?? ACTION_COMMANDS
+  )
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  useEffect(() => {
+    const cachedCommands = commandCache.get(cacheKey)
+    if (cachedCommands) {
+      setCommands(cachedCommands)
+    }
+  }, [cacheKey])
+
   const fetchCommands = useCallback(async () => {
-    setIsLoading(true)
+    const cachedCommands = commandCache.get(cacheKey)
+    setIsLoading(!cachedCommands)
     setError(null)
 
     try {
@@ -174,7 +189,9 @@ export function useCommands(
         projectAction: action,
       }))
 
-      setCommands([...ACTION_COMMANDS, ...projectActionCommands, ...normalized, ...skillCommands])
+      const nextCommands = [...ACTION_COMMANDS, ...projectActionCommands, ...normalized, ...skillCommands]
+      commandCache.set(cacheKey, nextCommands)
+      setCommands(nextCommands)
     } catch (err) {
       console.error("[useCommands] Failed to fetch commands:", err)
       setError(String(err))
@@ -187,11 +204,13 @@ export function useCommands(
         execution: "run",
         projectAction: action,
       }))
-      setCommands([...ACTION_COMMANDS, ...projectActionCommands, ...BUILTIN_PREVIEW_COMMANDS])
+      const fallbackCommands = [...ACTION_COMMANDS, ...projectActionCommands, ...BUILTIN_PREVIEW_COMMANDS]
+      commandCache.set(cacheKey, fallbackCommands)
+      setCommands(fallbackCommands)
     } finally {
       setIsLoading(false)
     }
-  }, [harnessId, projectActions, projectPath])
+  }, [cacheKey, harnessId, projectActions, projectPath])
 
   useEffect(() => {
     fetchCommands()

@@ -70,6 +70,7 @@ import {
   GitDiff as PhosphorGitDiff,
   GitPullRequest as PhosphorGitPullRequest,
   Globe as PhosphorGlobe,
+  Heart as PhosphorHeart,
   Image as PhosphorImage,
   Info as PhosphorInfo,
   Lightbulb as PhosphorLightbulb,
@@ -228,6 +229,7 @@ export const GitBranch = createIcon("GitBranch", PhosphorGitBranch)
 export const GitDiff = createIcon("GitDiff", PhosphorGitDiff)
 export const GitPullRequest = createIcon("GitPullRequest", PhosphorGitPullRequest)
 export const Globe = createIcon("Globe", PhosphorGlobe)
+export const Heart = createIcon("Heart", PhosphorHeart)
 export const Image = createIcon("Image", PhosphorImage)
 export const Lightbulb = createIcon("Lightbulb", PhosphorLightbulb)
 export const MagnifyingGlass = createIcon("MagnifyingGlass", PhosphorMagnifyingGlass)

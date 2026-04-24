@@ -88,7 +88,9 @@ function buildModelOptions(
 ) {
   const options = availableModels.map((model) => ({
     value: model.id,
-    label: getRuntimeModelLabel(model, model.id),
+    label: model.providerName
+      ? `${getRuntimeModelLabel(model, model.id)} · ${model.providerName}`
+      : getRuntimeModelLabel(model, model.id),
   }))
 
   for (const modelId of additionalModelIds) {
@@ -434,28 +436,23 @@ function AppearanceSettingsSection() {
 }
 
 function HarnessSettingsSection({ harnessId }: { harnessId: HarnessId }) {
-  const isCodexHarness = harnessId === "codex"
-  const harnessLabel = getHarnessDefinition(harnessId).label
-  const codexDefaultModel = useSettingsStore((state) => state.codexDefaultModel)
-  const codexDefaultReasoningEffort = useSettingsStore((state) => state.codexDefaultReasoningEffort)
-  const codexDefaultFastMode = useSettingsStore((state) => state.codexDefaultFastMode)
-  const claudeDefaultModel = useSettingsStore((state) => state.claudeDefaultModel)
-  const claudeDefaultReasoningEffort = useSettingsStore((state) => state.claudeDefaultReasoningEffort)
-  const claudeDefaultFastMode = useSettingsStore((state) => state.claudeDefaultFastMode)
+  const harnessDefinition = getHarnessDefinition(harnessId)
+  const harnessLabel = harnessDefinition.label
+  const harnessDefaults = useSettingsStore((state) => state.harnessDefaults)
   const hasLoaded = useSettingsStore((state) => state.hasLoaded)
   const initialize = useSettingsStore((state) => state.initialize)
-  const setCodexDefaultModel = useSettingsStore((state) => state.setCodexDefaultModel)
-  const resetCodexDefaultModel = useSettingsStore((state) => state.resetCodexDefaultModel)
-  const setCodexDefaultReasoningEffort = useSettingsStore((state) => state.setCodexDefaultReasoningEffort)
-  const resetCodexDefaultReasoningEffort = useSettingsStore((state) => state.resetCodexDefaultReasoningEffort)
-  const setCodexDefaultFastMode = useSettingsStore((state) => state.setCodexDefaultFastMode)
-  const resetCodexDefaultFastMode = useSettingsStore((state) => state.resetCodexDefaultFastMode)
-  const setClaudeDefaultModel = useSettingsStore((state) => state.setClaudeDefaultModel)
-  const resetClaudeDefaultModel = useSettingsStore((state) => state.resetClaudeDefaultModel)
-  const setClaudeDefaultReasoningEffort = useSettingsStore((state) => state.setClaudeDefaultReasoningEffort)
-  const resetClaudeDefaultReasoningEffort = useSettingsStore((state) => state.resetClaudeDefaultReasoningEffort)
-  const setClaudeDefaultFastMode = useSettingsStore((state) => state.setClaudeDefaultFastMode)
-  const resetClaudeDefaultFastMode = useSettingsStore((state) => state.resetClaudeDefaultFastMode)
+  const setHarnessDefaultModel = useSettingsStore((state) => state.setHarnessDefaultModel)
+  const resetHarnessDefaultModel = useSettingsStore((state) => state.resetHarnessDefaultModel)
+  const setHarnessDefaultReasoningEffort = useSettingsStore(
+    (state) => state.setHarnessDefaultReasoningEffort
+  )
+  const resetHarnessDefaultReasoningEffort = useSettingsStore(
+    (state) => state.resetHarnessDefaultReasoningEffort
+  )
+  const setHarnessDefaultFastMode = useSettingsStore((state) => state.setHarnessDefaultFastMode)
+  const resetHarnessDefaultFastMode = useSettingsStore(
+    (state) => state.resetHarnessDefaultFastMode
+  )
   const isSettingsLoading = !hasLoaded
   const { availableModels, isLoadingModels, loadError, runtimeDefaultModel } = useHarnessModelsState(harnessId)
 
@@ -463,21 +460,10 @@ function HarnessSettingsSection({ harnessId }: { harnessId: HarnessId }) {
     void initialize()
   }, [initialize])
 
-  const defaultModelValue = isCodexHarness ? codexDefaultModel : claudeDefaultModel
-  const defaultReasoningEffortValue = isCodexHarness
-    ? codexDefaultReasoningEffort
-    : claudeDefaultReasoningEffort
-  const defaultFastModeValue = isCodexHarness ? codexDefaultFastMode : claudeDefaultFastMode
-  const setDefaultModel = isCodexHarness ? setCodexDefaultModel : setClaudeDefaultModel
-  const resetDefaultModel = isCodexHarness ? resetCodexDefaultModel : resetClaudeDefaultModel
-  const setDefaultReasoningEffort = isCodexHarness
-    ? setCodexDefaultReasoningEffort
-    : setClaudeDefaultReasoningEffort
-  const resetDefaultReasoningEffort = isCodexHarness
-    ? resetCodexDefaultReasoningEffort
-    : resetClaudeDefaultReasoningEffort
-  const setDefaultFastMode = isCodexHarness ? setCodexDefaultFastMode : setClaudeDefaultFastMode
-  const resetDefaultFastMode = isCodexHarness ? resetCodexDefaultFastMode : resetClaudeDefaultFastMode
+  const defaults = harnessDefaults[harnessId]
+  const defaultModelValue = defaults.model
+  const defaultReasoningEffortValue = defaults.reasoningEffort
+  const defaultFastModeValue = defaults.fastMode
 
   const modelOptions = useMemo(
     () => buildModelOptions(availableModels, [defaultModelValue]),
@@ -501,27 +487,48 @@ function HarnessSettingsSection({ harnessId }: { harnessId: HarnessId }) {
     () => buildReasoningOptions(effectiveDefaultModel, defaultReasoningEffortValue),
     [defaultReasoningEffortValue, effectiveDefaultModel]
   )
-  const supportsFastMode = effectiveDefaultModel?.supportsFastMode === true
+  const supportsReasoningEffort = harnessDefinition.capabilities.supportsReasoningEffort
+  const supportsFastMode =
+    harnessDefinition.capabilities.supportsFastMode && effectiveDefaultModel?.supportsFastMode === true
   const reasoningPlaceholder =
     effectiveDefaultModel?.defaultReasoningEffort?.trim() || reasoningOptions[0]?.value || "Select reasoning"
 
   useEffect(() => {
-    if (!hasLoaded || isLoadingModels || !defaultFastModeValue || supportsFastMode) {
+    if (
+      !hasLoaded ||
+      isLoadingModels ||
+      !defaultFastModeValue ||
+      supportsFastMode ||
+      !harnessDefinition.capabilities.supportsFastMode
+    ) {
       return
     }
 
-    setDefaultFastMode(false)
-  }, [defaultFastModeValue, hasLoaded, isLoadingModels, setDefaultFastMode, supportsFastMode])
+    setHarnessDefaultFastMode(harnessId, false)
+  }, [
+    defaultFastModeValue,
+    harnessDefinition.capabilities.supportsFastMode,
+    harnessId,
+    hasLoaded,
+    isLoadingModels,
+    setHarnessDefaultFastMode,
+    supportsFastMode,
+  ])
 
-  const introCopy = isCodexHarness
-    ? "Choose the model behavior new Codex chats should start from. Fast mode is available when the selected model supports it and trades higher usage for more speed."
-    : "Choose the model behavior new Claude chats should start from. Fast mode is currently available on Opus 4.6 and can deliver up to 2.5x faster output at premium API pricing."
-  const fastModeDescription = isCodexHarness
-    ? "Uses Codex fast mode when the selected model supports it. Faster responses at 2x usage."
-    : "Uses Claude fast mode when the selected model supports it. Up to 2.5x faster output at premium API pricing."
-  const unavailableFastModeCopy = isCodexHarness
-    ? "Fast mode is not available for the current default model, so it stays off."
-    : "Fast mode is not available for the current default Claude model, so it stays off."
+  const introCopy =
+    harnessId === "codex"
+      ? "Choose the model behavior new Codex chats should start from. Fast mode is available when the selected model supports it and trades higher usage for more speed."
+      : harnessId === "claude-code"
+        ? "Choose the model behavior new Claude chats should start from. Fast mode is currently available on supported Claude models and can deliver faster output at premium API pricing."
+        : "Choose the default model new OpenCode chats should start from. OpenCode keeps reasoning and speed controls on its own side for now."
+  const fastModeDescription =
+    harnessId === "claude-code"
+      ? "Uses Claude fast mode when the selected model supports it. Up to 2.5x faster output at premium API pricing."
+      : "Uses Codex fast mode when the selected model supports it. Faster responses at 2x usage."
+  const unavailableFastModeCopy =
+    harnessId === "claude-code"
+      ? "Fast mode is not available for the current default Claude model, so it stays off."
+      : "Fast mode is not available for the current default model, so it stays off."
 
   return (
     <section className="rounded-xl border border-border/80 bg-card text-card-foreground shadow-sm">
@@ -541,7 +548,7 @@ function HarnessSettingsSection({ harnessId }: { harnessId: HarnessId }) {
             </FieldDescription>
             <SearchableSelect
               value={defaultModelValue || null}
-              onValueChange={setDefaultModel}
+              onValueChange={(value) => setHarnessDefaultModel(harnessId, value)}
               options={modelOptions}
               placeholder={
                 runtimeDefaultModel
@@ -559,62 +566,90 @@ function HarnessSettingsSection({ harnessId }: { harnessId: HarnessId }) {
             />
           </Field>
 
-          <Field>
-            <FieldTitle>Default reasoning</FieldTitle>
-            <FieldDescription>
-              Falls back to the model default when left unset or unsupported.
-            </FieldDescription>
-            <SearchableSelect
-              value={defaultReasoningEffortValue || null}
-              onValueChange={setDefaultReasoningEffort}
-              options={reasoningOptions}
-              placeholder={reasoningPlaceholder}
-              searchPlaceholder="Search reasoning levels"
-              emptyMessage="No reasoning options available for this model."
-              disabled={isSettingsLoading || isLoadingModels || effectiveDefaultModel == null}
-              className="mt-2"
-              errorMessage={loadError}
-              statusMessage={
-                isSettingsLoading
-                  ? "Loading saved settings…"
-                  : isLoadingModels
-                    ? "Loading models…"
-                    : effectiveDefaultModel == null
-                      ? "Choose a model first."
-                      : null
-              }
-            />
-          </Field>
-
-          <Field orientation="horizontal" className="items-start gap-3">
-            <div className="flex-1 space-y-1">
-              <FieldTitle>Fast mode by default</FieldTitle>
+          {supportsReasoningEffort ? (
+            <Field>
+              <FieldTitle>Default reasoning</FieldTitle>
               <FieldDescription>
-                {fastModeDescription}
+                Falls back to the model default when left unset or unsupported.
               </FieldDescription>
-            </div>
-            <Switch
-              checked={defaultFastModeValue}
-              onCheckedChange={(checked) => setDefaultFastMode(checked === true)}
-              disabled={isSettingsLoading || isLoadingModels || !supportsFastMode}
-              aria-label={`Toggle ${harnessLabel} fast mode default`}
-            />
-          </Field>
-          {!supportsFastMode ? (
-            <p className="text-xs leading-5 text-muted-foreground">
-              {unavailableFastModeCopy}
-            </p>
+              <SearchableSelect
+                value={defaultReasoningEffortValue || null}
+                onValueChange={(value) => setHarnessDefaultReasoningEffort(harnessId, value)}
+                options={reasoningOptions}
+                placeholder={reasoningPlaceholder}
+                searchPlaceholder="Search reasoning levels"
+                emptyMessage="No reasoning options available for this model."
+                disabled={isSettingsLoading || isLoadingModels || effectiveDefaultModel == null}
+                className="mt-2"
+                errorMessage={loadError}
+                statusMessage={
+                  isSettingsLoading
+                    ? "Loading saved settings…"
+                    : isLoadingModels
+                      ? "Loading models…"
+                      : effectiveDefaultModel == null
+                        ? "Choose a model first."
+                        : null
+                }
+              />
+            </Field>
+          ) : null}
+
+          {harnessDefinition.capabilities.supportsFastMode ? (
+            <>
+              <Field orientation="horizontal" className="items-start gap-3">
+                <div className="flex-1 space-y-1">
+                  <FieldTitle>Fast mode by default</FieldTitle>
+                  <FieldDescription>
+                    {fastModeDescription}
+                  </FieldDescription>
+                </div>
+                <Switch
+                  checked={defaultFastModeValue}
+                  onCheckedChange={(checked) => setHarnessDefaultFastMode(harnessId, checked === true)}
+                  disabled={isSettingsLoading || isLoadingModels || !supportsFastMode}
+                  aria-label={`Toggle ${harnessLabel} fast mode default`}
+                />
+              </Field>
+              {!supportsFastMode ? (
+                <p className="text-xs leading-5 text-muted-foreground">
+                  {unavailableFastModeCopy}
+                </p>
+              ) : null}
+            </>
           ) : null}
         </FieldGroup>
 
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={resetDefaultFastMode} disabled={isSettingsLoading}>
-            Reset fast mode
-          </Button>
-          <Button type="button" variant="outline" size="sm" onClick={resetDefaultReasoningEffort} disabled={isSettingsLoading}>
-            Reset reasoning
-          </Button>
-          <Button type="button" variant="outline" size="sm" onClick={resetDefaultModel} disabled={isSettingsLoading}>
+          {harnessDefinition.capabilities.supportsFastMode ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => resetHarnessDefaultFastMode(harnessId)}
+              disabled={isSettingsLoading}
+            >
+              Reset fast mode
+            </Button>
+          ) : null}
+          {supportsReasoningEffort ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => resetHarnessDefaultReasoningEffort(harnessId)}
+              disabled={isSettingsLoading}
+            >
+              Reset reasoning
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => resetHarnessDefaultModel(harnessId)}
+            disabled={isSettingsLoading}
+          >
             Reset model
           </Button>
         </div>
@@ -652,11 +687,7 @@ function renderSettingsSection(activeSection: SettingsSectionId) {
     return <UpdatesSection />
   }
 
-  if (activeSection === "codex" || activeSection === "claude-code") {
-    return <HarnessSettingsSection harnessId={activeSection} />
-  }
-
-  return null
+  return <HarnessSettingsSection harnessId={activeSection} />
 }
 
 export function SettingsPage({ activeSection }: SettingsPageProps) {

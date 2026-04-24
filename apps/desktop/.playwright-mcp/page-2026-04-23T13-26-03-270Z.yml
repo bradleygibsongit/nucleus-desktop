@@ -1,0 +1,169 @@
+- main [ref=e3]:
+  - generic [ref=e4]:
+    - generic [ref=e7]:
+      - paragraph [ref=e8]: Atelier Noir
+      - text: Private watch room
+    - navigation "Primary" [ref=e9]:
+      - link "Collection" [ref=e10] [cursor=pointer]:
+        - /url: "#collection"
+      - link "Craft" [ref=e11] [cursor=pointer]:
+        - /url: "#craft"
+      - link "Concierge" [ref=e12] [cursor=pointer]:
+        - /url: "#concierge"
+    - link "Book a viewing" [ref=e13] [cursor=pointer]:
+      - /url: "#appointment"
+  - generic [ref=e14]:
+    - generic [ref=e15]:
+      - paragraph [ref=e16]: Modern horology for men who buy once and wear forever
+      - heading "The midnight salon for serious watches." [level=1] [ref=e17]
+      - paragraph [ref=e18]: Limited Swiss references, private allocations, and a buying experience that feels closer to tailoring than retail.
+      - generic [ref=e19]:
+        - link "Explore the collection" [ref=e20] [cursor=pointer]:
+          - /url: "#collection"
+        - link "Start a private appointment" [ref=e21] [cursor=pointer]:
+          - /url: "#appointment"
+      - generic [ref=e22]:
+        - generic [ref=e23]:
+          - term [ref=e24]: "12"
+          - definition [ref=e25]: annual drops
+        - generic [ref=e26]:
+          - term [ref=e27]: 48h
+          - definition [ref=e28]: global concierge reply
+        - generic [ref=e29]:
+          - term [ref=e30]: 100%
+          - definition [ref=e31]: authenticated and archived
+    - generic [ref=e32]:
+      - generic [ref=e35]:
+        - img [ref=e37]
+        - img [ref=e63]
+        - img [ref=e89]
+      - generic [ref=e114]:
+        - generic [ref=e115]: Drop 04 / 12
+        - strong [ref=e116]: Regent Chronograph
+        - generic [ref=e117]: Flyback calibre, smoked steel, boxed sapphire
+  - generic [ref=e119]:
+    - generic [ref=e120]: /Geneva regulated
+    - generic [ref=e121]: /Private allocation
+    - generic [ref=e122]: /Worldwide sourcing
+    - generic [ref=e123]: /Lifetime service archive
+    - generic [ref=e124]: /Geneva regulated
+    - generic [ref=e125]: /Private allocation
+  - generic [ref=e126]:
+    - generic [ref=e127]:
+      - paragraph [ref=e128]: Featured references
+      - generic [ref=e129]:
+        - heading "Three watches. Three completely different kinds of presence." [level=2] [ref=e130]
+        - paragraph [ref=e131]: "Built like a capsule wardrobe: one black-tie statement, one daily chronograph, one travel piece that looks better at midnight than noon."
+    - generic [ref=e132]:
+      - article [ref=e133]:
+        - generic [ref=e134]:
+          - generic [ref=e135]: "01"
+          - generic [ref=e136]:
+            - heading "Noir Meridian" [level=3] [ref=e137]
+            - paragraph [ref=e138]: Obsidian dial with warm champagne indices
+        - generic [ref=e139]:
+          - generic [ref=e140]: 41mm
+          - generic [ref=e141]: 72 hour reserve
+          - generic [ref=e142]: Hand-cut shell cordovan
+        - generic [ref=e143]:
+          - strong [ref=e144]: $18,400
+          - link "Reserve interest" [ref=e145] [cursor=pointer]:
+            - /url: "#appointment"
+            - text: Reserve interest
+            - img [ref=e146]
+        - img [ref=e150]
+      - article [ref=e175]:
+        - generic [ref=e176]:
+          - generic [ref=e177]: "02"
+          - generic [ref=e178]:
+            - heading "Regent Chronograph" [level=3] [ref=e179]
+            - paragraph [ref=e180]: Brushed steel case with graphite subdials
+        - generic [ref=e181]:
+          - generic [ref=e182]: 39mm
+          - generic [ref=e183]: Flyback movement
+          - generic [ref=e184]: Smoked steel bracelet
+        - generic [ref=e185]:
+          - strong [ref=e186]: $26,900
+          - link "Reserve interest" [ref=e187] [cursor=pointer]:
+            - /url: "#appointment"
+            - text: Reserve interest
+            - img [ref=e188]
+        - img [ref=e192]
+      - article [ref=e217]:
+        - generic [ref=e218]:
+          - generic [ref=e219]: "03"
+          - generic [ref=e220]:
+            - heading "Atlas Dual Time" [level=3] [ref=e221]
+            - paragraph [ref=e222]: Deep forest accents for late-night travel
+        - generic [ref=e223]:
+          - generic [ref=e224]: 40mm
+          - generic [ref=e225]: Dual timezone module
+          - generic [ref=e226]: Espresso calfskin strap
+        - generic [ref=e227]:
+          - strong [ref=e228]: $22,100
+          - link "Reserve interest" [ref=e229] [cursor=pointer]:
+            - /url: "#appointment"
+            - text: Reserve interest
+            - img [ref=e230]
+        - img [ref=e234]
+  - generic [ref=e259]:
+    - generic [ref=e260]:
+      - generic [ref=e261]:
+        - paragraph [ref=e262]: Why it feels different
+        - heading "Luxury without the noise." [level=2] [ref=e263]
+        - paragraph [ref=e264]: "We stripped out the loud retail energy and kept the parts that matter: precision, proportion, materials, and the confidence of knowing exactly why a piece belongs on your wrist."
+      - generic [ref=e265]:
+        - generic [ref=e266]:
+          - generic [ref=e267]: "01"
+          - generic [ref=e268]:
+            - heading "Swiss calibres, tuned like instruments" [level=3] [ref=e269]
+            - paragraph [ref=e270]: Every reference is regulated in six positions and rested for fourteen days before release.
+        - generic [ref=e271]:
+          - generic [ref=e272]: "02"
+          - generic [ref=e273]:
+            - heading "Finishing you can actually feel" [level=3] [ref=e274]
+            - paragraph [ref=e275]: Chamfered lugs, boxed sapphire, and hand-burnished crowns make the watch read like a tailored object, not a gadget.
+        - generic [ref=e276]:
+          - generic [ref=e277]: "03"
+          - generic [ref=e278]:
+            - heading "Allocated by relationship, not hype" [level=3] [ref=e279]
+            - paragraph [ref=e280]: Our private desk opens new allocations first to clients building a coherent collection over time.
+    - complementary [ref=e281]:
+      - img [ref=e283]
+      - paragraph [ref=e286]: “The right watch should make every other accessory quieter.”
+      - text: House note, Atelier Noir
+  - generic [ref=e287]:
+    - generic [ref=e288]:
+      - paragraph [ref=e289]: Private client desk
+      - generic [ref=e290]:
+        - heading "Everything after the purchase is part of the luxury." [level=2] [ref=e291]
+        - paragraph [ref=e292]: From sourcing through service intervals, the relationship is designed to last longer than the checkout moment.
+    - generic [ref=e293]:
+      - generic [ref=e294]:
+        - img [ref=e295]
+        - generic [ref=e298]: Appointments in under 48 hours
+      - generic [ref=e299]:
+        - img [ref=e300]
+        - generic [ref=e303]: Authentication dossier with every reference
+      - generic [ref=e304]:
+        - img [ref=e305]
+        - generic [ref=e308]: Viewing rooms in London, New York, and by request in Dubai
+    - generic [ref=e309]:
+      - generic [ref=e310]:
+        - generic [ref=e311]: "01"
+        - paragraph [ref=e312]: White-glove sourcing for rare references and discontinued pieces
+      - generic [ref=e313]:
+        - generic [ref=e314]: "02"
+        - paragraph [ref=e315]: Same-day video appointments with a watch specialist in London or New York
+      - generic [ref=e316]:
+        - generic [ref=e317]: "03"
+        - paragraph [ref=e318]: Lifetime pressure testing, strap swaps, and service history archive
+  - generic [ref=e319]:
+    - paragraph [ref=e320]: Appointment only
+    - heading "See the collection in a setting that matches it." [level=2] [ref=e321]
+    - paragraph [ref=e322]: Book a private viewing, request a sourcing brief, or build a two-watch starter collection with a specialist.
+    - generic [ref=e323]:
+      - link "Email the concierge" [ref=e324] [cursor=pointer]:
+        - /url: mailto:concierge@ateliernoir.example
+      - link "Return to the top" [ref=e325] [cursor=pointer]:
+        - /url: "#top"

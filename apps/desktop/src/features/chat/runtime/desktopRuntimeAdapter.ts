@@ -43,8 +43,14 @@ export class DesktopRuntimeHarnessAdapter implements HarnessAdapter {
     return (await desktop.runtime.listModels({ harnessId: this.definition.id })).models
   }
 
-  async searchFiles() {
-    return []
+  async searchFiles(query: string, directory?: string) {
+    return (
+      await desktop.runtime.searchFiles({
+        harnessId: this.definition.id,
+        query,
+        directory,
+      })
+    ).results
   }
 
   async sendMessage(input: HarnessTurnInput): Promise<HarnessTurnResult> {

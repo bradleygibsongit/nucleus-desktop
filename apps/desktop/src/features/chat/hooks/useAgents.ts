@@ -9,13 +9,24 @@ export interface NormalizedAgent {
   builtIn: boolean
 }
 
+const agentCache = new Map<string, NormalizedAgent[]>()
+
 export function useAgents(harnessId: HarnessId | null) {
-  const [agents, setAgents] = useState<NormalizedAgent[]>([])
+  const cacheKey = harnessId ?? "codex"
+  const [agents, setAgents] = useState<NormalizedAgent[]>(() => agentCache.get(cacheKey) ?? [])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  useEffect(() => {
+    const cachedAgents = agentCache.get(cacheKey)
+    if (cachedAgents) {
+      setAgents(cachedAgents)
+    }
+  }, [cacheKey])
+
   const fetchAgents = useCallback(async () => {
-    setIsLoading(true)
+    const cachedAgents = agentCache.get(cacheKey)
+    setIsLoading(!cachedAgents)
     setError(null)
 
     try {
@@ -37,15 +48,17 @@ export function useAgents(harnessId: HarnessId | null) {
         return a.name.localeCompare(b.name)
       })
 
+      agentCache.set(cacheKey, normalized)
       setAgents(normalized)
     } catch (err) {
       console.error("[useAgents] Failed to fetch agents:", err)
       setError(String(err))
+      agentCache.set(cacheKey, [])
       setAgents([])
     } finally {
       setIsLoading(false)
     }
-  }, [harnessId])
+  }, [cacheKey, harnessId])
 
   useEffect(() => {
     fetchAgents()

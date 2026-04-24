@@ -90,8 +90,16 @@ interface ChatState {
   getHarnessDefinition: (harnessId: HarnessId) => HarnessDefinition
   loadSessionsForProject: (worktreeId: string, projectPath: string) => Promise<void>
   openDraftSession: (worktreeId: string, projectPath: string) => Promise<void>
-  createSession: (worktreeId: string, projectPath: string) => Promise<RuntimeSession | null>
-  createOptimisticSession: (worktreeId: string, projectPath: string) => RuntimeSession | null
+  createSession: (
+    worktreeId: string,
+    projectPath: string,
+    options?: { harnessId?: HarnessId; runtimeMode?: RuntimeModeKind }
+  ) => Promise<RuntimeSession | null>
+  createOptimisticSession: (
+    worktreeId: string,
+    projectPath: string,
+    options?: { harnessId?: HarnessId; runtimeMode?: RuntimeModeKind }
+  ) => RuntimeSession | null
   removeProjectData: (projectId: string) => Promise<void>
   removeWorktreeData: (worktreeId: string) => Promise<void>
   selectSession: (worktreeId: string, sessionId: string) => Promise<void>
@@ -118,6 +126,7 @@ interface ChatState {
     text: string,
     options?: {
       attachments?: RuntimeAttachmentPart[]
+      harnessId?: HarnessId
       agent?: string
       collaborationMode?: CollaborationModeKind
       runtimeMode?: RuntimeModeKind
@@ -584,16 +593,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
     await get()._persistState()
   },
 
-  createSession: async (worktreeId: string, projectPath: string) => {
+  createSession: async (worktreeId: string, projectPath: string, options) => {
     if (!get().isInitialized) {
       await get().initialize()
     }
 
     const { chatByWorktree } = get()
     const projectChat = chatByWorktree[worktreeId] ?? createDefaultProjectChat(projectPath)
-    const adapter = getHarnessAdapter(projectChat.selectedHarnessId)
+    const harnessId = options?.harnessId ?? projectChat.selectedHarnessId
+    const runtimeMode = options?.runtimeMode ?? DEFAULT_RUNTIME_MODE
+    const adapter = getHarnessAdapter(harnessId)
     const session = await adapter.createSession(projectPath, {
-      runtimeMode: DEFAULT_RUNTIME_MODE,
+      runtimeMode,
     })
 
     set({
@@ -601,6 +612,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         ...chatByWorktree,
         [worktreeId]: {
           ...projectChat,
+          selectedHarnessId: harnessId,
           worktreePath: projectPath,
           sessions: sortSessions([session, ...projectChat.sessions]),
           activeSessionId: session.id,
@@ -620,17 +632,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
     return session
   },
 
-  createOptimisticSession: (worktreeId: string, projectPath: string) => {
+  createOptimisticSession: (worktreeId: string, projectPath: string, options) => {
     if (!get().isInitialized) {
       return null
     }
 
     const { chatByWorktree } = get()
     const projectChat = chatByWorktree[worktreeId] ?? createDefaultProjectChat(projectPath)
+    const harnessId = options?.harnessId ?? projectChat.selectedHarnessId
+    const runtimeMode = options?.runtimeMode ?? DEFAULT_RUNTIME_MODE
     const session = createOptimisticRuntimeSession(
-      projectChat.selectedHarnessId,
+      harnessId,
       projectPath,
-      DEFAULT_RUNTIME_MODE
+      runtimeMode
     )
 
     set({
@@ -638,6 +652,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         ...chatByWorktree,
         [worktreeId]: {
           ...projectChat,
+          selectedHarnessId: harnessId,
           worktreePath: projectPath,
           sessions: sortSessions([session, ...projectChat.sessions]),
           activeSessionId: session.id,
@@ -1355,20 +1370,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
 
       const { worktreeId, projectChat, session } = sessionMatch
-      const adapter = getHarnessAdapter(session.harnessId)
       const transportText = buildHarnessAttachmentText(trimmedText, attachments)
       const userMessage = createUserMessage(sessionId, trimmedText, attachments)
       const nextSessionTitle =
         session.title?.trim() ? session.title : deriveSessionTitle(trimmedText, attachments)
+      const nextSessionHarnessId = options?.harnessId ?? session.harnessId
       const nextSessionModel = options?.model?.trim() || session.model?.trim() || null
       const nextSessionRuntimeMode =
         options?.runtimeMode ?? session.runtimeMode ?? DEFAULT_RUNTIME_MODE
-      const nextTurnStatus = session.harnessId === "codex" ? "connecting" : "streaming"
       let nextSession: RuntimeSession = {
         ...touchSession(session, nextSessionTitle),
+        harnessId: nextSessionHarnessId,
         model: nextSessionModel,
         runtimeMode: nextSessionRuntimeMode,
       }
+      const adapter = getHarnessAdapter(nextSession.harnessId)
+      const nextTurnStatus =
+        nextSession.harnessId === "codex" || nextSession.harnessId === "opencode"
+          ? "connecting"
+          : "streaming"
       const nextMessages = [...(get().messagesBySession[sessionId] ?? []), userMessage]
 
       set({
@@ -1376,6 +1396,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           ...get().chatByWorktree,
           [worktreeId]: {
             ...projectChat,
+            selectedHarnessId: nextSession.harnessId,
             sessions: replaceSession(projectChat.sessions, nextSession),
             activeSessionId: sessionId,
           },

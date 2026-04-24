@@ -4,7 +4,7 @@ import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin"
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin"
 import { ContentEditable } from "@lexical/react/LexicalContentEditable"
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary"
-import { type ClipboardEvent as ReactClipboardEvent, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MutableRefObject } from "react"
+import { memo, type ClipboardEvent as ReactClipboardEvent, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MutableRefObject } from "react"
 import type { EditorState, Klass, LexicalEditor, LexicalNode } from "lexical"
 import { ComposerEditorRefPlugin } from "./ComposerEditorRefPlugin"
 
@@ -29,7 +29,7 @@ interface ComposerEditorSurfaceProps {
   placeholder: string
 }
 
-export function ComposerEditorSurface({
+function ComposerEditorSurfaceComponent({
   editorRef,
   initialConfig,
   isLocked,
@@ -75,3 +75,5 @@ export function ComposerEditorSurface({
     </LexicalComposer>
   )
 }
+
+export const ComposerEditorSurface = memo(ComposerEditorSurfaceComponent)

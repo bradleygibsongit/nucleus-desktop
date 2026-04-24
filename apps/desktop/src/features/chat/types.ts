@@ -29,7 +29,7 @@ export interface Tab {
   previousFilePath?: string | null;
 }
 
-export type HarnessId = "codex" | "claude-code";
+export type HarnessId = "codex" | "claude-code" | "opencode";
 
 export interface HarnessCapabilities {
   supportsCommands: boolean;
@@ -38,6 +38,8 @@ export interface HarnessCapabilities {
   supportsSubagents: boolean;
   supportsArchive: boolean;
   supportsDelete: boolean;
+  supportsReasoningEffort: boolean;
+  supportsFastMode: boolean;
 }
 
 export interface HarnessDefinition {
@@ -166,6 +168,7 @@ export type RuntimeReasoningEffort = string;
 export interface RuntimeModel {
   id: string;
   displayName: string;
+  providerName?: string;
   isDefault: boolean;
   defaultReasoningEffort?: RuntimeReasoningEffort | null;
   supportedReasoningEfforts?: RuntimeReasoningEffort[];

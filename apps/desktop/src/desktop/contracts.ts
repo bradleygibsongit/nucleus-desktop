@@ -2,6 +2,7 @@ import type {
   CollaborationModeKind,
   RuntimeModeKind,
   HarnessId,
+  RuntimeFileSearchResult,
   HarnessTurnResult,
   RuntimeAgent,
   RuntimeCommand,
@@ -408,6 +409,12 @@ export interface RuntimeListCommandsInput {
   projectPath?: string
 }
 
+export interface RuntimeSearchFilesInput {
+  harnessId: HarnessId
+  query: string
+  directory?: string
+}
+
 export interface RuntimeSendTurnInput {
   harnessId: HarnessId
   session: RuntimeSession
@@ -448,6 +455,10 @@ export interface RuntimeAgentsResult {
 
 export interface RuntimeCommandsResult {
   commands: RuntimeCommand[]
+}
+
+export interface RuntimeFileSearchResultSet {
+  results: RuntimeFileSearchResult[]
 }
 
 export interface RuntimeTurnUpdateEvent {

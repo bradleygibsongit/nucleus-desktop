@@ -26,6 +26,7 @@ export const IPC_CHANNELS = {
   runtimeListModels: "runtime:listModels",
   runtimeListAgents: "runtime:listAgents",
   runtimeListCommands: "runtime:listCommands",
+  runtimeSearchFiles: "runtime:searchFiles",
   runtimeSendTurn: "runtime:sendTurn",
   runtimeAnswerPrompt: "runtime:answerPrompt",
   runtimeInterruptTurn: "runtime:interruptTurn",

@@ -7,7 +7,7 @@ import {
 } from "@/components/icons"
 import { listHarnesses } from "@/features/chat/runtime/harnesses"
 import type { HarnessId } from "@/features/chat/types"
-import type { ModelLogoKind } from "@/features/chat/components/ModelLogo"
+import { getHarnessLogoKind, type ModelLogoKind } from "@/features/chat/components/ModelLogo"
 
 export type SettingsSectionId =
   | "appearance"
@@ -23,7 +23,7 @@ export interface SettingsSectionDefinition {
 }
 
 export interface SettingsSectionGroup {
-  id: "general" | "agents"
+  id: "general" | "harnesses"
   label?: string
   sections: SettingsSectionDefinition[]
 }
@@ -40,12 +40,12 @@ export const SETTINGS_SECTION_GROUPS: SettingsSectionGroup[] = [
     ],
   },
   {
-    id: "agents",
-    label: "Agents",
+    id: "harnesses",
+    label: "Harnesses",
     sections: listHarnesses().map((harness) => ({
       id: harness.id,
       label: harness.label,
-      logoKind: harness.id === "claude-code" ? "claude" : "codex",
+      logoKind: getHarnessLogoKind(harness.id),
     })),
   },
 ]

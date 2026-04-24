@@ -66,6 +66,8 @@ const TREE_UNSAFE_CSS = `
   }
 `
 
+const INITIAL_VISIBLE_ROW_COUNT = 48
+
 function extractDroppedPaths(files: FileList): string[] {
   const sourcePaths = Array.from(files)
     .map((file) => window.nucleus.fs.getPathForFile(file) ?? (file as ElectronFile).path?.trim())
@@ -331,18 +333,24 @@ export function FileTreeViewer({
         icons: {
           colored: true,
         },
-        paths: canonicalPaths,
+        initialVisibleRowCount: INITIAL_VISIBLE_ROW_COUNT,
+        paths: [],
         initialExpansion: "closed",
         initialExpandedPaths: [],
         unsafeCSS: TREE_UNSAFE_CSS,
       }),
-    [canonicalPaths, projectPath]
+    [projectPath]
   )
 
   useEffect(() => {
     return () => {
       treeModel.cleanUp()
     }
+  }, [treeModel])
+
+  useEffect(() => {
+    previousCanonicalEntriesRef.current = []
+    previousPathsSignatureRef.current = ""
   }, [treeModel])
 
   useEffect(() => {
@@ -516,6 +524,8 @@ export function FileTreeViewer({
     () =>
       ({
         height: "100%",
+        display: "block",
+        minHeight: 0,
         colorScheme: resolvedAppearance,
         "--trees-accent-override": "var(--accent)",
         "--trees-bg-muted-override": "var(--sidebar-item-hover)",

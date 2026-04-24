@@ -3,6 +3,7 @@ import {
   type HarnessPromptInput,
   type HarnessTurnInput,
   type HarnessTurnResult,
+  type RuntimeFileSearchResult,
   type RuntimeModel,
   type RuntimeModeKind,
   type RuntimePrompt,
@@ -205,6 +206,10 @@ export class CodexRuntimeProvider implements RuntimeProviderAdapter {
     } finally {
       this.modelRequest = null
     }
+  }
+
+  async searchFiles(_query: string, _directory?: string): Promise<RuntimeFileSearchResult[]> {
+    return []
   }
 
   private async loadModelsFromRpc(): Promise<RuntimeModel[]> {

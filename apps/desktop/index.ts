@@ -13,7 +13,7 @@ import {
   type TextPart,
   type ToolPart,
   type ToolState,
-} from "@opencode-ai/sdk"
+} from "@opencode-ai/sdk/v2"
 
 const HELP_FLAGS = new Set(["--help", "-h"])
 const NO_STREAM_FLAG = "--no-stream"

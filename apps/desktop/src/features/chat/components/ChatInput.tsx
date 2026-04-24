@@ -1,21 +1,3 @@
-import {
-  ArrowUp02,
-  ArrowElbowDownLeft,
-  Brain,
-  CaretDown,
-  CheckCircle,
-  Circle,
-  DocumentValidation,
-  FileLock,
-  Paperclip,
-  PencilSimple,
-  Plus,
-  ShieldWarning,
-  Stop,
-  Trash,
-  Zap,
-} from "@/components/icons"
-import { desktop } from "@/desktop/client"
 import { feedbackSurfaceClassName } from "@/features/shared/appearance"
 import { THEME_OPTIONS } from "@/features/shared/appearance"
 import {
@@ -24,59 +6,36 @@ import {
   useCallback,
   useMemo,
   useEffect,
-  type ChangeEvent as ReactChangeEvent,
-  type ClipboardEvent as ReactClipboardEvent,
-  type DragEvent as ReactDragEvent,
-  type KeyboardEvent as ReactKeyboardEvent,
+  useDeferredValue,
   type FormEvent,
 } from "react"
+import { useShallow } from "zustand/react/shallow"
 import { SlashCommandMenu } from "./SlashCommandMenu"
 import { AtMentionMenu, type FileItem } from "./AtMentionMenu"
 import { useCommands, type NormalizedCommand } from "../hooks/useCommands"
 import { useAgents, type NormalizedAgent } from "../hooks/useAgents"
 import { useFileSearch } from "../hooks/useFileSearch"
-import { useModels } from "../hooks/useModels"
 import {
   DEFAULT_RUNTIME_MODE,
   type HarnessId,
   type QueuedChatMessage,
   type RuntimeModeKind,
   type RuntimePromptResponse,
-  type RuntimeReasoningEffort,
 } from "../types"
 import type { ComposerPlan, ComposerPrompt } from "./composer/types"
-import { getRuntimeModelLabel } from "../domain/runtimeModels"
-import {
-  createRuntimeApprovalResponse,
-  createRuntimePromptResponse,
-  isRuntimeApprovalPrompt,
-  isRuntimePromptQuestionAnswered,
-  isRuntimeQuestionPrompt,
-} from "../domain/runtimePrompts"
 import { populateComposerFromSerializedValue, serializeComposerState } from "./composer/composerSerialization"
 import { Loader } from "./ai-elements/loader"
+import { ComposerToolbar } from "./ComposerToolbar"
+import { RuntimeModePicker } from "./RuntimeModePicker"
 import { ComposerEditorSurface } from "./composer/ComposerEditorSurface"
+import { useComposerAttachments } from "./composer/useComposerAttachments"
+import { useDeferredComposerInput } from "./composer/useDeferredComposerInput"
+import { useComposerKeyboardNavigation } from "./composer/useComposerKeyboardNavigation"
+import { useRuntimePromptState } from "./composer/useRuntimePromptState"
+import { ComposerPlanPreview } from "./composer/ComposerPlanPreview"
 import { ApprovalPromptSurface } from "./composer/ApprovalPromptSurface"
 import { StructuredPromptSurface } from "./composer/StructuredPromptSurface"
 import { ComposerFloatingOverlay } from "./composer/ComposerFloatingOverlay"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuShortcut,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-} from "@/features/shared/components/ui/dropdown-menu"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/features/shared/components/ui/tooltip"
 import {
   $createTextNode,
   $getRoot,
@@ -88,7 +47,7 @@ import {
   type LexicalNode,
 } from "lexical"
 import { $createSkillChipNode, $isSkillChipNode, SkillChipNode } from "./SkillChipNode"
-import { $isUploadChipNode, $createUploadChipNode, UploadChipNode } from "./UploadChipNode"
+import { $isUploadChipNode, UploadChipNode } from "./UploadChipNode"
 import { cn } from "@/lib/utils"
 import { useCurrentProjectWorktree } from "@/features/shared/hooks"
 import { useChatStore } from "../store"
@@ -103,19 +62,11 @@ import {
   matchesShortcutBinding,
 } from "@/features/settings/shortcuts"
 import { getChatInputPlaceholder } from "./chatInputConfig"
-import {
-  resolveDefaultFastMode,
-  resolveDefaultReasoningEffort,
-  resolveEffectiveComposerModelId,
-  resolveSessionSelectedModelId,
-} from "./chatInputModelSelection"
-import { ModelLogo, getModelLogoKind, type ModelLogoKind } from "./ModelLogo"
+import { useComposerModelSelection } from "./useComposerModelSelection"
+import { QueuedMessageDeck } from "./QueuedMessageDeck"
 import {
   collectAttachmentIdsFromComposerValue,
-  createDraftAttachment,
-  getDraftAttachmentLabel,
   getComposerTextInput,
-  isLargeTextPaste,
   type DraftChatAttachment,
 } from "./composer/attachments"
 import { getActiveSlashCommandQuery } from "./chatInputSlashCommands"
@@ -135,6 +86,7 @@ interface ChatInputProps {
     text: string,
     options?: {
       attachments?: DraftChatAttachment[]
+      harnessId?: HarnessId
       agent?: string
       collaborationMode?: "default" | "plan"
       runtimeMode?: RuntimeModeKind
@@ -154,27 +106,7 @@ interface ChatInputProps {
   onEditQueuedMessage?: (queuedMessageId: string) => void
 }
 
-const MODEL_HARNESS_IDS: HarnessId[] = ["codex", "claude-code"]
-
-function getHarnessGroupMeta(selectedHarnessId: HarnessId | null): {
-  key: string
-  label: string
-  logoKind: ModelLogoKind
-} {
-  if (selectedHarnessId === "claude-code") {
-    return {
-      key: "claude",
-      label: "Claude",
-      logoKind: "claude",
-    }
-  }
-
-  return {
-    key: "codex",
-    label: "Codex",
-    logoKind: "codex",
-  }
-}
+const FILE_SEARCH_DEBOUNCE_MS = 120
 
 function formatFocusShortcutHint(binding: ReturnType<typeof getShortcutBinding>): string {
   const modifierSymbols = binding.modifiers.map((modifier) => {
@@ -194,76 +126,6 @@ function formatFocusShortcutHint(binding: ReturnType<typeof getShortcutBinding>)
 
   const key = binding.key.length === 1 ? binding.key.toUpperCase() : binding.key
   return `${modifierSymbols.join("")}${key}`
-}
-
-function formatReasoningEffortLabel(value: string): string {
-  return value
-    .split(/[-_\s]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ")
-}
-
-const runtimeModeOptions: Array<{
-  id: RuntimeModeKind
-  label: string
-  description: string
-  Icon: typeof FileLock
-}> = [
-  {
-    id: "approval-required",
-    label: "Supervised",
-    description: "Ask before commands and file changes.",
-    Icon: FileLock,
-  },
-  {
-    id: "auto-accept-edits",
-    label: "Auto-accept edits",
-    description: "Auto-approve edits, ask before other actions.",
-    Icon: PencilSimple,
-  },
-  {
-    id: "full-access",
-    label: "Full access",
-    description: "Allow commands and edits without prompts.",
-    Icon: ShieldWarning,
-  },
-]
-
-function getRuntimeModeOption(runtimeMode: RuntimeModeKind) {
-  return (
-    runtimeModeOptions.find((option) => option.id === runtimeMode) ??
-    runtimeModeOptions[runtimeModeOptions.length - 1]
-  )
-}
-
-function getQueuedMessagePreview(message: QueuedChatMessage): string {
-  const normalizedText = message.text.trim().replace(/\s+/g, " ")
-  if (normalizedText) {
-    return normalizedText
-  }
-
-  if (message.attachments.length === 1) {
-    return getDraftAttachmentLabel(message.attachments[0]!)
-  }
-
-  if (message.attachments.length > 1) {
-    return message.attachments.map((attachment) => getDraftAttachmentLabel(attachment)).join(", ")
-  }
-
-  return "Queued message"
-}
-
-function getQueuedAttachmentSummary(message: QueuedChatMessage): string | null {
-  if (message.attachments.length === 0) {
-    return null
-  }
-
-  if (message.attachments.length === 1) {
-    return getDraftAttachmentLabel(message.attachments[0]!)
-  }
-
-  return `${message.attachments.length} attachments`
 }
 
 export function ChatInput({
@@ -299,22 +161,32 @@ export function ChatInput({
         : null,
     [selectedWorktreeId, selectedWorktreePath, storedProjectChat]
   )
-  const createOptimisticSession = useChatStore((state) => state.createOptimisticSession)
-  const setSessionHarness = useChatStore((state) => state.setSessionHarness)
-  const setSessionModel = useChatStore((state) => state.setSessionModel)
-  const setSessionRuntimeMode = useChatStore((state) => state.setSessionRuntimeMode)
-  const selectHarness = useChatStore((state) => state.selectHarness)
-  const openChatSession = useTabStore((state) => state.openChatSession)
-  const openTerminalTab = useTabStore((state) => state.openTerminalTab)
-  const initializeSettings = useSettingsStore((state) => state.initialize)
-  const appearanceThemeId = useSettingsStore((state) => state.appearanceThemeId)
-  const setAppearanceThemeId = useSettingsStore((state) => state.setAppearanceThemeId)
-  const codexDefaultModel = useSettingsStore((state) => state.codexDefaultModel)
-  const codexDefaultReasoningEffort = useSettingsStore((state) => state.codexDefaultReasoningEffort)
-  const codexDefaultFastMode = useSettingsStore((state) => state.codexDefaultFastMode)
-  const claudeDefaultModel = useSettingsStore((state) => state.claudeDefaultModel)
-  const claudeDefaultReasoningEffort = useSettingsStore((state) => state.claudeDefaultReasoningEffort)
-  const claudeDefaultFastMode = useSettingsStore((state) => state.claudeDefaultFastMode)
+  const {
+    createOptimisticSession,
+    setSessionRuntimeMode,
+  } = useChatStore(
+    useShallow((state) => ({
+      createOptimisticSession: state.createOptimisticSession,
+      setSessionRuntimeMode: state.setSessionRuntimeMode,
+    }))
+  )
+  const { openChatSession, openTerminalTab } = useTabStore(
+    useShallow((state) => ({
+      openChatSession: state.openChatSession,
+      openTerminalTab: state.openTerminalTab,
+    }))
+  )
+  const {
+    initialize: initializeSettings,
+    appearanceThemeId,
+    setAppearanceThemeId,
+  } = useSettingsStore(
+    useShallow((state) => ({
+      initialize: state.initialize,
+      appearanceThemeId: state.appearanceThemeId,
+      setAppearanceThemeId: state.setAppearanceThemeId,
+    }))
+  )
   const activeSession = useMemo(
     () =>
       sessionId
@@ -324,9 +196,28 @@ export function ChatInput({
   )
   const activeSessionModelId = activeSession?.model?.trim() || null
   const activeSessionRuntimeMode = activeSession?.runtimeMode ?? null
-  const selectedHarnessId = activeSession?.harnessId ?? projectChat?.selectedHarnessId ?? null
   const isDraftSession = !!activeSession && !activeSession.remoteId
-  const canSwitchHarnessForModelSelection = !activeSession?.id || isDraftSession
+  const persistedHarnessId = activeSession?.harnessId ?? projectChat?.selectedHarnessId ?? null
+  const {
+    availableReasoningEfforts,
+    effectiveModel,
+    fastMode,
+    fastModeTooltipLabel,
+    handleSelectReasoningEffort,
+    isLoadingModels,
+    modelPickerProps,
+    reasoningEffort,
+    selectedHarnessId,
+    showReasoningEffortSelector,
+    supportsFastMode,
+    toggleFastMode,
+  } = useComposerModelSelection({
+    activeSession,
+    activeSessionModelId,
+    isDraftSession,
+    persistedHarnessId,
+    selectedWorktreeId,
+  })
   const [isImeComposing, setIsImeComposing] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [slashMenuPage, setSlashMenuPage] = useState<"commands" | "themes">("commands")
@@ -334,22 +225,8 @@ export function ChatInput({
   const [isSlashMenuDismissed, setIsSlashMenuDismissed] = useState(false)
   const [isPlanModeEnabled, setIsPlanModeEnabled] = useState(false)
   const [isComposerFocused, setIsComposerFocused] = useState(false)
-  const [reasoningEffortOverride, setReasoningEffortOverride] = useState<RuntimeReasoningEffort | null>(null)
-  const [fastModeOverride, setFastModeOverride] = useState<boolean | null>(null)
   const [runtimeModeOverride, setRuntimeModeOverride] = useState<RuntimeModeKind | null>(null)
-  const [promptAnswers, setPromptAnswers] = useState<Record<string, string | string[]>>({})
-  const [promptCustomAnswers, setPromptCustomAnswers] = useState<Record<string, string>>({})
-  const [currentPromptQuestionIndex, setCurrentPromptQuestionIndex] = useState(0)
-  const {
-    models: codexModels,
-    isLoading: isLoadingCodexModels,
-  } = useModels("codex")
-  const {
-    models: claudeModels,
-    isLoading: isLoadingClaudeModels,
-  } = useModels("claude-code")
-  const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
-  const [uploadError, setUploadError] = useState<string | null>(null)
+  const runtimeMode = activeSessionRuntimeMode ?? runtimeModeOverride ?? DEFAULT_RUNTIME_MODE
   const focusChatInputShortcut = useMemo(() => getShortcutBinding("focus-chat-input"), [])
   const focusChatInputHint = useMemo(
     () => formatFocusShortcutHint(focusChatInputShortcut),
@@ -366,25 +243,27 @@ export function ChatInput({
   const serializedComposerValueRef = useRef(input)
   const previousCommandSignatureRef = useRef("")
   const suppressNextSubmitRef = useRef(false)
-  const submittedAttachmentIdsRef = useRef<Set<string>>(new Set())
-  const latestAttachmentsRef = useRef<DraftChatAttachment[]>(attachments)
   const attachmentsById = useMemo(
     () => new Map(attachments.map((attachment) => [attachment.id, attachment] as const)),
     [attachments]
   )
-  const composerTextInput = useMemo(() => getComposerTextInput(input), [input])
+  const { commitComposerInput, liveInput, liveInputRef, pendingLocalInputRef } =
+    useDeferredComposerInput({
+      input,
+      resetKey: `${selectedWorktreeId ?? "no-worktree"}:${sessionId ?? "draft"}`,
+      setInput,
+    })
+  const composerTextInput = useMemo(() => getComposerTextInput(liveInput), [liveInput])
   const slashCommandQuery = useMemo(
     () => getActiveSlashCommandQuery(composerTextInput),
     [composerTextInput]
   )
 
-  useEffect(() => {
-    latestAttachmentsRef.current = attachments
-  }, [attachments])
-
   const togglePlanMode = useCallback(() => {
     setIsPlanModeEnabled((current) => !current)
   }, [])
+
+  const deferredHarnessId = useDeferredValue(selectedHarnessId)
 
   const disablePlanMode = useCallback(() => {
     setIsPlanModeEnabled(false)
@@ -400,168 +279,12 @@ export function ChatInput({
   }, [])
 
   const { commands, isLoading: isLoadingCommands } = useCommands(
-    selectedHarnessId,
+    deferredHarnessId,
     selectedProject?.actions ?? [],
     selectedWorktreePath
   )
-  const { agents, isLoading: isLoadingAgents } = useAgents(selectedHarnessId)
+  const { agents, isLoading: isLoadingAgents } = useAgents(deferredHarnessId)
   const { results: fileResults, isLoading: isLoadingFiles, search: searchFiles, clear: clearFiles } = useFileSearch()
-  const isCodexHarness = selectedHarnessId === "codex"
-  const isClaudeHarness = selectedHarnessId === "claude-code"
-  const modelsByHarness = useMemo<Record<HarnessId, typeof codexModels>>(
-    () => ({
-      codex: codexModels,
-      "claude-code": claudeModels,
-    }),
-    [claudeModels, codexModels]
-  )
-  const modelLoadingByHarness = useMemo<Record<HarnessId, boolean>>(
-    () => ({
-      codex: isLoadingCodexModels,
-      "claude-code": isLoadingClaudeModels,
-    }),
-    [isLoadingClaudeModels, isLoadingCodexModels]
-  )
-  const availableModels = selectedHarnessId ? modelsByHarness[selectedHarnessId] : codexModels
-  const isLoadingModels = selectedHarnessId ? modelLoadingByHarness[selectedHarnessId] : isLoadingCodexModels
-  const defaultModel = useMemo(
-    () => availableModels.find((model) => model.isDefault) ?? availableModels[0] ?? null,
-    [availableModels]
-  )
-  const harnessDefaultModelId = isCodexHarness
-    ? codexDefaultModel
-    : isClaudeHarness
-      ? claudeDefaultModel
-      : ""
-  const effectiveModelId = useMemo(
-    () =>
-      resolveEffectiveComposerModelId({
-        activeSessionModelId,
-        composerSelectedModelId: selectedModelId,
-        defaultModelId: harnessDefaultModelId || null,
-        availableModelIds: availableModels.map((model) => model.id),
-        runtimeDefaultModelId: defaultModel?.id ?? null,
-      }),
-    [
-      activeSessionModelId,
-      availableModels,
-      defaultModel?.id,
-      harnessDefaultModelId,
-      selectedModelId,
-    ]
-  )
-  const effectiveModel = useMemo(
-    () => availableModels.find((model) => model.id === effectiveModelId) ?? null,
-    [availableModels, effectiveModelId]
-  )
-  const selectedModelLogoKind = useMemo(
-    () =>
-      effectiveModel
-        ? getModelLogoKind(
-            `${effectiveModel.displayName ?? ""} ${effectiveModel.id ?? ""}`,
-            selectedHarnessId
-          )
-        : selectedModelId
-          ? getModelLogoKind(selectedModelId, selectedHarnessId)
-          : (selectedHarnessId === "claude-code" ? "claude" : selectedHarnessId === "codex" ? "codex" : "default"),
-    [effectiveModel, selectedHarnessId, selectedModelId]
-  )
-  const modelGroups = useMemo(() => {
-    const harnessIds = [
-      ...(selectedHarnessId ? [selectedHarnessId] : []),
-      ...MODEL_HARNESS_IDS.filter((harnessId) => harnessId !== selectedHarnessId),
-    ]
-
-    return harnessIds.map((harnessId) => {
-      const harnessGroup = getHarnessGroupMeta(harnessId)
-      const harnessModels = modelsByHarness[harnessId] ?? []
-
-      return {
-        ...harnessGroup,
-        harnessId,
-        isLoading: modelLoadingByHarness[harnessId] ?? false,
-        models: harnessModels.map((model) => ({
-          model,
-          logoKind: getModelLogoKind(
-            `${model.displayName ?? ""} ${model.id ?? ""}`,
-            harnessId
-          ),
-        })),
-      }
-    })
-  }, [modelLoadingByHarness, modelsByHarness, selectedHarnessId])
-  const currentModelGroup = useMemo(
-    () => modelGroups.find((group) => group.harnessId === selectedHarnessId) ?? modelGroups[0] ?? null,
-    [modelGroups, selectedHarnessId]
-  )
-  const availableReasoningEfforts = useMemo(() => {
-    const supported = effectiveModel?.supportedReasoningEfforts?.filter((effort) => effort.trim().length > 0) ?? []
-    const defaultEffort = effectiveModel?.defaultReasoningEffort?.trim() ?? null
-
-    if (supported.length > 0) {
-      return Array.from(new Set(supported))
-    }
-
-    return defaultEffort ? [defaultEffort] : []
-  }, [effectiveModel])
-  const harnessDefaultReasoningEffort = isCodexHarness
-    ? codexDefaultReasoningEffort
-    : isClaudeHarness
-      ? claudeDefaultReasoningEffort
-      : null
-  const reasoningEffort = useMemo(
-    () =>
-      resolveDefaultReasoningEffort({
-        overrideReasoningEffort: reasoningEffortOverride,
-        defaultReasoningEffort: harnessDefaultReasoningEffort,
-        modelDefaultReasoningEffort: effectiveModel?.defaultReasoningEffort ?? null,
-        supportedReasoningEfforts: availableReasoningEfforts,
-      }),
-    [
-      availableReasoningEfforts,
-      effectiveModel?.defaultReasoningEffort,
-      harnessDefaultReasoningEffort,
-      reasoningEffortOverride,
-    ]
-  )
-  const supportsFastMode = effectiveModel?.supportsFastMode === true
-  const harnessDefaultFastMode = isCodexHarness
-    ? codexDefaultFastMode
-    : isClaudeHarness
-      ? claudeDefaultFastMode
-      : false
-  const fastMode = useMemo(
-    () =>
-      resolveDefaultFastMode({
-        overrideFastMode: fastModeOverride,
-        defaultFastMode: harnessDefaultFastMode,
-        supportsFastMode,
-      }),
-    [fastModeOverride, harnessDefaultFastMode, supportsFastMode]
-  )
-  const runtimeMode = activeSessionRuntimeMode ?? runtimeModeOverride ?? DEFAULT_RUNTIME_MODE
-  const selectedRuntimeModeOption = useMemo(
-    () => getRuntimeModeOption(runtimeMode),
-    [runtimeMode]
-  )
-  const toggleFastMode = useCallback(() => {
-    setFastModeOverride((current) => (current == null ? !fastMode : !current))
-  }, [fastMode])
-  const selectedModelLabel = effectiveModel
-    ? getRuntimeModelLabel(effectiveModel)
-    : selectedModelId
-      ? selectedModelId
-      : (isLoadingModels ? "Loading models..." : "Select model")
-  const reasoningEffortLabel = reasoningEffort
-    ? formatReasoningEffortLabel(reasoningEffort)
-    : isLoadingModels
-      ? "Loading effort..."
-      : "Default"
-  const fastModeTooltipLabel = !supportsFastMode
-    ? "Fast mode is not available for the selected model."
-    : selectedHarnessId === "claude-code"
-      ? "Up to 2.5x faster output at premium API pricing."
-      : "Faster responses at 2x usage."
   const isPlanModeAvailable = true
   const insertableCommands = useMemo(
     () => commands.filter((command) => command.execution === "insert" && !!command.referenceName),
@@ -582,23 +305,52 @@ export function ChatInput({
   )
 
   const isWorking = status === "connecting" || status === "streaming"
-  const isPromptActive = !!prompt
+  const {
+    activeApprovalPrompt,
+    activeQuestionPrompt,
+    currentPromptQuestion,
+    currentPromptQuestionAnswered,
+    currentPromptQuestionIndex,
+    handleApprovePrompt,
+    handleDenyPrompt,
+    handleDismissPrompt,
+    handleGoToNextPromptQuestion,
+    handleGoToPreviousPromptQuestion,
+    handlePromptAnswerChange,
+    handlePromptCustomAnswerChange,
+    handlePromptCustomAnswerFocus,
+    isFirstPromptQuestion,
+    isLastPromptQuestion,
+    isPromptActive,
+    promptAnswers,
+    promptCtaLabel,
+    promptCustomAnswers,
+    promptProgressLabel,
+    submitActivePrompt,
+  } = useRuntimePromptState({
+    prompt,
+    onAnswerPrompt,
+    onDismissPrompt,
+  })
   const isComposerLocked = isLocked && !isPromptActive
-  const activeQuestionPrompt = isRuntimeQuestionPrompt(prompt) ? prompt : null
-  const activeApprovalPrompt = isRuntimeApprovalPrompt(prompt) ? prompt : null
-  const isApprovalComposerState = !!activeApprovalPrompt
-  const currentPromptQuestion = activeQuestionPrompt?.questions[currentPromptQuestionIndex] ?? null
-  const currentPromptQuestionAnswered = currentPromptQuestion
-    ? isRuntimePromptQuestionAnswered(
-        currentPromptQuestion,
-        promptAnswers[currentPromptQuestion.id],
-        promptCustomAnswers[currentPromptQuestion.id]
-      )
-    : false
-  const isLastPromptQuestion = activeQuestionPrompt
-    ? currentPromptQuestionIndex === activeQuestionPrompt.questions.length - 1
-    : false
-
+  const {
+    handleComposerDragOver,
+    handleComposerDrop,
+    handleComposerPaste,
+    handleUploadInputChange,
+    latestAttachmentsRef,
+    reconcileDraftAttachments,
+    submittedAttachmentIdsRef,
+    uploadError,
+  } = useComposerAttachments({
+    attachments,
+    editorRef,
+    focusComposer,
+    isComposerLocked,
+    isPromptActive,
+    selectedWorktreePath,
+    setAttachments,
+  })
   const atMenuKey = composerTextInput.startsWith("@") ? `at:${composerTextInput}` : null
   const showSlashMenu =
     allowSlashCommands &&
@@ -625,32 +377,6 @@ export function ChatInput({
   useEffect(() => {
     void initializeSettings()
   }, [initializeSettings])
-
-  useEffect(() => {
-    setPromptAnswers({})
-    setPromptCustomAnswers({})
-    setCurrentPromptQuestionIndex(0)
-  }, [prompt?.id])
-
-  useEffect(() => {
-    if (!activeSession?.id) {
-      return
-    }
-
-    const resolvedModelId = resolveSessionSelectedModelId(
-      activeSessionModelId,
-      availableModels.map((model) => model.id)
-    )
-
-    setSelectedModelId(
-      resolvedModelId
-    )
-  }, [activeSession?.id, activeSessionModelId, availableModels, selectedHarnessId, selectedWorktreeId])
-
-  useEffect(() => {
-    setReasoningEffortOverride(null)
-    setFastModeOverride(null)
-  }, [activeSession?.id, effectiveModel?.id, selectedHarnessId, selectedWorktreeId])
 
   useEffect(() => {
     setRuntimeModeOverride(null)
@@ -732,31 +458,6 @@ export function ChatInput({
   }, [slashCommandQuery, slashMenuPage])
 
   useEffect(() => {
-    if (
-      !currentPromptQuestion ||
-      currentPromptQuestion.kind !== "single_select" ||
-      !currentPromptQuestion.options?.length
-    ) {
-      return
-    }
-
-    const existingAnswer = promptAnswers[currentPromptQuestion.id]
-    const existingCustomAnswer = promptCustomAnswers[currentPromptQuestion.id]?.trim()
-    if (
-      (typeof existingAnswer === "string" && existingAnswer.trim().length > 0) ||
-      (Array.isArray(existingAnswer) && existingAnswer.length > 0) ||
-      existingCustomAnswer
-    ) {
-      return
-    }
-
-    setPromptAnswers((current) => ({
-      ...current,
-      [currentPromptQuestion.id]: currentPromptQuestion.options?.[0]?.label ?? "",
-    }))
-  }, [currentPromptQuestion, promptAnswers, promptCustomAnswers])
-
-  useEffect(() => {
     const editor = editorRef.current
     if (!editor || isPromptActive) {
       return
@@ -765,23 +466,31 @@ export function ChatInput({
     const commandSignatureChanged = previousCommandSignatureRef.current !== commandSignature
     previousCommandSignatureRef.current = commandSignature
 
-    if (!commandSignatureChanged && input === serializedComposerValueRef.current) {
+    const pendingLocalInput = pendingLocalInputRef.current
+    const nextValue = pendingLocalInput !== null ? liveInputRef.current : input
+
+    if (!commandSignatureChanged && nextValue === serializedComposerValueRef.current) {
       return
     }
 
     editor.update(() => {
-      populateComposerFromSerializedValue(input, commandsByReference, attachmentsById)
+      populateComposerFromSerializedValue(nextValue, commandsByReference, attachmentsById)
     })
-    serializedComposerValueRef.current = input
+    serializedComposerValueRef.current = nextValue
   }, [attachmentsById, commandSignature, commandsByReference, input, isPromptActive])
 
   // Search files when @ query changes
   useEffect(() => {
-    if (showAtMenu && atQuery.length > 0) {
-      searchFiles(atQuery)
-    } else {
+    if (!showAtMenu || atQuery.length === 0) {
       clearFiles()
+      return
     }
+
+    const timeoutId = window.setTimeout(() => {
+      searchFiles(atQuery)
+    }, FILE_SEARCH_DEBOUNCE_MS)
+
+    return () => window.clearTimeout(timeoutId)
   }, [showAtMenu, atQuery, searchFiles, clearFiles])
 
   // Filter commands based on query
@@ -848,13 +557,13 @@ export function ChatInput({
     setDismissedMenuKey(null)
     setIsSlashMenuDismissed(false)
     setSlashMenuPage("themes")
-    setInput("/theme")
+    commitComposerInput("/theme")
     setSelectedIndex(currentThemeIndex >= 0 ? currentThemeIndex : 0)
     suppressNextSubmitRef.current = true
     requestAnimationFrame(() => {
       focusComposer()
     })
-  }, [appearanceThemeId, focusComposer, setInput])
+  }, [appearanceThemeId, commitComposerInput, focusComposer])
 
   const handleSelectThemeOption = useCallback(
     (themeId: (typeof THEME_OPTIONS)[number]["id"], index: number) => {
@@ -881,7 +590,7 @@ export function ChatInput({
 
         const session = createOptimisticSession(selectedWorktreeId, selectedWorktreePath)
         if (session) {
-          setInput("")
+          commitComposerInput("")
           setDismissedMenuKey(null)
           setIsSlashMenuDismissed(false)
           openChatSession(session.id, session.title)
@@ -894,7 +603,7 @@ export function ChatInput({
           return
         }
 
-        setInput("")
+        commitComposerInput("")
         setDismissedMenuKey(null)
         setIsSlashMenuDismissed(false)
         openTerminalTab(selectedWorktreeId)
@@ -911,7 +620,7 @@ export function ChatInput({
           return
         }
 
-        setInput("")
+        commitComposerInput("")
         setDismissedMenuKey(null)
         setIsSlashMenuDismissed(false)
 
@@ -932,7 +641,7 @@ export function ChatInput({
       selectedProject,
       selectedWorktreeId,
       selectedWorktreePath,
-      setInput,
+      commitComposerInput,
     ]
   )
 
@@ -947,7 +656,7 @@ export function ChatInput({
       if (command.insertText) {
         setDismissedMenuKey(null)
         setIsSlashMenuDismissed(false)
-        setInput(command.insertText)
+        commitComposerInput(command.insertText)
         suppressNextSubmitRef.current = true
         requestAnimationFrame(() => {
           focusComposer()
@@ -988,227 +697,29 @@ export function ChatInput({
       setIsSlashMenuDismissed(false)
       suppressNextSubmitRef.current = true
     },
-    [focusComposer, runSystemSlashCommand, setInput]
+    [commitComposerInput, focusComposer, runSystemSlashCommand]
   )
 
   const handleSelectAgent = useCallback(
     (agent: NormalizedAgent) => {
       setDismissedMenuKey(null)
-      setInput(`@${agent.name} `)
+      commitComposerInput(`@${agent.name} `)
       requestAnimationFrame(() => {
         focusComposer()
       })
     },
-    [focusComposer, setInput]
+    [commitComposerInput, focusComposer]
   )
 
   const handleSelectFile = useCallback(
     (file: FileItem) => {
       setDismissedMenuKey(null)
-      setInput(`${file.path} `)
+      commitComposerInput(`${file.path} `)
       requestAnimationFrame(() => {
         focusComposer()
       })
     },
-    [focusComposer, setInput]
-  )
-
-  const removeDraftAttachmentsFromDisk = useCallback(async (removedAttachments: DraftChatAttachment[]) => {
-    await Promise.all(
-      removedAttachments.map(async (attachment) => {
-        try {
-          await desktop.fs.removePath(attachment.absolutePath, { force: true })
-        } catch (error) {
-          console.warn("[chat] Failed to remove staged attachment:", attachment.absolutePath, error)
-        }
-      })
-    )
-  }, [])
-
-  const insertAttachmentChips = useCallback(
-    (nextAttachments: DraftChatAttachment[]) => {
-      const editor = editorRef.current
-
-      if (!editor || nextAttachments.length === 0) {
-        return
-      }
-
-      editor.update(() => {
-        let selection = $getSelection()
-
-        if (!$isRangeSelection(selection)) {
-          $getRoot().selectEnd()
-          selection = $getSelection()
-        }
-
-        if (!$isRangeSelection(selection)) {
-          return
-        }
-
-        for (const attachment of nextAttachments) {
-          selection.insertNodes([
-            $createUploadChipNode(attachment.id, attachment.kind, attachment.label),
-            $createTextNode(" "),
-          ])
-        }
-      })
-    },
-    []
-  )
-
-  const appendDraftAttachments = useCallback(
-    (nextAttachments: DraftChatAttachment[]) => {
-      if (nextAttachments.length === 0) {
-        return
-      }
-
-      setUploadError(null)
-      const mergedAttachments = [...latestAttachmentsRef.current, ...nextAttachments]
-      latestAttachmentsRef.current = mergedAttachments
-      setAttachments(mergedAttachments)
-      requestAnimationFrame(() => {
-        focusComposer()
-        insertAttachmentChips(nextAttachments)
-      })
-    },
-    [focusComposer, insertAttachmentChips, setAttachments]
-  )
-
-  const ensureAttachmentStageRoot = useCallback(async () => {
-    if (!selectedWorktreePath) {
-      throw new Error("Select a project workspace before adding uploads.")
-    }
-
-    await desktop.git.ensureInfoExcludeEntries(selectedWorktreePath, ["/.nucleus/"])
-    return selectedWorktreePath
-  }, [selectedWorktreePath])
-
-  const readBrowserFileAsDataUrl = useCallback((file: Blob) => {
-    return new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-
-      reader.onerror = () => {
-        reject(new Error("Failed to read the selected file."))
-      }
-      reader.onload = () => {
-        if (typeof reader.result === "string") {
-          resolve(reader.result)
-          return
-        }
-
-        reject(new Error("Failed to read the selected file."))
-      }
-
-      reader.readAsDataURL(file)
-    })
-  }, [])
-
-  const stageDataUrlAttachment = useCallback(
-    async ({
-      kind,
-      label,
-      fileName,
-      dataUrl,
-      mediaType,
-      sizeBytes,
-    }: {
-      kind: DraftChatAttachment["kind"]
-      label: string
-      fileName: string
-      dataUrl: string
-      mediaType?: string
-      sizeBytes?: number
-    }) => {
-      const worktreePath = await ensureAttachmentStageRoot()
-      const attachment = createDraftAttachment({
-        kind,
-        label,
-        worktreePath,
-        fileName,
-        mediaType,
-        sizeBytes,
-      })
-
-      await desktop.fs.writeDataUrlFile(attachment.absolutePath, dataUrl)
-      return attachment
-    },
-    [ensureAttachmentStageRoot]
-  )
-
-  const stageTextAttachment = useCallback(
-    async (text: string) => {
-      const worktreePath = await ensureAttachmentStageRoot()
-      const attachment = createDraftAttachment({
-        kind: "pasted_text",
-        label: "Pasted text",
-        worktreePath,
-        fileName: "pasted-text.txt",
-        mediaType: "text/plain",
-        sizeBytes: new TextEncoder().encode(text).length,
-      })
-
-      await desktop.fs.writeTextFile(attachment.absolutePath, text)
-      return attachment
-    },
-    [ensureAttachmentStageRoot]
-  )
-
-  const stageBrowserFiles = useCallback(
-    async (files: File[]) => {
-      const stagedAttachments: DraftChatAttachment[] = []
-
-      for (const file of files) {
-        const sourcePath = desktop.fs.getPathForFile(file)
-        const dataUrl = sourcePath
-          ? await desktop.fs.readFileAsDataUrl(sourcePath, {
-              mimeType: file.type || undefined,
-            })
-          : await readBrowserFileAsDataUrl(file)
-        const kind = file.type.startsWith("image/") ? "image" : "file"
-        const attachment = await stageDataUrlAttachment({
-          kind,
-          label: file.name,
-          fileName: file.name,
-          dataUrl,
-          mediaType: file.type || undefined,
-          sizeBytes: file.size,
-        })
-
-        stagedAttachments.push(attachment)
-      }
-
-      return stagedAttachments
-    },
-    [readBrowserFileAsDataUrl, stageDataUrlAttachment]
-  )
-
-  const reconcileDraftAttachments = useCallback(
-    (nextValue: string) => {
-      const retainedIds = new Set(collectAttachmentIdsFromComposerValue(nextValue))
-      const removedAttachments = attachments.filter((attachment) => !retainedIds.has(attachment.id))
-
-      if (removedAttachments.length === 0) {
-        return
-      }
-
-      const submittedIds = submittedAttachmentIdsRef.current
-      const attachmentsToDelete = removedAttachments.filter(
-        (attachment) => !submittedIds.has(attachment.id)
-      )
-
-      const nextAttachments = attachments.filter((attachment) => retainedIds.has(attachment.id))
-      latestAttachmentsRef.current = nextAttachments
-      setAttachments(nextAttachments)
-
-      if (attachmentsToDelete.length > 0) {
-        void removeDraftAttachmentsFromDisk(attachmentsToDelete)
-      }
-
-      if (removedAttachments.some((attachment) => submittedIds.has(attachment.id))) {
-        submittedAttachmentIdsRef.current = new Set()
-      }
-    },
-    [attachments, removeDraftAttachmentsFromDisk, setAttachments]
+    [commitComposerInput, focusComposer]
   )
 
   const closeSlashMenu = useCallback(() => {
@@ -1217,13 +728,13 @@ export function ChatInput({
 
   const finalizeThemeSlashMenu = useCallback(() => {
     setSlashMenuPage("commands")
-    setInput("")
+    commitComposerInput("")
     setDismissedMenuKey(null)
     setIsSlashMenuDismissed(true)
     requestAnimationFrame(() => {
       focusComposer()
     })
-  }, [focusComposer, setInput])
+  }, [commitComposerInput, focusComposer])
 
   const closeAtMenu = useCallback(() => {
     if (atMenuKey) {
@@ -1323,165 +834,7 @@ export function ChatInput({
     return handled
   }, [])
 
-  const handlePromptAnswerChange = useCallback(
-    (questionId: string, value: string | string[]) => {
-      setPromptAnswers((current) => ({
-        ...current,
-        [questionId]: value,
-      }))
-
-      if (
-        activeQuestionPrompt &&
-        currentPromptQuestion &&
-        currentPromptQuestion.id === questionId &&
-        currentPromptQuestion.kind === "single_select" &&
-        !currentPromptQuestion.allowOther &&
-        isRuntimePromptQuestionAnswered(
-          currentPromptQuestion,
-          value,
-          promptCustomAnswers[currentPromptQuestion.id]
-        ) &&
-        !isLastPromptQuestion
-      ) {
-        setCurrentPromptQuestionIndex((index) =>
-          Math.min(index + 1, activeQuestionPrompt.questions.length - 1)
-        )
-      }
-    },
-    [activeQuestionPrompt, currentPromptQuestion, isLastPromptQuestion, promptCustomAnswers]
-  )
-
-  const handlePromptCustomAnswerChange = useCallback(
-    (questionId: string, value: string) => {
-      const question = activeQuestionPrompt?.questions.find((candidate) => candidate.id === questionId)
-
-      setPromptCustomAnswers((current) => ({
-        ...current,
-        [questionId]: value,
-      }))
-
-      if (question?.kind === "single_select" && question.allowOther) {
-        setPromptAnswers((current) => ({
-          ...current,
-          [questionId]: "",
-        }))
-      }
-    },
-    [activeQuestionPrompt]
-  )
-
-  const handlePromptCustomAnswerFocus = useCallback(
-    (questionId: string) => {
-      const question = activeQuestionPrompt?.questions.find((candidate) => candidate.id === questionId)
-
-      if (!question?.allowOther) {
-        return
-      }
-
-      setPromptAnswers((current) => {
-        if (question.kind === "multi_select") {
-          return {
-            ...current,
-            [questionId]: [],
-          }
-        }
-
-        return {
-          ...current,
-          [questionId]: "",
-        }
-      })
-    },
-    [activeQuestionPrompt]
-  )
-
-  const handleDismissPrompt = useCallback(() => {
-    onDismissPrompt?.()
-  }, [onDismissPrompt])
-
-  const handleApprovePrompt = useCallback(() => {
-    if (!activeApprovalPrompt) {
-      return
-    }
-
-    onAnswerPrompt?.(createRuntimeApprovalResponse(activeApprovalPrompt, "approve"))
-  }, [activeApprovalPrompt, onAnswerPrompt])
-
-  const handleDenyPrompt = useCallback(() => {
-    if (!activeApprovalPrompt) {
-      handleDismissPrompt()
-      return
-    }
-
-    onAnswerPrompt?.(createRuntimeApprovalResponse(activeApprovalPrompt, "deny"))
-  }, [activeApprovalPrompt, handleDismissPrompt, onAnswerPrompt])
-
-  const handleGoToPreviousPromptQuestion = useCallback(() => {
-    setCurrentPromptQuestionIndex((index) => Math.max(index - 1, 0))
-  }, [])
-
-  const handleGoToNextPromptQuestion = useCallback(() => {
-    if (!activeQuestionPrompt) {
-      return
-    }
-
-    setCurrentPromptQuestionIndex((index) =>
-      Math.min(index + 1, activeQuestionPrompt.questions.length - 1)
-    )
-  }, [activeQuestionPrompt])
-
-  useEffect(() => {
-    if (!isPromptActive) {
-      return
-    }
-
-    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.repeat || event.isComposing) {
-        return
-      }
-
-      if (
-        event.key === "Enter" &&
-        !event.shiftKey &&
-        !event.metaKey &&
-        !event.ctrlKey &&
-        !event.altKey &&
-        activeApprovalPrompt
-      ) {
-        event.preventDefault()
-        handleApprovePrompt()
-        return
-      }
-
-      if (event.key === "Escape") {
-        event.preventDefault()
-        if (activeApprovalPrompt) {
-          handleDenyPrompt()
-          return
-        }
-
-        handleDismissPrompt()
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [
-    activeApprovalPrompt,
-    handleApprovePrompt,
-    handleDenyPrompt,
-    handleDismissPrompt,
-    isPromptActive,
-  ])
-
-  const promptProgressLabel = activeQuestionPrompt
-    ? `${currentPromptQuestionIndex + 1} of ${activeQuestionPrompt.questions.length}`
-    : null
-
-  const isFirstPromptQuestion = currentPromptQuestionIndex === 0
-
   const selectorsRow = !isPromptActive
-  const promptCtaLabel = isLastPromptQuestion ? "Submit" : "Continue"
 
   const handleSubmit = useCallback(
     (e?: FormEvent) => {
@@ -1496,28 +849,7 @@ export function ChatInput({
         return
       }
 
-      if (activeApprovalPrompt) {
-        return
-      }
-
-      if (activeQuestionPrompt) {
-        if (!currentPromptQuestion || !currentPromptQuestionAnswered) {
-          return
-        }
-
-        if (!isLastPromptQuestion) {
-          setCurrentPromptQuestionIndex((index) =>
-            Math.min(index + 1, activeQuestionPrompt.questions.length - 1)
-          )
-          return
-        }
-
-        onAnswerPrompt?.(
-          createRuntimePromptResponse(activeQuestionPrompt, promptAnswers, promptCustomAnswers)
-        )
-        setCurrentPromptQuestionIndex(0)
-        setPromptAnswers({})
-        setPromptCustomAnswers({})
+      if (submitActivePrompt()) {
         return
       }
 
@@ -1551,7 +883,7 @@ export function ChatInput({
 
       const trimmedInput = composerTextInput.trim()
       const attachmentsForSubmit = latestAttachmentsRef.current.filter((attachment) =>
-        collectAttachmentIdsFromComposerValue(input).includes(attachment.id)
+        collectAttachmentIdsFromComposerValue(liveInputRef.current).includes(attachment.id)
       )
       if (allowSlashCommands && trimmedInput.startsWith("/") && !trimmedInput.includes(" ")) {
         const commandName = trimmedInput.slice(1)
@@ -1564,7 +896,7 @@ export function ChatInput({
         if (matchingCommand?.execution === "run" && onExecuteCommand) {
           onExecuteCommand(matchingCommand.name, "")
           setDismissedMenuKey(null)
-          setInput("")
+          commitComposerInput("")
           return
         }
       }
@@ -1579,6 +911,7 @@ export function ChatInput({
         const [, agentName, message] = agentMatch
         onSubmit(message.trim(), {
           attachments: attachmentsForSubmit,
+          harnessId: selectedHarnessId ?? undefined,
           agent: agentName,
           collaborationMode,
           runtimeMode,
@@ -1589,6 +922,7 @@ export function ChatInput({
       } else {
         onSubmit(trimmedInput, {
           attachments: attachmentsForSubmit,
+          harnessId: selectedHarnessId ?? undefined,
           collaborationMode,
           runtimeMode,
           model: effectiveModel?.id ?? undefined,
@@ -1600,26 +934,18 @@ export function ChatInput({
     [
       canSubmit,
       composerTextInput,
-      input,
-      isPromptActive,
       onSubmit,
-      onAnswerPrompt,
-      activeQuestionPrompt,
-      activeApprovalPrompt,
-      promptAnswers,
-      promptCustomAnswers,
+      submitActivePrompt,
       isPlanModeAvailable,
       isPlanModeEnabled,
+      selectedHarnessId,
       runtimeMode,
       effectiveModel?.id,
       reasoningEffort,
       fastMode,
-      currentPromptQuestion,
-      currentPromptQuestionAnswered,
-      isLastPromptQuestion,
       commands,
       onExecuteCommand,
-      setInput,
+      commitComposerInput,
       showAtMenu,
       atMenuTotalItems,
       filteredAgents,
@@ -1635,141 +961,27 @@ export function ChatInput({
     ]
   )
 
-  const handleKeyDown = useCallback(
-    (e: ReactKeyboardEvent<HTMLDivElement>) => {
-      if (isComposerLocked) {
-        e.preventDefault()
-        return
-      }
-
-      if (isPromptActive) {
-        return
-      }
-
-      if (
-        e.key === "Backspace" &&
-        !showSlashMenu &&
-        !showAtMenu &&
-        deleteAdjacentChip()
-      ) {
-        e.preventDefault()
-        return
-      }
-
-      if (showSlashMenu) {
-        const slashMenuItemsCount =
-          slashMenuPage === "themes" ? THEME_OPTIONS.length : filteredCommands.length
-
-        if (e.key === "ArrowDown") {
-          e.preventDefault()
-          setSelectedIndex((prev) =>
-            prev < slashMenuItemsCount - 1 ? prev + 1 : 0
-          )
-          return
-        }
-        if (e.key === "ArrowUp") {
-          e.preventDefault()
-          setSelectedIndex((prev) =>
-            prev > 0 ? prev - 1 : slashMenuItemsCount - 1
-          )
-          return
-        }
-        if (e.key === "Escape") {
-          e.preventDefault()
-          closeSlashMenu()
-          return
-        }
-        if (slashMenuPage === "themes") {
-          if (e.key === "Tab") {
-            e.preventDefault()
-            e.stopPropagation()
-            return
-          }
-          if (e.key === "Enter" && !e.shiftKey && !isImeComposing) {
-            e.preventDefault()
-            e.stopPropagation()
-            finalizeThemeSlashMenu()
-            return
-          }
-        }
-        if (e.key === "Tab") {
-          e.preventDefault()
-          const selectedCommand = filteredCommands[selectedIndex]
-          if (selectedCommand) {
-            handleSelectCommand(selectedCommand)
-          }
-          return
-        }
-        if (e.key === "Enter" && !e.shiftKey && !isImeComposing) {
-          e.preventDefault()
-          e.stopPropagation()
-          const selectedCommand = filteredCommands[selectedIndex]
-          if (selectedCommand) {
-            handleSelectCommand(selectedCommand)
-          }
-          return
-        }
-      }
-
-      // Handle @ menu navigation
-      if (showAtMenu && atMenuTotalItems > 0) {
-        if (e.key === "ArrowDown") {
-          e.preventDefault()
-          setSelectedIndex((prev) =>
-            prev < atMenuTotalItems - 1 ? prev + 1 : 0
-          )
-          return
-        }
-        if (e.key === "ArrowUp") {
-          e.preventDefault()
-          setSelectedIndex((prev) =>
-            prev > 0 ? prev - 1 : atMenuTotalItems - 1
-          )
-          return
-        }
-        if (e.key === "Escape") {
-          e.preventDefault()
-          closeAtMenu()
-          return
-        }
-        if (e.key === "Tab") {
-          e.preventDefault()
-          if (selectedIndex < filteredAgents.length) {
-            setInput(`@${filteredAgents[selectedIndex].name} `)
-          } else {
-            setInput(`${filteredFiles[selectedIndex - filteredAgents.length].path} `)
-          }
-          return
-        }
-      }
-
-      if (e.key === "Enter" && !e.shiftKey && !isImeComposing) {
-        e.preventDefault()
-        handleSubmit()
-      }
-    },
-    [
-      handleSubmit,
-      isImeComposing,
-      isComposerLocked,
-      isPromptActive,
-      showSlashMenu,
-      slashMenuPage,
-      slashCommandQuery,
-      filteredCommands,
-      selectedIndex,
-      closeSlashMenu,
-      finalizeThemeSlashMenu,
-      handleSelectCommand,
-      showAtMenu,
-      atMenuTotalItems,
-      filteredAgents,
-      filteredFiles,
-      closeAtMenu,
-      deleteAdjacentChip,
-      isImeComposing,
-    ]
-  )
+  const handleKeyDown = useComposerKeyboardNavigation({
+    atMenuTotalItems,
+    closeAtMenu,
+    closeSlashMenu,
+    commitComposerInput,
+    deleteAdjacentChip,
+    filteredAgents,
+    filteredCommands,
+    filteredFiles,
+    finalizeThemeSlashMenu,
+    handleSelectCommand,
+    handleSubmit,
+    isComposerLocked,
+    isImeComposing,
+    isPromptActive,
+    selectedIndex,
+    showAtMenu,
+    showSlashMenu,
+    slashMenuPage,
+    setSelectedIndex,
+  })
 
   const handleComposerChange = useCallback(
     (editorState: EditorState) => {
@@ -1777,13 +989,24 @@ export function ChatInput({
       serializedComposerValueRef.current = nextValue
       reconcileDraftAttachments(nextValue)
 
-      if (nextValue !== input) {
+      if (nextValue !== liveInputRef.current) {
         setDismissedMenuKey(null)
-        setInput(nextValue)
+        commitComposerInput(nextValue, { deferParent: true })
       }
     },
-    [input, reconcileDraftAttachments, setInput]
+    [commitComposerInput, reconcileDraftAttachments]
   )
+
+  const composerCommandsByReferenceRef = useRef(commandsByReference)
+  const composerAttachmentsByIdRef = useRef(attachmentsById)
+
+  useEffect(() => {
+    composerCommandsByReferenceRef.current = commandsByReference
+  }, [commandsByReference])
+
+  useEffect(() => {
+    composerAttachmentsByIdRef.current = attachmentsById
+  }, [attachmentsById])
 
   const composerInitialConfig = useMemo(
     () => ({
@@ -1793,171 +1016,33 @@ export function ChatInput({
         throw error
       },
       editorState() {
-        populateComposerFromSerializedValue(input, commandsByReference, attachmentsById)
+        populateComposerFromSerializedValue(
+          liveInputRef.current,
+          composerCommandsByReferenceRef.current,
+          composerAttachmentsByIdRef.current
+        )
       },
     }),
-    [attachmentsById, commandsByReference, input]
+    []
   )
 
   const placeholder = getChatInputPlaceholder(placement)
 
-  const handleUploadFiles = useCallback(
-    async (files: File[]) => {
-      if (files.length === 0) {
-        return
-      }
-
-      try {
-        const stagedAttachments = await stageBrowserFiles(files)
-        appendDraftAttachments(stagedAttachments)
-      } catch (error) {
-        const message =
-          error instanceof Error && error.message.trim().length > 0
-            ? error.message
-            : "Failed to stage the selected upload."
-        setUploadError(message)
-      }
-    },
-    [appendDraftAttachments, stageBrowserFiles]
-  )
-
-  const handleUploadInputChange = useCallback(
-    async (event: ReactChangeEvent<HTMLInputElement>) => {
-      const nextFiles = Array.from(event.target.files ?? [])
-      event.target.value = ""
-      await handleUploadFiles(nextFiles)
-    },
-    [handleUploadFiles]
-  )
-
-  const handleComposerPaste = useCallback(
-    async (event: ReactClipboardEvent<HTMLDivElement>) => {
-      if (isComposerLocked || isPromptActive) {
-        return
-      }
-
-      const clipboardItems = Array.from(event.clipboardData.items)
-      const imageItem = clipboardItems.find((item) => item.type.startsWith("image/"))
-
-      if (imageItem) {
-        const imageFile = imageItem.getAsFile()
-        if (!imageFile) {
-          return
-        }
-
-        event.preventDefault()
-
-        try {
-          const dataUrl = await readBrowserFileAsDataUrl(imageFile)
-          const attachment = await stageDataUrlAttachment({
-            kind: "image",
-            label: "Pasted image",
-            fileName: "pasted-image.png",
-            dataUrl,
-            mediaType: "image/png",
-            sizeBytes: imageFile.size,
-          })
-
-          appendDraftAttachments([attachment])
-        } catch (error) {
-          setUploadError(
-            error instanceof Error && error.message.trim().length > 0
-              ? error.message
-              : "Failed to stage the pasted image."
-          )
-        }
-        return
-      }
-
-      const plainText = event.clipboardData.getData("text/plain")
-      if (!plainText || !isLargeTextPaste(plainText)) {
-        return
-      }
-
-      event.preventDefault()
-
-      try {
-        const attachment = await stageTextAttachment(plainText)
-        appendDraftAttachments([attachment])
-      } catch (error) {
-        setUploadError(
-          error instanceof Error && error.message.trim().length > 0
-            ? error.message
-            : "Failed to stage the pasted text."
-        )
-      }
-    },
-    [
-      appendDraftAttachments,
-      isComposerLocked,
-      isPromptActive,
-      readBrowserFileAsDataUrl,
-      stageDataUrlAttachment,
-      stageTextAttachment,
-    ]
-  )
-
-  const handleComposerDragOver = useCallback((event: ReactDragEvent<HTMLDivElement>) => {
-    if (event.dataTransfer.files.length === 0) {
-      return
-    }
-
-    event.preventDefault()
-    event.dataTransfer.dropEffect = "copy"
+  const handleCompositionStart = useCallback(() => {
+    setIsImeComposing(true)
   }, [])
 
-  const handleComposerDrop = useCallback(
-    async (event: ReactDragEvent<HTMLDivElement>) => {
-      if (event.dataTransfer.files.length === 0) {
-        return
-      }
+  const handleCompositionEnd = useCallback(() => {
+    setIsImeComposing(false)
+  }, [])
 
-      event.preventDefault()
-      await handleUploadFiles(Array.from(event.dataTransfer.files))
-    },
-    [handleUploadFiles]
-  )
+  const handleComposerFocus = useCallback(() => {
+    setIsComposerFocused(true)
+  }, [])
 
-  const handleSelectModel = useCallback(
-    async (harnessId: HarnessId, modelId: string | null) => {
-      const trimmedModelId = modelId?.trim() || null
-
-      if (activeSession?.id && !isDraftSession && activeSession.harnessId !== harnessId) {
-        return
-      }
-
-      setSelectedModelId(trimmedModelId)
-
-      if (selectedWorktreeId && projectChat?.selectedHarnessId !== harnessId) {
-        await selectHarness(selectedWorktreeId, harnessId)
-      }
-
-      if (activeSession?.id && isDraftSession && activeSession.harnessId !== harnessId) {
-        await setSessionHarness(activeSession.id, harnessId)
-      }
-
-      if (!activeSession?.id || isDraftSession) {
-        if (activeSession?.id) {
-          await setSessionModel(activeSession.id, trimmedModelId)
-        }
-        return
-      }
-
-      void setSessionModel(activeSession.id, trimmedModelId)
-    },
-    [
-      activeSession?.id,
-      activeSession?.harnessId,
-      canSwitchHarnessForModelSelection,
-      isDraftSession,
-      projectChat?.selectedHarnessId,
-      selectedHarnessId,
-      selectHarness,
-      selectedWorktreeId,
-      setSessionHarness,
-      setSessionModel,
-    ]
-  )
+  const handleComposerBlur = useCallback(() => {
+    setIsComposerFocused(false)
+  }, [])
 
   const handleSelectRuntimeMode = useCallback(
     async (nextRuntimeMode: RuntimeModeKind) => {
@@ -1970,6 +1055,16 @@ export function ChatInput({
     },
     [activeSession?.id, setSessionRuntimeMode]
   )
+  const handleRuntimeModePickerSelect = useCallback(
+    (nextRuntimeMode: RuntimeModeKind) => {
+      void handleSelectRuntimeMode(nextRuntimeMode)
+    },
+    [handleSelectRuntimeMode]
+  )
+  const handleAttachFiles = useCallback(() => {
+    fileInputRef.current?.click()
+  }, [])
+
 
   return (
     <form
@@ -1988,184 +1083,56 @@ export function ChatInput({
       />
       <div className="flex flex-col">
         {showQueuedDeck ? (
-          <div
-            className={cn(
-              "pointer-events-none relative z-0 px-2",
-              placement === "intro" ? "pb-1.5" : "pb-1.5"
-            )}
-          >
-            <div
-              className={cn(
-                "chat-composer-queue-deck pointer-events-auto overflow-hidden border px-2.5 pt-1",
-                placement === "intro"
-                  ? "mx-1 rounded-t-[22px] rounded-b-none pb-1"
-                  : "mx-5 rounded-t-[24px] rounded-b-none pb-1"
-              )}
-            >
-              {queuedMessages.map((queuedMessage) => {
-                const attachmentSummary = getQueuedAttachmentSummary(queuedMessage)
-
-                return (
-                  <div
-                    key={queuedMessage.id}
-                    className="chat-composer-queue-row group flex min-h-9 items-center gap-2.5 px-1"
-                  >
-                    <div className="flex min-w-0 flex-1 items-center gap-2 py-1.5">
-                      <div className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground/54">
-                        <ArrowElbowDownLeft className="size-3" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <p className="truncate text-[13px] font-medium text-foreground/78">
-                            {getQueuedMessagePreview(queuedMessage)}
-                          </p>
-                          {attachmentSummary ? (
-                            <span className="shrink-0 truncate text-[10px] text-muted-foreground/50">
-                              {attachmentSummary}
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-0.5 py-1.5">
-                      <button
-                        type="button"
-                        onClick={() => onEditQueuedMessage?.(queuedMessage.id)}
-                        disabled={!onEditQueuedMessage}
-                        className="chat-composer-queue-action inline-flex h-6 items-center gap-1 rounded-full px-1.5 text-[11px] text-muted-foreground/74 hover:bg-white/5 hover:text-foreground disabled:opacity-40"
-                        aria-label="Edit queued message"
-                        title="Edit queued message"
-                      >
-                        <PencilSimple className="size-2.5" />
-                        <span>Edit</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onRemoveQueuedMessage?.(queuedMessage.id)}
-                        disabled={!onRemoveQueuedMessage}
-                        className="chat-composer-queue-action inline-flex size-6 items-center justify-center rounded-full text-muted-foreground/68 hover:bg-white/5 hover:text-foreground disabled:opacity-40"
-                        aria-label="Remove queued message"
-                        title="Remove queued message"
-                      >
-                        <Trash className="size-2.5" />
-                      </button>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
+          <QueuedMessageDeck
+            placement={placement}
+            queuedMessages={queuedMessages}
+            onEditQueuedMessage={onEditQueuedMessage}
+            onRemoveQueuedMessage={onRemoveQueuedMessage}
+          />
         ) : null}
 
-        <div
-          className={cn("relative z-10", showQueuedDeck ? "-mt-1" : "")}
-        >
+        <div className={cn("relative z-10", showQueuedDeck ? "-mt-1" : "")}>
           <div
             ref={composerMenuAnchorRef}
             className={cn(
               "chat-composer-shell relative overflow-hidden border shadow-sm",
               placement === "intro" ? "rounded-xl" : "rounded-2xl",
-              isApprovalComposerState
-                ? "border-[var(--color-chat-approval-border)] bg-[var(--color-chat-approval-surface)]"
-                : isPlanModeEnabled
-                  ? "border-[var(--color-chat-plan-border)] bg-[var(--color-chat-plan-surface)] shadow-[0_0_0_1px_var(--color-chat-plan-border)]"
-                  : "border-transparent"
-            )}
-          >
-          {activePlan && (
-            <div
-              className={cn(
-                "relative border-b",
-                isApprovalComposerState
-                  ? "border-[var(--color-chat-approval-border)]"
-                  : isPlanModeEnabled
-                    ? "border-[var(--color-chat-plan-border)]"
-                  : "border-border"
+              isPlanModeEnabled
+                ? "border-[var(--color-chat-plan-border)] bg-[var(--color-chat-plan-surface)] shadow-[0_0_0_1px_var(--color-chat-plan-border)]"
+                : "border-transparent"
               )}
             >
-              {activePlan && (
-                <div className="px-4 py-3">
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-muted">
-                      <Brain className="size-4 text-muted-foreground" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-medium text-foreground">{activePlan.title}</p>
-                          {activePlan.summary && (
-                            <p className="mt-0.5 text-sm text-muted-foreground">{activePlan.summary}</p>
-                          )}
-                        </div>
-                        <span className="rounded-full border border-border bg-muted px-2 py-1 text-sm text-muted-foreground">
-                          {activePlan.steps.length} steps
-                        </span>
-                      </div>
-                      <div className="mt-3 flex flex-col gap-2">
-                        {activePlan.steps.map((step, index) => {
-                          const StepIcon =
-                            step.status === "completed" ? CheckCircle : Circle
+            {activePlan ? (
+              <ComposerPlanPreview
+                isPlanModeEnabled={isPlanModeEnabled}
+                plan={activePlan}
+              />
+            ) : null}
 
-                          return (
-                            <div key={step.id} className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <StepIcon
-                                className={
-                                  step.status === "completed"
-                                    ? "size-3.5 text-foreground"
-                                    : "size-3.5 text-muted-foreground/60"
-                                }
-                              />
-                              <span className="text-sm text-muted-foreground/70">{index + 1}.</span>
-                              <span className={step.status === "completed" ? "text-foreground" : ""}>
-                                {step.label}
-                              </span>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          <div
-            className={cn(
-              "relative px-4 pt-2.5 pb-2.5"
-            )}
-          >
+            <div className="relative px-4 pt-2.5 pb-2.5">
             {isComposerLocked ? (
               <div className="flex items-center gap-3 px-1 py-1.5">
                 <Loader size={14} className="text-muted-foreground" />
                 <span className="text-sm text-muted-foreground">Setting up workspace…</span>
               </div>
-            ) : isPromptActive && prompt ? (
-              activeApprovalPrompt ? (
-                <ApprovalPromptSurface
-                  prompt={activeApprovalPrompt}
-                  onApprove={handleApprovePrompt}
-                  onDeny={handleDenyPrompt}
-                />
-              ) : activeQuestionPrompt ? (
-                <StructuredPromptSurface
-                  prompt={activeQuestionPrompt}
-                  answers={promptAnswers}
-                  customAnswers={promptCustomAnswers}
-                  onAnswerChange={handlePromptAnswerChange}
-                  onCustomAnswerChange={handlePromptCustomAnswerChange}
-                  onCustomAnswerFocus={handlePromptCustomAnswerFocus}
-                  currentQuestionIndex={currentPromptQuestionIndex}
-                  progressLabel={promptProgressLabel ?? ""}
-                  onPreviousQuestion={handleGoToPreviousPromptQuestion}
-                  onNextQuestion={handleGoToNextPromptQuestion}
-                  canGoPrevious={!isFirstPromptQuestion}
-                  canGoNext={!isLastPromptQuestion}
-                  canSubmitCurrentQuestion={canSubmit}
-                  submitLabel={promptCtaLabel}
-                  onDismissPrompt={handleDismissPrompt}
-                />
-              ) : null
+            ) : activeQuestionPrompt ? (
+              <StructuredPromptSurface
+                prompt={activeQuestionPrompt}
+                answers={promptAnswers}
+                customAnswers={promptCustomAnswers}
+                onAnswerChange={handlePromptAnswerChange}
+                onCustomAnswerChange={handlePromptCustomAnswerChange}
+                onCustomAnswerFocus={handlePromptCustomAnswerFocus}
+                currentQuestionIndex={currentPromptQuestionIndex}
+                progressLabel={promptProgressLabel ?? ""}
+                onPreviousQuestion={handleGoToPreviousPromptQuestion}
+                onNextQuestion={handleGoToNextPromptQuestion}
+                canGoPrevious={!isFirstPromptQuestion}
+                canGoNext={!isLastPromptQuestion}
+                canSubmitCurrentQuestion={canSubmit}
+                submitLabel={promptCtaLabel}
+                onDismissPrompt={handleDismissPrompt}
+              />
             ) : (
               <div>
                 <ComposerEditorSurface
@@ -2177,10 +1144,10 @@ export function ChatInput({
                   onPaste={handleComposerPaste}
                   onDragOver={handleComposerDragOver}
                   onDrop={handleComposerDrop}
-                  onCompositionStart={() => setIsImeComposing(true)}
-                  onCompositionEnd={() => setIsImeComposing(false)}
-                  onFocus={() => setIsComposerFocused(true)}
-                  onBlur={() => setIsComposerFocused(false)}
+                  onCompositionStart={handleCompositionStart}
+                  onCompositionEnd={handleCompositionEnd}
+                  onFocus={handleComposerFocus}
+                  onBlur={handleComposerBlur}
                   placeholder={placeholder}
                 />
 
@@ -2239,274 +1206,52 @@ export function ChatInput({
               </div>
             ) : null}
 
-            {!isPromptActive && !isComposerLocked && (
-              <div className="mt-1.5 flex items-center gap-2">
-                {selectorsRow && (
-                  <DropdownMenu>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <DropdownMenuTrigger
-                          aria-label="Open composer actions"
-                          className={cn(
-                            "inline-flex h-7 w-7 items-center justify-center text-muted-foreground transition-colors cursor-pointer",
-                            "hover:text-foreground",
-                            (fastMode || isPlanModeEnabled) && "text-foreground"
-                          )}
-                        >
-                          <Plus className="size-4" />
-                        </DropdownMenuTrigger>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">Composer actions</TooltipContent>
-                    </Tooltip>
-                    <DropdownMenuContent align="start" side="top" sideOffset={8} className="w-56">
-                      <DropdownMenuGroup>
-                        <DropdownMenuLabel>Composer</DropdownMenuLabel>
-                        <DropdownMenuItem
-                          onClick={() => fileInputRef.current?.click()}
-                          className="flex items-center gap-2"
-                        >
-                          <Paperclip className="size-4" />
-                          <span className="flex-1">Attach files</span>
-                        </DropdownMenuItem>
-                        {supportsFastMode || isPlanModeAvailable ? <DropdownMenuSeparator /> : null}
-                        {supportsFastMode ? (
-                          <DropdownMenuItem
-                            onClick={toggleFastMode}
-                            className="flex items-center gap-2"
-                          >
-                            <Zap weight="fill" className="size-3.5 text-[color:var(--color-warning)]" />
-                            <span className="flex-1">Fast mode</span>
-                            {fastMode ? <CheckCircle className="size-3.5 text-muted-foreground" /> : null}
-                          </DropdownMenuItem>
-                        ) : null}
-                        {supportsFastMode && isPlanModeAvailable ? <DropdownMenuSeparator /> : null}
-                        {isPlanModeAvailable ? (
-                          <DropdownMenuItem
-                            onClick={togglePlanMode}
-                            className="flex items-center gap-2"
-                          >
-                            <DocumentValidation className="size-4 text-[var(--color-chat-plan-accent)]" />
-                            <span className="flex-1">Plan mode</span>
-                            <DropdownMenuShortcut>{planModeShortcutLabel}</DropdownMenuShortcut>
-                            {isPlanModeEnabled ? <CheckCircle className="size-3.5 text-muted-foreground" /> : null}
-                          </DropdownMenuItem>
-                        ) : null}
-                      </DropdownMenuGroup>
-                      {supportsFastMode ? (
-                        <>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem disabled className="whitespace-normal text-xs leading-5 text-muted-foreground">
-                            <span>{fastModeTooltipLabel}</span>
-                          </DropdownMenuItem>
-                        </>
-                      ) : null}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-
-                {selectorsRow && <DropdownMenu>
-              <DropdownMenuTrigger
-                className="inline-flex h-7 items-center gap-2 px-1 text-sm text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
-                aria-label={selectedModelLabel}
-                title={selectedModelLabel}
-              >
-                {fastMode && supportsFastMode ? (
-                  <Zap weight="fill" className="size-4 shrink-0 text-[color:var(--color-warning)]" />
-                ) : (
-                  <ModelLogo kind={selectedModelLogoKind} className="size-[18px] shrink-0" />
-                )}
-                <span>{selectedModelLabel}</span>
-                <CaretDown className="size-3 text-muted-foreground" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className={canSwitchHarnessForModelSelection ? "w-56" : "w-64"}>
-                {!canSwitchHarnessForModelSelection && currentModelGroup ? (
-                  <DropdownMenuGroup>
-                    <DropdownMenuLabel className="px-2 py-1.5 text-[11px] uppercase tracking-[0.12em] text-muted-foreground/78">
-                      <span>{currentModelGroup.label}</span>
-                    </DropdownMenuLabel>
-                    {currentModelGroup.models.length > 0 ? (
-                      currentModelGroup.models.map(({ model }) => (
-                        <DropdownMenuItem
-                          key={model.id}
-                          onClick={() => {
-                            void handleSelectModel(currentModelGroup.harnessId, model.id)
-                          }}
-                          className="flex items-center justify-between gap-3"
-                        >
-                          <span className="truncate">{getRuntimeModelLabel(model)}</span>
-                          {model.id === effectiveModelId ? (
-                            <CheckCircle className="size-3.5 text-muted-foreground" />
-                          ) : null}
-                        </DropdownMenuItem>
-                      ))
-                    ) : (
-                      <DropdownMenuItem disabled>
-                        <span>{currentModelGroup.isLoading ? `Loading ${currentModelGroup.label} models...` : `No ${currentModelGroup.label} models available`}</span>
-                      </DropdownMenuItem>
-                    )}
-                  </DropdownMenuGroup>
-                ) : modelGroups.length > 0 ? (
-                  <>
-                    {modelGroups.map((group) => (
-                      <div key={group.key}>
-                        <DropdownMenuSub>
-                          <DropdownMenuSubTrigger
-                            openOnHover
-                            delay={75}
-                            closeDelay={100}
-                            className="flex items-center justify-between gap-3"
-                          >
-                            <span className="flex min-w-0 items-center gap-2">
-                              <ModelLogo kind={group.logoKind} className="size-5 shrink-0 text-muted-foreground/82" />
-                              <span className="truncate">{group.label}</span>
-                            </span>
-                            {selectedHarnessId === group.harnessId ? (
-                              <CheckCircle className="size-3.5 text-muted-foreground" />
-                            ) : null}
-                          </DropdownMenuSubTrigger>
-                          <DropdownMenuSubContent className="w-64">
-                            <DropdownMenuGroup>
-                              <DropdownMenuLabel className="px-2 py-1.5 text-[11px] uppercase tracking-[0.12em] text-muted-foreground/78">
-                                <span>{group.label}</span>
-                              </DropdownMenuLabel>
-                              {group.models.length > 0 ? (
-                                group.models.map(({ model }) => {
-                                  const isCrossHarnessLiveSelection =
-                                    !canSwitchHarnessForModelSelection &&
-                                    selectedHarnessId !== group.harnessId
-
-                                  return (
-                                    <DropdownMenuItem
-                                      key={model.id}
-                                      disabled={isCrossHarnessLiveSelection}
-                                      onClick={() => {
-                                        void handleSelectModel(group.harnessId, model.id)
-                                      }}
-                                      className="flex items-center justify-between gap-3"
-                                    >
-                                      <span className="truncate">{getRuntimeModelLabel(model)}</span>
-                                      {model.id === effectiveModelId && selectedHarnessId === group.harnessId ? (
-                                        <CheckCircle className="size-3.5 text-muted-foreground" />
-                                      ) : null}
-                                    </DropdownMenuItem>
-                                  )
-                                })
-                              ) : (
-                                <DropdownMenuItem disabled>
-                                  <span>{group.isLoading ? `Loading ${group.label} models...` : `No ${group.label} models available`}</span>
-                                </DropdownMenuItem>
-                              )}
-                              {!canSwitchHarnessForModelSelection && selectedHarnessId !== group.harnessId ? (
-                                <DropdownMenuItem disabled>
-                                  <span>Start a new chat to use {group.label}.</span>
-                                </DropdownMenuItem>
-                              ) : null}
-                            </DropdownMenuGroup>
-                          </DropdownMenuSubContent>
-                        </DropdownMenuSub>
-                      </div>
-                    ))}
-                  </>
-                ) : (
-                  <DropdownMenuItem disabled>
-                    <span>{isLoadingModels ? "Loading models..." : "No models available"}</span>
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-              </DropdownMenu>}
-
-              {selectorsRow && <DropdownMenu>
-              <DropdownMenuTrigger className="inline-flex h-7 items-center gap-2 px-1 text-sm text-muted-foreground transition-colors hover:text-foreground cursor-pointer">
-                <span>{reasoningEffortLabel}</span>
-                <CaretDown className="size-3 text-muted-foreground" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-40">
-                {availableReasoningEfforts.length > 0 ? (
-                  availableReasoningEfforts.map((effort) => (
-                    <DropdownMenuItem
-                      key={effort}
-                      onClick={() => setReasoningEffortOverride(effort)}
-                      className="flex items-center justify-between gap-3"
-                    >
-                      <span>{formatReasoningEffortLabel(effort)}</span>
-                      {effort === reasoningEffort && <CheckCircle className="size-3.5 text-muted-foreground" />}
-                    </DropdownMenuItem>
-                  ))
-                ) : (
-                  <DropdownMenuItem disabled>
-                    <span>{isLoadingModels ? "Loading effort..." : "No effort options"}</span>
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-              </DropdownMenu>}
-
-              <div className="ml-auto flex items-center gap-2">
-                {shouldShowSendAction ? (
-                  <button
-                    type="submit"
-                    disabled={!canSubmit && !showSlashMenu && !showAtMenu}
-                    className="flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity disabled:opacity-40"
-                  >
-                    <ArrowUp02 weight="bold" className="size-3.5" />
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={onAbort}
-                    disabled={!onAbort}
-                    className="flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity disabled:opacity-40"
-                  >
-                    <Stop weight="fill" className="size-3.5" />
-                  </button>
-                )}
-              </div>
-              </div>
-            )}
+            <ComposerToolbar
+              availableReasoningEfforts={availableReasoningEfforts}
+              canSubmit={canSubmit}
+              fastMode={fastMode}
+              fastModeTooltipLabel={fastModeTooltipLabel}
+              isLoadingModels={isLoadingModels}
+              isPlanModeAvailable={isPlanModeAvailable}
+              isPlanModeEnabled={isPlanModeEnabled}
+              modelPickerProps={modelPickerProps}
+              onAbort={onAbort}
+              onAttachFiles={handleAttachFiles}
+              onSelectReasoningEffort={handleSelectReasoningEffort}
+              onToggleFastMode={toggleFastMode}
+              onTogglePlanMode={togglePlanMode}
+              planModeShortcutLabel={planModeShortcutLabel}
+              reasoningEffort={reasoningEffort}
+              shouldShowReasoningEffortSelector={showReasoningEffortSelector}
+              shouldShowSendAction={shouldShowSendAction}
+              showAtMenu={showAtMenu}
+              showControls={!isPromptActive && !isComposerLocked && selectorsRow}
+              showSlashMenu={showSlashMenu}
+              supportsFastMode={supportsFastMode}
+            />
           </div>
-        </div>
         </div>
 
         {!isPromptActive && !isComposerLocked && selectorsRow ? (
-          <div className="flex min-h-9 items-center gap-2 px-1 pt-2 text-muted-foreground">
-            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[13px] text-muted-foreground transition-colors hover:bg-[var(--sidebar-item-hover)] hover:text-foreground cursor-pointer"
-                  aria-label={selectedRuntimeModeOption.label}
-                >
-                  <selectedRuntimeModeOption.Icon className="size-3.5 shrink-0" />
-                  <span>{selectedRuntimeModeOption.label}</span>
-                  <CaretDown className="size-2.5 text-muted-foreground" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-56">
-                  {runtimeModeOptions.map((option) => (
-                    <Tooltip key={option.id}>
-                      <TooltipTrigger asChild>
-                        <DropdownMenuItem
-                          onClick={() => {
-                            void handleSelectRuntimeMode(option.id)
-                          }}
-                          className="flex items-center justify-between gap-3"
-                        >
-                          <span className="flex min-w-0 items-center gap-2">
-                            <option.Icon className="size-4 shrink-0 text-muted-foreground" />
-                            <span className="truncate">{option.label}</span>
-                          </span>
-                          {option.id === runtimeMode ? (
-                            <CheckCircle className="size-3.5 shrink-0 text-muted-foreground" />
-                          ) : null}
-                        </DropdownMenuItem>
-                      </TooltipTrigger>
-                      <TooltipContent side="right" align="center" className="max-w-64 text-xs leading-5">
-                        {option.description}
-                      </TooltipContent>
-                    </Tooltip>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
+          <div className="mt-2 flex min-h-9 items-center px-1 text-muted-foreground">
+            <RuntimeModePicker
+              runtimeMode={runtimeMode}
+              onSelectRuntimeMode={handleRuntimeModePickerSelect}
+            />
           </div>
         ) : null}
+
+        {activeApprovalPrompt ? (
+          <div className="mt-2 rounded-2xl border border-[var(--color-chat-approval-border)] bg-[var(--color-chat-approval-surface)] p-4 shadow-sm">
+            <ApprovalPromptSurface
+              prompt={activeApprovalPrompt}
+              onApprove={handleApprovePrompt}
+              onDeny={handleDenyPrompt}
+            />
+          </div>
+        ) : null}
+        </div>
+
       </div>
     </form>
   )

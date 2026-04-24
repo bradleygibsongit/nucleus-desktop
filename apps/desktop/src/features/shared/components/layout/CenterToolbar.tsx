@@ -59,7 +59,7 @@ export function CenterToolbar({ activeView = "chat" }: CenterToolbarProps) {
   return (
     <div
       className={cn(
-        "relative flex h-11 shrink-0 select-none border-b border-sidebar-border/70 bg-sidebar",
+        "relative flex h-11 shrink-0 select-none border-b border-sidebar-border bg-sidebar",
         activeView === "chat" && "text-foreground",
       )}
       style={{

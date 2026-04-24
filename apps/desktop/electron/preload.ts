@@ -32,7 +32,9 @@ import type {
   RuntimeListAgentsInput,
   RuntimeListCommandsInput,
   RuntimeListModelsInput,
+  RuntimeSearchFilesInput,
   RuntimeModelsResult,
+  RuntimeFileSearchResultSet,
   RuntimeSendTurnInput,
   RuntimeSessionResult,
   RuntimeTurnUpdateEvent,
@@ -134,6 +136,8 @@ contextBridge.exposeInMainWorld("nucleus", {
       ipcRenderer.invoke(IPC_CHANNELS.runtimeListAgents, input) as Promise<RuntimeAgentsResult>,
     listCommands: (input: RuntimeListCommandsInput) =>
       ipcRenderer.invoke(IPC_CHANNELS.runtimeListCommands, input) as Promise<RuntimeCommandsResult>,
+    searchFiles: (input: RuntimeSearchFilesInput) =>
+      ipcRenderer.invoke(IPC_CHANNELS.runtimeSearchFiles, input) as Promise<RuntimeFileSearchResultSet>,
     sendTurn: (input: RuntimeSendTurnInput) =>
       ipcRenderer.invoke(IPC_CHANNELS.runtimeSendTurn, input) as Promise<unknown>,
     answerPrompt: (input: RuntimeAnswerPromptInput) =>

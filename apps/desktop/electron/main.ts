@@ -10,6 +10,7 @@ import { DialogService } from "./services/dialog"
 import { GitService } from "./services/git"
 import { SkillsService } from "./services/skills"
 import { CodexServerService } from "./services/codexServer"
+import { OpenCodeServerService } from "./services/opencodeServer"
 import { RuntimeService } from "./services/runtime/runtimeService"
 import { TerminalService } from "./services/terminal"
 import { ProjectWatcherService } from "./services/projectWatcher"
@@ -118,6 +119,7 @@ const dialogService = new DialogService()
 const gitService = new GitService()
 const skillsService = new SkillsService()
 const codexServerService = new CodexServerService(sendToRenderer)
+const openCodeServerService = new OpenCodeServerService()
 const terminalService = new TerminalService(sendToRenderer)
 const projectWatcherService = new ProjectWatcherService(sendToRenderer)
 let runtimeService: RuntimeService | null = null
@@ -161,6 +163,7 @@ async function cleanupForQuit(options: { includeAnalytics: boolean }): Promise<v
   terminalService.dispose()
   runtimeService?.dispose()
   codexServerService.dispose()
+  await openCodeServerService.dispose()
 
   if (!options.includeAnalytics) {
     return
@@ -287,7 +290,13 @@ function createWindow(): BrowserWindow {
 }
 
 function registerIpcHandlers(storeService: JsonStoreService): void {
-  runtimeService = new RuntimeService(sendToRenderer, storeService, gitService, codexServerService)
+  runtimeService = new RuntimeService(
+    sendToRenderer,
+    storeService,
+    gitService,
+    codexServerService,
+    openCodeServerService
+  )
 
   ipcMain.handle(IPC_CHANNELS.appGetVersion, () => app.getVersion())
   ipcMain.handle(IPC_CHANNELS.appGetUpdateState, () => updaterService.getState())
@@ -373,6 +382,9 @@ function registerIpcHandlers(storeService: JsonStoreService): void {
   )
   ipcMain.handle(IPC_CHANNELS.runtimeListCommands, (_event, input: unknown) =>
     runtimeService?.listCommands(input as never)
+  )
+  ipcMain.handle(IPC_CHANNELS.runtimeSearchFiles, (_event, input: unknown) =>
+    runtimeService?.searchFiles(input as never)
   )
   ipcMain.handle(IPC_CHANNELS.runtimeSendTurn, (_event, input: unknown) =>
     runtimeService?.sendTurn(input as never)

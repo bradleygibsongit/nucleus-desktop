@@ -99,17 +99,19 @@ function createMonacoTheme(seed: ThemeSeed): ThemeDefinition["monaco"] {
 
 function createTheme(seed: ThemeSeed): ThemeDefinition {
   const isDark = seed.appearance === "dark"
-  const secondary = seed.secondary ?? mix(seed.foreground, isDark ? 12 : 4, seed.background)
-  const accent = seed.accent ?? mix(seed.primary, isDark ? 18 : 10, seed.background)
-  const muted = mix(seed.foreground, isDark ? 8 : 3.5, seed.background)
+  const border = mix(seed.foreground, isDark ? 18 : 14, seed.border)
+  const input = mix(seed.foreground, isDark ? 18 : 12, seed.background)
+  const secondary = seed.secondary ?? mix(seed.foreground, isDark ? 18 : 10, seed.background)
+  const accent = seed.accent ?? mix(seed.primary, isDark ? 34 : 26, seed.surfaceElevated)
+  const muted = mix(seed.foreground, isDark ? 14 : 10, seed.surface)
   const cta = seed.cta ?? seed.primary
   const skillAccent = seed.skillAccent ?? seed.primary
   const chatPlanAccent = seed.chatPlanAccent ?? seed.primary
   const chatApprovalEmphasis = seed.chatApprovalEmphasis ?? seed.warning
   const sidebar = mix(seed.foreground, isDark ? 5 : 2, seed.background)
-  const sidebarAccent = mix(seed.foreground, isDark ? 9 : 4, seed.background)
+  const sidebarAccent = mix(seed.foreground, isDark ? 13 : 7, seed.background)
   const mainContent = seed.background
-  const terminal = mix(seed.foreground, isDark ? 3 : 1.2, seed.background)
+  const terminal = mix(seed.foreground, isDark ? 4 : 1.8, seed.background)
   const userBubble = seed.userBubble ?? seed.primary
   const pierreTheme: PierreThemeName = isDark ? "pierre-dark" : "pierre-light"
 
@@ -135,8 +137,8 @@ function createTheme(seed: ThemeSeed): ThemeDefinition {
       ? mix(seed.destructive, 86, "#ffffff")
       : mix(seed.destructive, 72, "#0f0a0b"),
     "destructive-border": mix(seed.destructive, isDark ? 34 : 22, seed.background),
-    border: seed.border,
-    input: seed.input,
+    border,
+    input,
     ring: seed.ring,
     cta,
     "cta-foreground": seed.ctaForeground ?? seed.primaryForeground,
@@ -157,9 +159,9 @@ function createTheme(seed: ThemeSeed): ThemeDefinition {
     "sidebar-accent-foreground": seed.foreground,
     "sidebar-glass": withAlpha(sidebar, isDark ? 84 : 70),
     "sidebar-glass-strong": withAlpha(sidebar, isDark ? 92 : 82),
-    "sidebar-item-hover": mix(seed.foreground, isDark ? 8 : 4, seed.background),
-    "sidebar-item-active": mix(seed.primary, isDark ? 18 : 9, seed.background),
-    "sidebar-border": seed.border,
+    "sidebar-item-hover": mix(seed.foreground, isDark ? 16 : 10, seed.background),
+    "sidebar-item-active": mix(seed.primary, isDark ? 34 : 24, seed.background),
+    "sidebar-border": border,
     "sidebar-ring": seed.ring,
     "main-content": mainContent,
     "main-content-foreground": seed.foreground,
@@ -168,7 +170,7 @@ function createTheme(seed: ThemeSeed): ThemeDefinition {
     "terminal-foreground": seed.foreground,
     "terminal-cursor": seed.primary,
     "terminal-selection": withAlpha(seed.primary, isDark ? 24 : 20),
-    "terminal-border": seed.border,
+    "terminal-border": border,
     "chat-file-accent": seed.chatFileAccent ?? seed.info,
     "chat-plan-surface": mix(chatPlanAccent, isDark ? 16 : 10, seed.background),
     "chat-plan-border": mix(chatPlanAccent, isDark ? 34 : 24, seed.background),

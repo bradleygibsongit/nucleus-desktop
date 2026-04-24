@@ -13,6 +13,8 @@ import type {
   RuntimeListAgentsInput,
   RuntimeListCommandsInput,
   RuntimeListModelsInput,
+  RuntimeSearchFilesInput,
+  RuntimeFileSearchResultSet,
   RuntimeModelsResult,
   RuntimeSendTurnInput,
   RuntimeSessionResult,
@@ -20,9 +22,11 @@ import type {
 } from "@/desktop/contracts"
 import { EVENT_CHANNELS } from "../../ipc/channels"
 import { CodexServerService } from "../codexServer"
+import { OpenCodeServerService } from "../opencodeServer"
 import { JsonStoreService } from "../store"
 import { ClaudeRuntimeProvider } from "./claudeProvider"
 import { CodexRuntimeProvider } from "./codexProvider"
+import { OpenCodeRuntimeProvider } from "./opencodeProvider"
 import type { RuntimeProviderAdapter } from "./providerTypes"
 import { RuntimeSessionStore } from "./runtimeSessionStore"
 
@@ -36,7 +40,8 @@ export class RuntimeService {
     private readonly sendEvent: EventSender,
     storeService: JsonStoreService,
     _gitService: unknown,
-    codexServerService: CodexServerService
+    codexServerService: CodexServerService,
+    openCodeServerService: OpenCodeServerService
   ) {
     this.sessionStore = new RuntimeSessionStore(storeService)
     const context = {
@@ -58,6 +63,7 @@ export class RuntimeService {
     this.providers = {
       codex: new CodexRuntimeProvider(context, codexServerService),
       "claude-code": new ClaudeRuntimeProvider(context),
+      opencode: new OpenCodeRuntimeProvider(context, openCodeServerService),
     }
   }
 
@@ -84,6 +90,15 @@ export class RuntimeService {
   async listCommands(input: RuntimeListCommandsInput): Promise<RuntimeCommandsResult> {
     return {
       commands: await this.getProvider(input.harnessId).listCommands(input.projectPath),
+    }
+  }
+
+  async searchFiles(input: RuntimeSearchFilesInput): Promise<RuntimeFileSearchResultSet> {
+    return {
+      results: await this.getProvider(input.harnessId).searchFiles(
+        input.query,
+        input.directory
+      ),
     }
   }
 

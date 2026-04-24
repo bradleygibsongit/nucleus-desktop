@@ -96,6 +96,8 @@ const HARNESS_DEFINITIONS: HarnessDefinition[] = [
       supportsSubagents: false,
       supportsArchive: true,
       supportsDelete: true,
+      supportsReasoningEffort: true,
+      supportsFastMode: true,
     },
   },
   {
@@ -110,6 +112,24 @@ const HARNESS_DEFINITIONS: HarnessDefinition[] = [
       supportsSubagents: false,
       supportsArchive: true,
       supportsDelete: true,
+      supportsReasoningEffort: true,
+      supportsFastMode: true,
+    },
+  },
+  {
+    id: "opencode",
+    label: "OpenCode",
+    description: "OpenCode local server harness",
+    adapterStatus: "experimental",
+    capabilities: {
+      supportsCommands: true,
+      supportsAgentMentions: true,
+      supportsFileSearch: true,
+      supportsSubagents: false,
+      supportsArchive: true,
+      supportsDelete: true,
+      supportsReasoningEffort: false,
+      supportsFastMode: false,
     },
   },
 ]

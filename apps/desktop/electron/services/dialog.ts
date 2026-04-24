@@ -3,7 +3,7 @@ import { dialog, type BrowserWindow } from "electron"
 export class DialogService {
   async openProjectFolder(window: BrowserWindow): Promise<string | null> {
     const result = await dialog.showOpenDialog(window, {
-      properties: ["openDirectory"],
+      properties: ["openDirectory", "createDirectory"],
       title: "Select Project Folder",
     })
 

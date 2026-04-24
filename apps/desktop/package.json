@@ -40,6 +40,7 @@
     "@headless-tree/react": "^1.6.2",
     "@lexical/react": "^0.41.0",
     "@monaco-editor/react": "^4.7.0",
+    "@opencode-ai/sdk": "^1.1.11",
     "@phosphor-icons/react": "^2.1.10",
     "@pierre/diffs": "^1.1.15",
     "@pierre/trees": "^1.0.0-beta.3",

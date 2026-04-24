@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import type { GitPullRequestResolveReason } from "@/desktop/contracts"
 import { loadDesktopStore, type DesktopStoreHandle } from "@/desktop/client"
+import type { HarnessId } from "@/features/chat/types"
 import {
   clampTextSizePx,
   DEFAULT_TEXT_SIZE_PX,
@@ -22,6 +23,8 @@ const TERMINAL_LINK_TARGET_KEY = "terminalLinkTarget"
 const GIT_GENERATION_MODEL_KEY = "gitGenerationModel"
 const GIT_RESOLVE_PROMPTS_KEY = "gitResolvePrompts"
 const WORKSPACE_SETUP_MODEL_KEY = "workspaceSetupModel"
+const HARNESS_DEFAULTS_KEY = "harnessDefaults"
+const FAVORITE_MODELS_KEY = "favoriteModels"
 const CODEX_DEFAULT_MODEL_KEY = "codexDefaultModel"
 const CODEX_DEFAULT_REASONING_EFFORT_KEY = "codexDefaultReasoningEffort"
 const CODEX_DEFAULT_FAST_MODE_KEY = "codexDefaultFastMode"
@@ -32,6 +35,14 @@ const PERSIST_DEBOUNCE_MS = 250
 
 export type TerminalLinkTarget = "in-app" | "system-browser"
 
+export interface HarnessDefaults {
+  model: string
+  reasoningEffort: string
+  fastMode: boolean
+}
+
+export type HarnessDefaultsRecord = Record<HarnessId, HarnessDefaults>
+
 interface PersistedSettings {
   appearanceThemeId: ThemeId
   appearanceTextSizePx: number
@@ -39,12 +50,8 @@ interface PersistedSettings {
   gitGenerationModel: string
   gitResolvePrompts: GitResolvePrompts
   workspaceSetupModel: string
-  codexDefaultModel: string
-  codexDefaultReasoningEffort: string
-  codexDefaultFastMode: boolean
-  claudeDefaultModel: string
-  claudeDefaultReasoningEffort: string
-  claudeDefaultFastMode: boolean
+  harnessDefaults: HarnessDefaultsRecord
+  favoriteModels: string[]
 }
 
 interface SettingsState extends PersistedSettings {
@@ -62,23 +69,30 @@ interface SettingsState extends PersistedSettings {
   resetGitGenerationModel: () => void
   setWorkspaceSetupModel: (model: string) => void
   resetWorkspaceSetupModel: () => void
-  setCodexDefaultModel: (model: string) => void
-  resetCodexDefaultModel: () => void
-  setCodexDefaultReasoningEffort: (effort: string) => void
-  resetCodexDefaultReasoningEffort: () => void
-  setCodexDefaultFastMode: (enabled: boolean) => void
-  resetCodexDefaultFastMode: () => void
-  setClaudeDefaultModel: (model: string) => void
-  resetClaudeDefaultModel: () => void
-  setClaudeDefaultReasoningEffort: (effort: string) => void
-  resetClaudeDefaultReasoningEffort: () => void
-  setClaudeDefaultFastMode: (enabled: boolean) => void
-  resetClaudeDefaultFastMode: () => void
+  setHarnessDefaultModel: (harnessId: HarnessId, model: string) => void
+  resetHarnessDefaultModel: (harnessId: HarnessId) => void
+  setHarnessDefaultReasoningEffort: (harnessId: HarnessId, effort: string) => void
+  resetHarnessDefaultReasoningEffort: (harnessId: HarnessId) => void
+  setHarnessDefaultFastMode: (harnessId: HarnessId, enabled: boolean) => void
+  resetHarnessDefaultFastMode: (harnessId: HarnessId) => void
+  toggleFavoriteModel: (modelKey: string) => void
 }
 
 let storeInstance: DesktopStoreHandle | null = null
 let initializePromise: Promise<void> | null = null
 let persistTimeoutId: ReturnType<typeof setTimeout> | null = null
+
+export const EMPTY_HARNESS_DEFAULTS: HarnessDefaults = Object.freeze({
+  model: "",
+  reasoningEffort: "",
+  fastMode: false,
+})
+
+export const DEFAULT_HARNESS_DEFAULTS: HarnessDefaultsRecord = {
+  codex: { ...EMPTY_HARNESS_DEFAULTS },
+  "claude-code": { ...EMPTY_HARNESS_DEFAULTS },
+  opencode: { ...EMPTY_HARNESS_DEFAULTS },
+}
 
 const DEFAULT_PERSISTED_SETTINGS: PersistedSettings = {
   appearanceThemeId: DEFAULT_THEME_ID,
@@ -87,12 +101,18 @@ const DEFAULT_PERSISTED_SETTINGS: PersistedSettings = {
   gitGenerationModel: "",
   gitResolvePrompts: createDefaultGitResolvePrompts(),
   workspaceSetupModel: "",
-  codexDefaultModel: "",
-  codexDefaultReasoningEffort: "",
-  codexDefaultFastMode: false,
-  claudeDefaultModel: "",
-  claudeDefaultReasoningEffort: "",
-  claudeDefaultFastMode: false,
+  harnessDefaults: DEFAULT_HARNESS_DEFAULTS,
+  favoriteModels: [],
+}
+
+export function normalizeFavoriteModels(value: string[] | null | undefined): string[] {
+  return Array.from(
+    new Set(
+      (value ?? [])
+        .map((modelKey) => modelKey.trim())
+        .filter((modelKey) => modelKey.length > 0)
+    )
+  )
 }
 
 async function getStore(): Promise<DesktopStoreHandle> {
@@ -125,28 +145,40 @@ export function normalizeWorkspaceSetupModel(model: string | null | undefined): 
   return model?.trim() ?? ""
 }
 
-export function normalizeCodexDefaultModel(model: string | null | undefined): string {
+export function normalizeHarnessDefaultModel(model: string | null | undefined): string {
   return model?.trim() ?? ""
 }
 
-export function normalizeCodexDefaultReasoningEffort(effort: string | null | undefined): string {
+export function normalizeHarnessDefaultReasoningEffort(effort: string | null | undefined): string {
   return effort?.trim() ?? ""
 }
 
-export function normalizeCodexDefaultFastMode(enabled: boolean | null | undefined): boolean {
+export function normalizeHarnessDefaultFastMode(enabled: boolean | null | undefined): boolean {
   return enabled === true
 }
 
-export function normalizeClaudeDefaultModel(model: string | null | undefined): string {
-  return model?.trim() ?? ""
-}
-
-export function normalizeClaudeDefaultReasoningEffort(effort: string | null | undefined): string {
-  return effort?.trim() ?? ""
-}
-
-export function normalizeClaudeDefaultFastMode(enabled: boolean | null | undefined): boolean {
-  return enabled === true
+export function normalizeHarnessDefaults(
+  value: Partial<Record<HarnessId, Partial<HarnessDefaults>>> | null | undefined
+): HarnessDefaultsRecord {
+  return {
+    codex: {
+      model: normalizeHarnessDefaultModel(value?.codex?.model),
+      reasoningEffort: normalizeHarnessDefaultReasoningEffort(value?.codex?.reasoningEffort),
+      fastMode: normalizeHarnessDefaultFastMode(value?.codex?.fastMode),
+    },
+    "claude-code": {
+      model: normalizeHarnessDefaultModel(value?.["claude-code"]?.model),
+      reasoningEffort: normalizeHarnessDefaultReasoningEffort(
+        value?.["claude-code"]?.reasoningEffort
+      ),
+      fastMode: normalizeHarnessDefaultFastMode(value?.["claude-code"]?.fastMode),
+    },
+    opencode: {
+      model: normalizeHarnessDefaultModel(value?.opencode?.model),
+      reasoningEffort: normalizeHarnessDefaultReasoningEffort(value?.opencode?.reasoningEffort),
+      fastMode: normalizeHarnessDefaultFastMode(value?.opencode?.fastMode),
+    },
+  }
 }
 
 function buildPersistedSettings(source: Partial<PersistedSettings>): PersistedSettings {
@@ -157,16 +189,8 @@ function buildPersistedSettings(source: Partial<PersistedSettings>): PersistedSe
     gitGenerationModel: normalizeGitGenerationModel(source.gitGenerationModel),
     gitResolvePrompts: normalizeGitResolvePrompts(source.gitResolvePrompts),
     workspaceSetupModel: normalizeWorkspaceSetupModel(source.workspaceSetupModel),
-    codexDefaultModel: normalizeCodexDefaultModel(source.codexDefaultModel),
-    codexDefaultReasoningEffort: normalizeCodexDefaultReasoningEffort(
-      source.codexDefaultReasoningEffort
-    ),
-    codexDefaultFastMode: normalizeCodexDefaultFastMode(source.codexDefaultFastMode),
-    claudeDefaultModel: normalizeClaudeDefaultModel(source.claudeDefaultModel),
-    claudeDefaultReasoningEffort: normalizeClaudeDefaultReasoningEffort(
-      source.claudeDefaultReasoningEffort
-    ),
-    claudeDefaultFastMode: normalizeClaudeDefaultFastMode(source.claudeDefaultFastMode),
+    harnessDefaults: normalizeHarnessDefaults(source.harnessDefaults),
+    favoriteModels: normalizeFavoriteModels(source.favoriteModels),
   }
 }
 
@@ -180,12 +204,8 @@ function selectPersistedSettings(
     gitGenerationModel: state.gitGenerationModel,
     gitResolvePrompts: state.gitResolvePrompts,
     workspaceSetupModel: state.workspaceSetupModel,
-    codexDefaultModel: state.codexDefaultModel,
-    codexDefaultReasoningEffort: state.codexDefaultReasoningEffort,
-    codexDefaultFastMode: state.codexDefaultFastMode,
-    claudeDefaultModel: state.claudeDefaultModel,
-    claudeDefaultReasoningEffort: state.claudeDefaultReasoningEffort,
-    claudeDefaultFastMode: state.claudeDefaultFastMode,
+    harnessDefaults: state.harnessDefaults,
+    favoriteModels: state.favoriteModels,
   })
 }
 
@@ -206,45 +226,14 @@ function schedulePersist(settings: PersistedSettings): void {
         await store.set(GIT_GENERATION_MODEL_KEY, settings.gitGenerationModel)
         await store.set(GIT_RESOLVE_PROMPTS_KEY, settings.gitResolvePrompts)
         await store.set(WORKSPACE_SETUP_MODEL_KEY, settings.workspaceSetupModel)
-
-        if (settings.codexDefaultModel.length > 0) {
-          await store.set(CODEX_DEFAULT_MODEL_KEY, settings.codexDefaultModel)
-        } else {
-          await store.delete(CODEX_DEFAULT_MODEL_KEY)
-        }
-
-        if (settings.codexDefaultReasoningEffort.length > 0) {
-          await store.set(CODEX_DEFAULT_REASONING_EFFORT_KEY, settings.codexDefaultReasoningEffort)
-        } else {
-          await store.delete(CODEX_DEFAULT_REASONING_EFFORT_KEY)
-        }
-
-        if (settings.codexDefaultFastMode) {
-          await store.set(CODEX_DEFAULT_FAST_MODE_KEY, true)
-        } else {
-          await store.delete(CODEX_DEFAULT_FAST_MODE_KEY)
-        }
-
-        if (settings.claudeDefaultModel.length > 0) {
-          await store.set(CLAUDE_DEFAULT_MODEL_KEY, settings.claudeDefaultModel)
-        } else {
-          await store.delete(CLAUDE_DEFAULT_MODEL_KEY)
-        }
-
-        if (settings.claudeDefaultReasoningEffort.length > 0) {
-          await store.set(
-            CLAUDE_DEFAULT_REASONING_EFFORT_KEY,
-            settings.claudeDefaultReasoningEffort
-          )
-        } else {
-          await store.delete(CLAUDE_DEFAULT_REASONING_EFFORT_KEY)
-        }
-
-        if (settings.claudeDefaultFastMode) {
-          await store.set(CLAUDE_DEFAULT_FAST_MODE_KEY, true)
-        } else {
-          await store.delete(CLAUDE_DEFAULT_FAST_MODE_KEY)
-        }
+        await store.set(HARNESS_DEFAULTS_KEY, settings.harnessDefaults)
+        await store.set(FAVORITE_MODELS_KEY, settings.favoriteModels)
+        await store.delete(CODEX_DEFAULT_MODEL_KEY)
+        await store.delete(CODEX_DEFAULT_REASONING_EFFORT_KEY)
+        await store.delete(CODEX_DEFAULT_FAST_MODE_KEY)
+        await store.delete(CLAUDE_DEFAULT_MODEL_KEY)
+        await store.delete(CLAUDE_DEFAULT_REASONING_EFFORT_KEY)
+        await store.delete(CLAUDE_DEFAULT_FAST_MODE_KEY)
 
         await store.save()
       } catch (error) {
@@ -289,6 +278,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
               GIT_RESOLVE_PROMPTS_KEY
             )
           const savedWorkspaceSetupModel = await store.get<string>(WORKSPACE_SETUP_MODEL_KEY)
+          const savedHarnessDefaults =
+            await store.get<Partial<Record<HarnessId, Partial<HarnessDefaults>>>>(
+              HARNESS_DEFAULTS_KEY
+            )
+          const savedFavoriteModels = await store.get<string[]>(FAVORITE_MODELS_KEY)
           const savedCodexDefaultModel = await store.get<string>(CODEX_DEFAULT_MODEL_KEY)
           const savedCodexDefaultReasoningEffort = await store.get<string>(
             CODEX_DEFAULT_REASONING_EFFORT_KEY
@@ -307,12 +301,28 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
             gitGenerationModel: savedModel,
             gitResolvePrompts: savedResolvePrompts,
             workspaceSetupModel: savedWorkspaceSetupModel,
-            codexDefaultModel: savedCodexDefaultModel,
-            codexDefaultReasoningEffort: savedCodexDefaultReasoningEffort,
-            codexDefaultFastMode: savedCodexDefaultFastMode,
-            claudeDefaultModel: savedClaudeDefaultModel,
-            claudeDefaultReasoningEffort: savedClaudeDefaultReasoningEffort,
-            claudeDefaultFastMode: savedClaudeDefaultFastMode,
+            favoriteModels: normalizeFavoriteModels(savedFavoriteModels),
+            harnessDefaults: normalizeHarnessDefaults({
+              ...savedHarnessDefaults,
+              codex: {
+                ...(savedHarnessDefaults?.codex ?? {}),
+                model: savedHarnessDefaults?.codex?.model ?? savedCodexDefaultModel,
+                reasoningEffort:
+                  savedHarnessDefaults?.codex?.reasoningEffort ??
+                  savedCodexDefaultReasoningEffort,
+                fastMode: savedHarnessDefaults?.codex?.fastMode ?? savedCodexDefaultFastMode,
+              },
+              "claude-code": {
+                ...(savedHarnessDefaults?.["claude-code"] ?? {}),
+                model:
+                  savedHarnessDefaults?.["claude-code"]?.model ?? savedClaudeDefaultModel,
+                reasoningEffort:
+                  savedHarnessDefaults?.["claude-code"]?.reasoningEffort ??
+                  savedClaudeDefaultReasoningEffort,
+                fastMode:
+                  savedHarnessDefaults?.["claude-code"]?.fastMode ?? savedClaudeDefaultFastMode,
+              },
+            }),
           })
 
           setAppearanceState(
@@ -423,70 +433,93 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
       persistWith({ workspaceSetupModel: "" })
     },
 
-    setCodexDefaultModel: (model) => {
-      const normalized = normalizeCodexDefaultModel(model)
-      set({ codexDefaultModel: normalized })
-      persistWith({ codexDefaultModel: normalized })
+    setHarnessDefaultModel: (harnessId, model) => {
+      const normalized = normalizeHarnessDefaultModel(model)
+      const nextHarnessDefaults = {
+        ...get().harnessDefaults,
+        [harnessId]: {
+          ...get().harnessDefaults[harnessId],
+          model: normalized,
+        },
+      }
+      set({ harnessDefaults: nextHarnessDefaults })
+      persistWith({ harnessDefaults: nextHarnessDefaults })
     },
 
-    resetCodexDefaultModel: () => {
-      set({ codexDefaultModel: "" })
-      persistWith({ codexDefaultModel: "" })
+    resetHarnessDefaultModel: (harnessId) => {
+      const nextHarnessDefaults = {
+        ...get().harnessDefaults,
+        [harnessId]: {
+          ...get().harnessDefaults[harnessId],
+          model: "",
+        },
+      }
+      set({ harnessDefaults: nextHarnessDefaults })
+      persistWith({ harnessDefaults: nextHarnessDefaults })
     },
 
-    setCodexDefaultReasoningEffort: (effort) => {
-      const normalized = normalizeCodexDefaultReasoningEffort(effort)
-      set({ codexDefaultReasoningEffort: normalized })
-      persistWith({ codexDefaultReasoningEffort: normalized })
+    setHarnessDefaultReasoningEffort: (harnessId, effort) => {
+      const normalized = normalizeHarnessDefaultReasoningEffort(effort)
+      const nextHarnessDefaults = {
+        ...get().harnessDefaults,
+        [harnessId]: {
+          ...get().harnessDefaults[harnessId],
+          reasoningEffort: normalized,
+        },
+      }
+      set({ harnessDefaults: nextHarnessDefaults })
+      persistWith({ harnessDefaults: nextHarnessDefaults })
     },
 
-    resetCodexDefaultReasoningEffort: () => {
-      set({ codexDefaultReasoningEffort: "" })
-      persistWith({ codexDefaultReasoningEffort: "" })
+    resetHarnessDefaultReasoningEffort: (harnessId) => {
+      const nextHarnessDefaults = {
+        ...get().harnessDefaults,
+        [harnessId]: {
+          ...get().harnessDefaults[harnessId],
+          reasoningEffort: "",
+        },
+      }
+      set({ harnessDefaults: nextHarnessDefaults })
+      persistWith({ harnessDefaults: nextHarnessDefaults })
     },
 
-    setCodexDefaultFastMode: (enabled) => {
-      const normalized = normalizeCodexDefaultFastMode(enabled)
-      set({ codexDefaultFastMode: normalized })
-      persistWith({ codexDefaultFastMode: normalized })
+    setHarnessDefaultFastMode: (harnessId, enabled) => {
+      const normalized = normalizeHarnessDefaultFastMode(enabled)
+      const nextHarnessDefaults = {
+        ...get().harnessDefaults,
+        [harnessId]: {
+          ...get().harnessDefaults[harnessId],
+          fastMode: normalized,
+        },
+      }
+      set({ harnessDefaults: nextHarnessDefaults })
+      persistWith({ harnessDefaults: nextHarnessDefaults })
     },
 
-    resetCodexDefaultFastMode: () => {
-      set({ codexDefaultFastMode: false })
-      persistWith({ codexDefaultFastMode: false })
+    resetHarnessDefaultFastMode: (harnessId) => {
+      const nextHarnessDefaults = {
+        ...get().harnessDefaults,
+        [harnessId]: {
+          ...get().harnessDefaults[harnessId],
+          fastMode: false,
+        },
+      }
+      set({ harnessDefaults: nextHarnessDefaults })
+      persistWith({ harnessDefaults: nextHarnessDefaults })
     },
 
-    setClaudeDefaultModel: (model) => {
-      const normalized = normalizeClaudeDefaultModel(model)
-      set({ claudeDefaultModel: normalized })
-      persistWith({ claudeDefaultModel: normalized })
-    },
+    toggleFavoriteModel: (modelKey) => {
+      const normalizedModelKey = modelKey.trim()
+      if (!normalizedModelKey) {
+        return
+      }
 
-    resetClaudeDefaultModel: () => {
-      set({ claudeDefaultModel: "" })
-      persistWith({ claudeDefaultModel: "" })
-    },
+      const nextFavoriteModels = get().favoriteModels.includes(normalizedModelKey)
+        ? get().favoriteModels.filter((favoriteModelKey) => favoriteModelKey !== normalizedModelKey)
+        : [...get().favoriteModels, normalizedModelKey]
 
-    setClaudeDefaultReasoningEffort: (effort) => {
-      const normalized = normalizeClaudeDefaultReasoningEffort(effort)
-      set({ claudeDefaultReasoningEffort: normalized })
-      persistWith({ claudeDefaultReasoningEffort: normalized })
-    },
-
-    resetClaudeDefaultReasoningEffort: () => {
-      set({ claudeDefaultReasoningEffort: "" })
-      persistWith({ claudeDefaultReasoningEffort: "" })
-    },
-
-    setClaudeDefaultFastMode: (enabled) => {
-      const normalized = normalizeClaudeDefaultFastMode(enabled)
-      set({ claudeDefaultFastMode: normalized })
-      persistWith({ claudeDefaultFastMode: normalized })
-    },
-
-    resetClaudeDefaultFastMode: () => {
-      set({ claudeDefaultFastMode: false })
-      persistWith({ claudeDefaultFastMode: false })
+      set({ favoriteModels: nextFavoriteModels })
+      persistWith({ favoriteModels: nextFavoriteModels })
     },
   }
 })

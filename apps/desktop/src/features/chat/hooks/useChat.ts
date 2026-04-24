@@ -22,6 +22,7 @@ import type {
 import type {
   ChatStatus,
   CollaborationModeKind,
+  HarnessId,
   QueuedChatMessage,
   RuntimePrompt,
   RuntimePromptResponse,
@@ -160,6 +161,7 @@ export function useChatComposerState({
   submit: (
     text: string,
     options?: {
+      harnessId?: HarnessId
       agent?: string
       collaborationMode?: CollaborationModeKind
       runtimeMode?: RuntimeModeKind
@@ -288,6 +290,7 @@ export function useChatComposerState({
     async (
       text: string,
       options?: {
+        harnessId?: HarnessId
         agent?: string
         collaborationMode?: CollaborationModeKind
         runtimeMode?: RuntimeModeKind
@@ -312,10 +315,16 @@ export function useChatComposerState({
       }
 
       if (!targetSessionId) {
-        let session = createOptimisticSession(selectedWorktreeId, selectedWorktreePath)
+        let session = createOptimisticSession(selectedWorktreeId, selectedWorktreePath, {
+          harnessId: options?.harnessId,
+          runtimeMode: options?.runtimeMode,
+        })
         if (!session) {
           await initialize()
-          session = createOptimisticSession(selectedWorktreeId, selectedWorktreePath)
+          session = createOptimisticSession(selectedWorktreeId, selectedWorktreePath, {
+            harnessId: options?.harnessId,
+            runtimeMode: options?.runtimeMode,
+          })
         }
 
         if (!session) {

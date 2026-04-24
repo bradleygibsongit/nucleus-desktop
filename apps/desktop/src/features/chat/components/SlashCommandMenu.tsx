@@ -58,6 +58,12 @@ function SlashMenuShell({
 const slashMenuHeadingClassName =
   "sticky top-[-0.25rem] z-10 -mx-1 mb-0.5 border-b border-border/35 bg-[color:color-mix(in_oklab,var(--popover)_82%,transparent)] px-3 py-2 text-[10px] font-medium uppercase tracking-[0.15em] text-sidebar-foreground/38 backdrop-blur-md"
 
+const slashMenuSelectedItemClassName =
+  "bg-accent text-accent-foreground ring-1 ring-inset ring-border/70 shadow-[inset_0_1px_0_color-mix(in_oklab,var(--foreground)_8%,transparent)]"
+
+const slashMenuIdleItemClassName =
+  "text-foreground/88 hover:bg-[var(--sidebar-item-hover)] hover:text-foreground"
+
 export function SlashCommandMenu(props: SlashCommandMenuProps) {
   const { onClose, selectedIndex, className } = props
   const isThemePage = props.page === "themes"
@@ -156,14 +162,12 @@ export function SlashCommandMenu(props: SlashCommandMenuProps) {
                 onClick={() => onSelectTheme?.(theme.id, index)}
                 className={cn(
                   "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                  isSelected
-                    ? "bg-primary/[0.09] text-foreground dark:bg-primary/[0.18]"
-                    : "text-foreground/88 hover:bg-[var(--sidebar-item-hover)]"
+                  isSelected ? slashMenuSelectedItemClassName : slashMenuIdleItemClassName
                 )}
               >
                 <span className={cn(
                   "flex size-4 shrink-0 items-center justify-center",
-                  isSelected ? "text-foreground" : "text-muted-foreground/78"
+                  isSelected ? "text-accent-foreground" : "text-muted-foreground/78"
                 )}>
                   {isActive ? <CheckCircle size={14} /> : <Circle size={14} />}
                 </span>
@@ -212,9 +216,7 @@ export function SlashCommandMenu(props: SlashCommandMenuProps) {
                     onClick={() => onSelect?.(cmd)}
                     className={cn(
                       "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                      isSelected
-                        ? "bg-primary/[0.09] text-foreground dark:bg-primary/[0.18]"
-                        : "text-foreground/88 hover:bg-[var(--sidebar-item-hover)]"
+                      isSelected ? slashMenuSelectedItemClassName : slashMenuIdleItemClassName
                     )}
                   >
                     {cmd.projectAction ? (
@@ -223,7 +225,7 @@ export function SlashCommandMenu(props: SlashCommandMenuProps) {
                         size={14}
                         className={cn(
                           "shrink-0",
-                          isSelected ? "text-foreground" : "text-muted-foreground/78"
+                          isSelected ? "text-accent-foreground" : "text-muted-foreground/78"
                         )}
                       />
                     ) : (
@@ -231,7 +233,7 @@ export function SlashCommandMenu(props: SlashCommandMenuProps) {
                         size={14}
                         className={cn(
                           "shrink-0",
-                          isSelected ? "text-foreground" : "text-muted-foreground/78"
+                          isSelected ? "text-accent-foreground" : "text-muted-foreground/78"
                         )}
                       />
                     )}
@@ -274,7 +276,7 @@ function InfoTooltip({ description, isSelected }: { description: string; isSelec
           className={cn(
             "ml-auto shrink-0 rounded-md p-0.5 transition-colors",
             isSelected
-              ? "text-foreground/60 hover:bg-primary/[0.12] hover:text-foreground dark:hover:bg-primary/[0.22]"
+              ? "text-accent-foreground/70 hover:bg-[color:color-mix(in_oklab,var(--accent-foreground)_12%,transparent)] hover:text-accent-foreground"
               : "text-muted-foreground/50 hover:bg-[var(--sidebar-item-hover)] hover:text-muted-foreground"
           )}
           onMouseDown={(e) => e.preventDefault()}

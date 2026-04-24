@@ -129,3 +129,19 @@ export function resolveDefaultFastMode({
 
   return defaultFastMode === true
 }
+
+interface ShouldShowReasoningEffortSelectorParams {
+  supportsReasoningEffort: boolean
+  availableReasoningEfforts: string[]
+}
+
+export function shouldShowReasoningEffortSelector({
+  supportsReasoningEffort,
+  availableReasoningEfforts,
+}: ShouldShowReasoningEffortSelectorParams): boolean {
+  if (!supportsReasoningEffort) {
+    return false
+  }
+
+  return availableReasoningEfforts.some((effort) => effort.trim().length > 0)
+}

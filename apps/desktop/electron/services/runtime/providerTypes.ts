@@ -7,6 +7,7 @@ import type {
   HarnessTurnResult,
   RuntimeAgent,
   RuntimeCommand,
+  RuntimeFileSearchResult,
   RuntimeModel,
   RuntimeSession,
 } from "@/features/chat/types"
@@ -38,6 +39,7 @@ export interface RuntimeProviderAdapter {
   listAgents: () => Promise<RuntimeAgent[]>
   listCommands: (projectPath?: string) => Promise<RuntimeCommand[]>
   listModels: () => Promise<RuntimeModel[]>
+  searchFiles: (query: string, directory?: string) => Promise<RuntimeFileSearchResult[]>
   sendTurn: (input: HarnessTurnInput) => Promise<HarnessTurnResult>
   answerPrompt: (input: HarnessPromptInput) => Promise<HarnessTurnResult>
   executeCommand?: (input: HarnessCommandInput) => Promise<HarnessTurnResult>

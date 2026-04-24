@@ -52,12 +52,24 @@ function resetSettingsStore() {
       unknown: "unknown",
     },
     workspaceSetupModel: "",
-    codexDefaultModel: "",
-    codexDefaultReasoningEffort: "",
-    codexDefaultFastMode: false,
-    claudeDefaultModel: "",
-    claudeDefaultReasoningEffort: "",
-    claudeDefaultFastMode: false,
+    harnessDefaults: {
+      codex: {
+        model: "",
+        reasoningEffort: "",
+        fastMode: false,
+      },
+      "claude-code": {
+        model: "",
+        reasoningEffort: "",
+        fastMode: false,
+      },
+      opencode: {
+        model: "",
+        reasoningEffort: "",
+        fastMode: false,
+      },
+    },
+    favoriteModels: [],
     hasLoaded: false,
   })
 }
@@ -91,16 +103,22 @@ describe("settingsStore resolve prompts", () => {
     })
   })
 
-  test("initializes Codex defaults from persisted values", async () => {
+  test("initializes harness defaults from persisted values", async () => {
     storeData.set("codexDefaultModel", " gpt-5.4 ")
     storeData.set("codexDefaultReasoningEffort", " high ")
     storeData.set("codexDefaultFastMode", true)
+    storeData.set("harnessDefaults", {
+      opencode: {
+        model: " openai/gpt-5.4 ",
+      },
+    })
 
     await useSettingsStore.getState().initialize()
 
-    expect(useSettingsStore.getState().codexDefaultModel).toBe("gpt-5.4")
-    expect(useSettingsStore.getState().codexDefaultReasoningEffort).toBe("high")
-    expect(useSettingsStore.getState().codexDefaultFastMode).toBe(true)
+    expect(useSettingsStore.getState().harnessDefaults.codex.model).toBe("gpt-5.4")
+    expect(useSettingsStore.getState().harnessDefaults.codex.reasoningEffort).toBe("high")
+    expect(useSettingsStore.getState().harnessDefaults.codex.fastMode).toBe(true)
+    expect(useSettingsStore.getState().harnessDefaults.opencode.model).toBe("openai/gpt-5.4")
   })
 
   test("initializes appearance settings from persisted values", async () => {
@@ -149,38 +167,88 @@ describe("settingsStore resolve prompts", () => {
     expect(useSettingsStore.getState().terminalLinkTarget).toBe("in-app")
   })
 
-  test("persists Codex defaults after edits", async () => {
+  test("persists harness defaults after edits", async () => {
     await useSettingsStore.getState().initialize()
 
-    useSettingsStore.getState().setCodexDefaultModel(" gpt-5.4 ")
-    useSettingsStore.getState().setCodexDefaultReasoningEffort(" medium ")
-    useSettingsStore.getState().setCodexDefaultFastMode(true)
+    useSettingsStore.getState().setHarnessDefaultModel("codex", " gpt-5.4 ")
+    useSettingsStore.getState().setHarnessDefaultReasoningEffort("codex", " medium ")
+    useSettingsStore.getState().setHarnessDefaultFastMode("codex", true)
+    useSettingsStore.getState().setHarnessDefaultModel("opencode", " openai/gpt-5.4 ")
 
     await Bun.sleep(350)
 
-    expect(storeData.get("codexDefaultModel")).toBe("gpt-5.4")
-    expect(storeData.get("codexDefaultReasoningEffort")).toBe("medium")
-    expect(storeData.get("codexDefaultFastMode")).toBe(true)
+    expect(storeData.get("harnessDefaults")).toEqual({
+      codex: {
+        model: "gpt-5.4",
+        reasoningEffort: "medium",
+        fastMode: true,
+      },
+      "claude-code": {
+        model: "",
+        reasoningEffort: "",
+        fastMode: false,
+      },
+      opencode: {
+        model: "openai/gpt-5.4",
+        reasoningEffort: "",
+        fastMode: false,
+      },
+    })
   })
 
-  test("reset methods clear persisted Codex defaults", async () => {
+  test("initializes and toggles favorite models", async () => {
+    storeData.set("favoriteModels", ["codex:gpt-5.4", " opencode:openai/gpt-5.4 ", "codex:gpt-5.4"])
+
     await useSettingsStore.getState().initialize()
 
-    useSettingsStore.getState().setCodexDefaultModel("gpt-5.4")
-    useSettingsStore.getState().setCodexDefaultReasoningEffort("high")
-    useSettingsStore.getState().setCodexDefaultFastMode(true)
+    expect(useSettingsStore.getState().favoriteModels).toEqual([
+      "codex:gpt-5.4",
+      "opencode:openai/gpt-5.4",
+    ])
+
+    useSettingsStore.getState().toggleFavoriteModel("claude-code:claude-opus")
+    useSettingsStore.getState().toggleFavoriteModel("codex:gpt-5.4")
+
     await Bun.sleep(350)
 
-    useSettingsStore.getState().resetCodexDefaultModel()
-    useSettingsStore.getState().resetCodexDefaultReasoningEffort()
-    useSettingsStore.getState().resetCodexDefaultFastMode()
+    expect(storeData.get("favoriteModels")).toEqual([
+      "opencode:openai/gpt-5.4",
+      "claude-code:claude-opus",
+    ])
+  })
+
+  test("reset methods clear persisted harness defaults", async () => {
+    await useSettingsStore.getState().initialize()
+
+    useSettingsStore.getState().setHarnessDefaultModel("codex", "gpt-5.4")
+    useSettingsStore.getState().setHarnessDefaultReasoningEffort("codex", "high")
+    useSettingsStore.getState().setHarnessDefaultFastMode("codex", true)
     await Bun.sleep(350)
 
-    expect(storeData.has("codexDefaultModel")).toBe(false)
-    expect(storeData.has("codexDefaultReasoningEffort")).toBe(false)
-    expect(storeData.has("codexDefaultFastMode")).toBe(false)
-    expect(useSettingsStore.getState().codexDefaultModel).toBe("")
-    expect(useSettingsStore.getState().codexDefaultReasoningEffort).toBe("")
-    expect(useSettingsStore.getState().codexDefaultFastMode).toBe(false)
+    useSettingsStore.getState().resetHarnessDefaultModel("codex")
+    useSettingsStore.getState().resetHarnessDefaultReasoningEffort("codex")
+    useSettingsStore.getState().resetHarnessDefaultFastMode("codex")
+    await Bun.sleep(350)
+
+    expect(storeData.get("harnessDefaults")).toEqual({
+      codex: {
+        model: "",
+        reasoningEffort: "",
+        fastMode: false,
+      },
+      "claude-code": {
+        model: "",
+        reasoningEffort: "",
+        fastMode: false,
+      },
+      opencode: {
+        model: "",
+        reasoningEffort: "",
+        fastMode: false,
+      },
+    })
+    expect(useSettingsStore.getState().harnessDefaults.codex.model).toBe("")
+    expect(useSettingsStore.getState().harnessDefaults.codex.reasoningEffort).toBe("")
+    expect(useSettingsStore.getState().harnessDefaults.codex.fastMode).toBe(false)
   })
 })

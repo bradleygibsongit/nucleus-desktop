@@ -21,6 +21,7 @@ import {
   type HarnessTurnResult,
   type RuntimeAgent,
   type RuntimeCommand,
+  type RuntimeFileSearchResult,
   type RuntimeMessagePart,
   type RuntimeModel,
   type RuntimeModeKind,
@@ -567,6 +568,10 @@ export class ClaudeRuntimeProvider implements RuntimeProviderAdapter {
     } finally {
       this.modelRequest = null
     }
+  }
+
+  async searchFiles(_query: string, _directory?: string): Promise<RuntimeFileSearchResult[]> {
+    return []
   }
 
   async sendTurn(input: HarnessTurnInput): Promise<HarnessTurnResult> {
