@@ -213,6 +213,38 @@ describe("OpenCodeRuntimeProvider", () => {
     )
   })
 
+  test("does not expose OpenCode command templates as inline input hints", async () => {
+    commandsMock.mockResolvedValueOnce({
+      data: [
+        {
+          name: "/review",
+          description: "Review the current changes",
+          template: "Review this repository and produce a detailed report with findings.",
+          agent: "build",
+          model: "gpt-5.5",
+        },
+      ],
+    })
+
+    const { OpenCodeRuntimeProvider } = await import("./opencodeProvider")
+    const provider = new OpenCodeRuntimeProvider(context, {
+      getBaseUrl: async () => "http://127.0.0.1:4096",
+    } as never)
+
+    const commands = await provider.listCommands("/tmp/project")
+
+    expect(commands).toEqual([
+      {
+        name: "review",
+        description: "Review the current changes",
+        kind: "builtin",
+        agent: "build",
+        model: "gpt-5.5",
+      },
+    ])
+    expect(commands[0]?.inputHint).toBeUndefined()
+  })
+
   test("streams assistant text updates and clears approval prompts after reply", async () => {
     const liveEventStream = new AsyncEventStream<any>()
     mock.module("@opencode-ai/sdk/v2/client", () => ({

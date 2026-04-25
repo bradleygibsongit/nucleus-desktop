@@ -24,6 +24,38 @@ function normalizeModelId(modelId: string | null | undefined): string | null {
   return normalizedModelId ? normalizedModelId : null
 }
 
+function parseGptReleaseModelId(modelId: string | null | undefined): {
+  major: number
+  minor: number
+} | null {
+  const match = modelId?.trim().match(/^gpt-(\d+)\.(\d+)$/)
+  if (!match) {
+    return null
+  }
+
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+  }
+}
+
+function shouldPreferNewerRuntimeDefault(
+  defaultModelId: string | null,
+  runtimeDefaultModelId: string | null
+): boolean {
+  const savedDefault = parseGptReleaseModelId(defaultModelId)
+  const runtimeDefault = parseGptReleaseModelId(runtimeDefaultModelId)
+
+  if (!savedDefault || !runtimeDefault) {
+    return false
+  }
+
+  return (
+    runtimeDefault.major > savedDefault.major ||
+    (runtimeDefault.major === savedDefault.major && runtimeDefault.minor > savedDefault.minor)
+  )
+}
+
 export function resolveEffectiveComposerModelId({
   activeSessionModelId,
   composerSelectedModelId,
@@ -45,11 +77,20 @@ export function resolveEffectiveComposerModelId({
   }
 
   const normalizedDefaultModelId = normalizeModelId(defaultModelId)
+  const normalizedRuntimeDefaultModelId = normalizeModelId(runtimeDefaultModelId)
+
+  if (
+    normalizedRuntimeDefaultModelId &&
+    availableModelIds.includes(normalizedRuntimeDefaultModelId) &&
+    shouldPreferNewerRuntimeDefault(normalizedDefaultModelId, normalizedRuntimeDefaultModelId)
+  ) {
+    return normalizedRuntimeDefaultModelId
+  }
+
   if (normalizedDefaultModelId && availableModelIds.includes(normalizedDefaultModelId)) {
     return normalizedDefaultModelId
   }
 
-  const normalizedRuntimeDefaultModelId = normalizeModelId(runtimeDefaultModelId)
   if (
     normalizedRuntimeDefaultModelId &&
     availableModelIds.includes(normalizedRuntimeDefaultModelId)

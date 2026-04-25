@@ -30,6 +30,7 @@ import type {
 import { getRemoteSessionId } from "@/features/chat/domain/runtimeSessions"
 import type { OpenCodeServerService } from "../opencodeServer"
 import type { RuntimeProviderAdapter, RuntimeProviderContext } from "./providerTypes"
+import type { ProviderSettingsService } from "./providerSettings"
 import {
   buildOpenCodeApprovalPrompt,
   buildOpenCodeQuestionPrompt,
@@ -440,6 +441,7 @@ export class OpenCodeRuntimeProvider implements RuntimeProviderAdapter {
   readonly harnessId = "opencode" as const
 
   private client: OpencodeClient | null = null
+  private clientBaseUrl: string | null = null
   private eventAbortController: AbortController | null = null
   private eventTask: Promise<void> | null = null
   private sessions = new Map<string, OpenCodeSessionState>()
@@ -453,7 +455,8 @@ export class OpenCodeRuntimeProvider implements RuntimeProviderAdapter {
 
   constructor(
     private readonly context: RuntimeProviderContext,
-    private readonly openCodeServerService: OpenCodeServerService
+    private readonly openCodeServerService: OpenCodeServerService,
+    private readonly providerSettingsService?: ProviderSettingsService
   ) {}
 
   async createSession(
@@ -801,19 +804,28 @@ export class OpenCodeRuntimeProvider implements RuntimeProviderAdapter {
       kind: "builtin",
       agent: command.agent,
       model: command.model,
-      inputHint: command.template || undefined,
     }))
   }
 
   private async getClient(): Promise<OpencodeClient> {
-    if (this.client) {
+    const baseUrl = await this.openCodeServerService.getBaseUrl()
+    if (this.client && this.clientBaseUrl === baseUrl) {
       return this.client
     }
 
-    const baseUrl = await this.openCodeServerService.getBaseUrl()
+    const settings = await this.providerSettingsService?.getProviderSettings("opencode")
+    const serverPassword = settings?.serverUrl.trim() ? settings.serverPassword.trim() : ""
     this.client = createOpencodeClient({
       baseUrl,
+      ...(serverPassword
+        ? {
+            headers: {
+              Authorization: `Basic ${Buffer.from(`opencode:${serverPassword}`, "utf8").toString("base64")}`,
+            },
+          }
+        : {}),
     })
+    this.clientBaseUrl = baseUrl
     return this.client
   }
 

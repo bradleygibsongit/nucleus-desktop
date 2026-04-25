@@ -40,6 +40,7 @@ import type {
   RuntimeListModelsInput,
   RuntimeSearchFilesInput,
   RuntimeModelsResult,
+  RuntimeRefreshProviderStatusInput,
   RuntimeSendTurnInput,
   RuntimeSessionResult,
   RuntimeTurnUpdateEvent,
@@ -193,6 +194,9 @@ export const desktop = {
   runtime: {
     createSession: (input: RuntimeCreateSessionInput) => window.nucleus.runtime.createSession(input),
     listModels: (input: RuntimeListModelsInput) => window.nucleus.runtime.listModels(input),
+    listProviderStatuses: () => window.nucleus.runtime.listProviderStatuses(),
+    refreshProviderStatus: (input: RuntimeRefreshProviderStatusInput) =>
+      window.nucleus.runtime.refreshProviderStatus(input),
     listAgents: (input: RuntimeListAgentsInput) => window.nucleus.runtime.listAgents(input),
     listCommands: (input: RuntimeListCommandsInput) => window.nucleus.runtime.listCommands(input),
     searchFiles: (input: RuntimeSearchFilesInput) => window.nucleus.runtime.searchFiles(input),

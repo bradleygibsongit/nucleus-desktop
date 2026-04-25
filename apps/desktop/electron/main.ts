@@ -12,6 +12,7 @@ import { SkillsService } from "./services/skills"
 import { CodexServerService } from "./services/codexServer"
 import { OpenCodeServerService } from "./services/opencodeServer"
 import { RuntimeService } from "./services/runtime/runtimeService"
+import { ProviderSettingsService } from "./services/runtime/providerSettings"
 import { TerminalService } from "./services/terminal"
 import { ProjectWatcherService } from "./services/projectWatcher"
 import { UpdaterService } from "./services/updater"
@@ -32,6 +33,9 @@ import {
   type WindowThemeState,
   normalizeWindowThemeState,
 } from "./services/windowTheme"
+import { syncShellEnvironment } from "./services/shellEnvironment"
+
+syncShellEnvironment()
 
 let mainWindow: BrowserWindow | null = null
 const LEGACY_USER_DATA_DIRS = ["nucleus-desktop", "io.nucleus.desktop"] as const
@@ -118,8 +122,8 @@ const fsService = new DesktopFsService()
 const dialogService = new DialogService()
 const gitService = new GitService()
 const skillsService = new SkillsService()
-const codexServerService = new CodexServerService(sendToRenderer)
-const openCodeServerService = new OpenCodeServerService()
+let codexServerService = new CodexServerService(sendToRenderer)
+let openCodeServerService = new OpenCodeServerService()
 const terminalService = new TerminalService(sendToRenderer)
 const projectWatcherService = new ProjectWatcherService(sendToRenderer)
 let runtimeService: RuntimeService | null = null
@@ -290,12 +294,16 @@ function createWindow(): BrowserWindow {
 }
 
 function registerIpcHandlers(storeService: JsonStoreService): void {
+  const providerSettingsService = new ProviderSettingsService(storeService)
+  codexServerService = new CodexServerService(sendToRenderer, providerSettingsService)
+  openCodeServerService = new OpenCodeServerService(providerSettingsService)
   runtimeService = new RuntimeService(
     sendToRenderer,
     storeService,
     gitService,
     codexServerService,
-    openCodeServerService
+    openCodeServerService,
+    providerSettingsService
   )
 
   ipcMain.handle(IPC_CHANNELS.appGetVersion, () => app.getVersion())
@@ -376,6 +384,12 @@ function registerIpcHandlers(storeService: JsonStoreService): void {
   )
   ipcMain.handle(IPC_CHANNELS.runtimeListModels, (_event, input: unknown) =>
     runtimeService?.listModels(input as never)
+  )
+  ipcMain.handle(IPC_CHANNELS.runtimeListProviderStatuses, () =>
+    runtimeService?.listProviderStatuses()
+  )
+  ipcMain.handle(IPC_CHANNELS.runtimeRefreshProviderStatus, (_event, input: unknown) =>
+    runtimeService?.refreshProviderStatus(input as never)
   )
   ipcMain.handle(IPC_CHANNELS.runtimeListAgents, (_event, input: unknown) =>
     runtimeService?.listAgents(input as never)

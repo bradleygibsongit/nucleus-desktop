@@ -47,6 +47,18 @@ describe("resolveEffectiveComposerModelId", () => {
     ).toBe("gpt-5.4")
   })
 
+  test("prefers a newer GPT runtime default over an older saved release default", () => {
+    expect(
+      resolveEffectiveComposerModelId({
+        activeSessionModelId: null,
+        composerSelectedModelId: null,
+        defaultModelId: "gpt-5.4",
+        availableModelIds: ["gpt-5.5", "gpt-5.4"],
+        runtimeDefaultModelId: "gpt-5.5",
+      })
+    ).toBe("gpt-5.5")
+  })
+
   test("uses the draft composer selection before the first session exists", () => {
     expect(
       resolveEffectiveComposerModelId({

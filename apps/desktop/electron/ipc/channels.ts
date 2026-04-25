@@ -24,6 +24,8 @@ export const IPC_CHANNELS = {
   watcherStop: "watcher:stop",
   runtimeCreateSession: "runtime:createSession",
   runtimeListModels: "runtime:listModels",
+  runtimeListProviderStatuses: "runtime:listProviderStatuses",
+  runtimeRefreshProviderStatus: "runtime:refreshProviderStatus",
   runtimeListAgents: "runtime:listAgents",
   runtimeListCommands: "runtime:listCommands",
   runtimeSearchFiles: "runtime:searchFiles",

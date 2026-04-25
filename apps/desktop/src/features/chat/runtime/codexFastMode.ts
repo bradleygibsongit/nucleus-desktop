@@ -1,4 +1,6 @@
 const CODEX_FAST_MODE_MODEL_ALLOWLIST = new Set([
+  "gpt-5.5",
+  "gpt-5.5-mini",
   "gpt-5.4",
   "gpt-5.4-mini",
   "gpt-5.3-codex",

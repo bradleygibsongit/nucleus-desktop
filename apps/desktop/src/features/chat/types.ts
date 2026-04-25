@@ -86,7 +86,8 @@ export interface RuntimeMessage {
     | "enteredReviewMode"
     | "exitedReviewMode"
     | "contextCompaction"
-    | "approval";
+    | "approval"
+    | "providerNotice";
   phase?: string | null;
 }
 

@@ -1,5 +1,6 @@
 import { create } from "zustand"
 import type { GitPullRequestResolveReason } from "@/desktop/contracts"
+import type { RuntimeProviderSettingsRecord } from "@/desktop/contracts"
 import { loadDesktopStore, type DesktopStoreHandle } from "@/desktop/client"
 import type { HarnessId } from "@/features/chat/types"
 import {
@@ -28,6 +29,7 @@ const GIT_GENERATION_MODEL_KEY = "gitGenerationModel"
 const GIT_RESOLVE_PROMPTS_KEY = "gitResolvePrompts"
 const WORKSPACE_SETUP_MODEL_KEY = "workspaceSetupModel"
 const HARNESS_DEFAULTS_KEY = "harnessDefaults"
+const PROVIDER_SETTINGS_KEY = "providerSettings"
 const FAVORITE_MODELS_KEY = "favoriteModels"
 const CODEX_DEFAULT_MODEL_KEY = "codexDefaultModel"
 const CODEX_DEFAULT_REASONING_EFFORT_KEY = "codexDefaultReasoningEffort"
@@ -56,6 +58,7 @@ interface PersistedSettings {
   gitResolvePrompts: GitResolvePrompts
   workspaceSetupModel: string
   harnessDefaults: HarnessDefaultsRecord
+  providerSettings: RuntimeProviderSettingsRecord
   favoriteModels: string[]
 }
 
@@ -82,6 +85,12 @@ interface SettingsState extends PersistedSettings {
   resetHarnessDefaultReasoningEffort: (harnessId: HarnessId) => void
   setHarnessDefaultFastMode: (harnessId: HarnessId, enabled: boolean) => void
   resetHarnessDefaultFastMode: (harnessId: HarnessId) => void
+  setProviderEnabled: (harnessId: HarnessId, enabled: boolean) => void
+  setProviderBinaryPath: (harnessId: HarnessId, binaryPath: string) => void
+  setProviderHomePath: (homePath: string) => void
+  setProviderLaunchArgs: (launchArgs: string) => void
+  setOpenCodeServerUrl: (serverUrl: string) => void
+  setOpenCodeServerPassword: (serverPassword: string) => void
   toggleFavoriteModel: (modelKey: string) => void
 }
 
@@ -101,6 +110,28 @@ export const DEFAULT_HARNESS_DEFAULTS: HarnessDefaultsRecord = {
   opencode: { ...EMPTY_HARNESS_DEFAULTS },
 }
 
+export const DEFAULT_PROVIDER_SETTINGS: RuntimeProviderSettingsRecord = {
+  codex: {
+    enabled: true,
+    binaryPath: "codex",
+    homePath: "",
+    customModels: [],
+  },
+  "claude-code": {
+    enabled: true,
+    binaryPath: "claude",
+    launchArgs: "",
+    customModels: [],
+  },
+  opencode: {
+    enabled: true,
+    binaryPath: "opencode",
+    serverUrl: "",
+    serverPassword: "",
+    customModels: [],
+  },
+}
+
 const DEFAULT_PERSISTED_SETTINGS: PersistedSettings = {
   appearanceThemeId: DEFAULT_THEME_ID,
   appearanceTextSizePx: DEFAULT_TEXT_SIZE_PX,
@@ -110,6 +141,7 @@ const DEFAULT_PERSISTED_SETTINGS: PersistedSettings = {
   gitResolvePrompts: createDefaultGitResolvePrompts(),
   workspaceSetupModel: "",
   harnessDefaults: DEFAULT_HARNESS_DEFAULTS,
+  providerSettings: DEFAULT_PROVIDER_SETTINGS,
   favoriteModels: [],
 }
 
@@ -193,6 +225,61 @@ export function normalizeHarnessDefaults(
   }
 }
 
+function normalizeProviderCustomModels(value: string[] | null | undefined): string[] {
+  return Array.from(
+    new Set(
+      (value ?? [])
+        .map((model) => model.trim())
+        .filter((model) => model.length > 0)
+    )
+  )
+}
+
+export function normalizeProviderSettings(
+  value: Partial<Record<HarnessId, Record<string, unknown>>> | null | undefined
+): RuntimeProviderSettingsRecord {
+  return {
+    codex: {
+      enabled: value?.codex?.enabled === false ? false : true,
+      binaryPath:
+        typeof value?.codex?.binaryPath === "string" && value.codex.binaryPath.trim()
+          ? value.codex.binaryPath.trim()
+          : "codex",
+      homePath: typeof value?.codex?.homePath === "string" ? value.codex.homePath.trim() : "",
+      customModels: normalizeProviderCustomModels(value?.codex?.customModels as string[] | undefined),
+    },
+    "claude-code": {
+      enabled: value?.["claude-code"]?.enabled === false ? false : true,
+      binaryPath:
+        typeof value?.["claude-code"]?.binaryPath === "string" &&
+        value["claude-code"].binaryPath.trim()
+          ? value["claude-code"].binaryPath.trim()
+          : "claude",
+      launchArgs:
+        typeof value?.["claude-code"]?.launchArgs === "string"
+          ? value["claude-code"].launchArgs.trim()
+          : "",
+      customModels: normalizeProviderCustomModels(
+        value?.["claude-code"]?.customModels as string[] | undefined
+      ),
+    },
+    opencode: {
+      enabled: value?.opencode?.enabled === false ? false : true,
+      binaryPath:
+        typeof value?.opencode?.binaryPath === "string" && value.opencode.binaryPath.trim()
+          ? value.opencode.binaryPath.trim()
+          : "opencode",
+      serverUrl:
+        typeof value?.opencode?.serverUrl === "string" ? value.opencode.serverUrl.trim() : "",
+      serverPassword:
+        typeof value?.opencode?.serverPassword === "string"
+          ? value.opencode.serverPassword.trim()
+          : "",
+      customModels: normalizeProviderCustomModels(value?.opencode?.customModels as string[] | undefined),
+    },
+  }
+}
+
 function buildPersistedSettings(source: Partial<PersistedSettings>): PersistedSettings {
   return {
     appearanceThemeId: normalizeAppearanceThemeId(source.appearanceThemeId),
@@ -203,6 +290,7 @@ function buildPersistedSettings(source: Partial<PersistedSettings>): PersistedSe
     gitResolvePrompts: normalizeGitResolvePrompts(source.gitResolvePrompts),
     workspaceSetupModel: normalizeWorkspaceSetupModel(source.workspaceSetupModel),
     harnessDefaults: normalizeHarnessDefaults(source.harnessDefaults),
+    providerSettings: normalizeProviderSettings(source.providerSettings),
     favoriteModels: normalizeFavoriteModels(source.favoriteModels),
   }
 }
@@ -219,6 +307,7 @@ function selectPersistedSettings(
     gitResolvePrompts: state.gitResolvePrompts,
     workspaceSetupModel: state.workspaceSetupModel,
     harnessDefaults: state.harnessDefaults,
+    providerSettings: state.providerSettings,
     favoriteModels: state.favoriteModels,
   })
 }
@@ -242,6 +331,7 @@ function schedulePersist(settings: PersistedSettings): void {
         await store.set(GIT_RESOLVE_PROMPTS_KEY, settings.gitResolvePrompts)
         await store.set(WORKSPACE_SETUP_MODEL_KEY, settings.workspaceSetupModel)
         await store.set(HARNESS_DEFAULTS_KEY, settings.harnessDefaults)
+        await store.set(PROVIDER_SETTINGS_KEY, settings.providerSettings)
         await store.set(FAVORITE_MODELS_KEY, settings.favoriteModels)
         await store.delete(CODEX_DEFAULT_MODEL_KEY)
         await store.delete(CODEX_DEFAULT_REASONING_EFFORT_KEY)
@@ -298,6 +388,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
             await store.get<Partial<Record<HarnessId, Partial<HarnessDefaults>>>>(
               HARNESS_DEFAULTS_KEY
             )
+          const savedProviderSettings =
+            await store.get<Partial<Record<HarnessId, Record<string, unknown>>>>(
+              PROVIDER_SETTINGS_KEY
+            )
           const savedFavoriteModels = await store.get<string[]>(FAVORITE_MODELS_KEY)
           const savedCodexDefaultModel = await store.get<string>(CODEX_DEFAULT_MODEL_KEY)
           const savedCodexDefaultReasoningEffort = await store.get<string>(
@@ -319,6 +413,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
             gitResolvePrompts: savedResolvePrompts,
             workspaceSetupModel: savedWorkspaceSetupModel,
             favoriteModels: normalizeFavoriteModels(savedFavoriteModels),
+            providerSettings: normalizeProviderSettings(savedProviderSettings),
             harnessDefaults: normalizeHarnessDefaults({
               ...savedHarnessDefaults,
               codex: {
@@ -538,6 +633,79 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
       }
       set({ harnessDefaults: nextHarnessDefaults })
       persistWith({ harnessDefaults: nextHarnessDefaults })
+    },
+
+    setProviderEnabled: (harnessId, enabled) => {
+      const next = {
+        ...get().providerSettings,
+        [harnessId]: {
+          ...get().providerSettings[harnessId],
+          enabled,
+        },
+      }
+      set({ providerSettings: next })
+      persistWith({ providerSettings: next })
+    },
+
+    setProviderBinaryPath: (harnessId, binaryPath) => {
+      const fallback = DEFAULT_PROVIDER_SETTINGS[harnessId].binaryPath
+      const next = {
+        ...get().providerSettings,
+        [harnessId]: {
+          ...get().providerSettings[harnessId],
+          binaryPath: binaryPath.trim() || fallback,
+        },
+      }
+      set({ providerSettings: next })
+      persistWith({ providerSettings: next })
+    },
+
+    setProviderHomePath: (homePath) => {
+      const next = {
+        ...get().providerSettings,
+        codex: {
+          ...get().providerSettings.codex,
+          homePath: homePath.trim(),
+        },
+      }
+      set({ providerSettings: next })
+      persistWith({ providerSettings: next })
+    },
+
+    setProviderLaunchArgs: (launchArgs) => {
+      const next = {
+        ...get().providerSettings,
+        "claude-code": {
+          ...get().providerSettings["claude-code"],
+          launchArgs: launchArgs.trim(),
+        },
+      }
+      set({ providerSettings: next })
+      persistWith({ providerSettings: next })
+    },
+
+    setOpenCodeServerUrl: (serverUrl) => {
+      const next = {
+        ...get().providerSettings,
+        opencode: {
+          ...get().providerSettings.opencode,
+          serverUrl: serverUrl.trim(),
+        },
+      }
+      set({ providerSettings: next })
+      persistWith({ providerSettings: next })
+    },
+
+    setOpenCodeServerPassword: (serverPassword) => {
+      const next = {
+        ...get().providerSettings,
+        opencode: {
+          ...get().providerSettings.opencode,
+          serverPassword: serverPassword.trim(),
+        },
+      }
+      set({ providerSettings: next })
+      persistWith({ providerSettings: next })
     },
 
     toggleFavoriteModel: (modelKey) => {

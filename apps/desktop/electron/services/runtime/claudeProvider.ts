@@ -31,6 +31,7 @@ import {
   type RuntimeSession,
 } from "@/features/chat/types"
 import type { RuntimeProviderAdapter, RuntimeProviderContext } from "./providerTypes"
+import type { ProviderSettingsService } from "./providerSettings"
 
 const CLAUDE_MODEL_CACHE_TTL_MS = 5 * 60 * 1000
 const CLAUDE_COMMAND_CACHE_TTL_MS = 5 * 60 * 1000
@@ -79,6 +80,51 @@ function sanitizeClaudeModelToken(value: string): string {
 
 function sanitizeClaudeCommandToken(value: string): string {
   return sanitizeClaudeModelToken(value).replace(/^\/+/, "").trim()
+}
+
+function splitLaunchArgs(value: string): string[] {
+  const tokens: string[] = []
+  const pattern = /"([^"]*)"|'([^']*)'|(\S+)/g
+  let match: RegExpExecArray | null
+
+  while ((match = pattern.exec(value)) != null) {
+    tokens.push(match[1] ?? match[2] ?? match[3] ?? "")
+  }
+
+  return tokens.filter((token) => token.length > 0)
+}
+
+function parseClaudeExtraArgs(launchArgs: string): Record<string, string | null> | undefined {
+  const tokens = splitLaunchArgs(launchArgs)
+  if (tokens.length === 0) {
+    return undefined
+  }
+
+  const extraArgs: Record<string, string | null> = {}
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index]
+    if (!token.startsWith("--")) {
+      continue
+    }
+
+    const normalized = token.slice(2)
+    const equalsIndex = normalized.indexOf("=")
+    if (equalsIndex >= 0) {
+      extraArgs[normalized.slice(0, equalsIndex)] = normalized.slice(equalsIndex + 1)
+      continue
+    }
+
+    const nextToken = tokens[index + 1]
+    if (nextToken && !nextToken.startsWith("--")) {
+      extraArgs[normalized] = nextToken
+      index += 1
+      continue
+    }
+
+    extraArgs[normalized] = null
+  }
+
+  return Object.keys(extraArgs).length > 0 ? extraArgs : undefined
 }
 
 interface ClaudePersistedState {
@@ -476,7 +522,10 @@ export class ClaudeRuntimeProvider implements RuntimeProviderAdapter {
   private commandCache = new Map<string, { commands: RuntimeCommand[]; fetchedAt: number }>()
   private commandRequests = new Map<string, Promise<RuntimeCommand[]>>()
 
-  constructor(private readonly context: RuntimeProviderContext) {}
+  constructor(
+    private readonly context: RuntimeProviderContext,
+    private readonly providerSettingsService?: ProviderSettingsService
+  ) {}
 
   async createSession(
     projectPath: string,
@@ -707,6 +756,16 @@ export class ClaudeRuntimeProvider implements RuntimeProviderAdapter {
     return restored
   }
 
+  private async getClaudeExecutablePath(): Promise<string | undefined> {
+    const settings = await this.providerSettingsService?.getProviderSettings("claude-code")
+    return settings?.binaryPath.trim() || process.env.NUCLEUS_CLAUDE_PATH?.trim() || undefined
+  }
+
+  private async getClaudeExtraArgs(): Promise<Record<string, string | null> | undefined> {
+    const settings = await this.providerSettingsService?.getProviderSettings("claude-code")
+    return parseClaudeExtraArgs(settings?.launchArgs ?? "")
+  }
+
   private async ensureQuery(state: ClaudeSessionState, input: HarnessTurnInput): Promise<void> {
     const requestedModel = input.model ?? state.model ?? null
     const requestedFastMode =
@@ -750,9 +809,10 @@ export class ClaudeRuntimeProvider implements RuntimeProviderAdapter {
       includePartialMessages: true,
       settingSources: ["user", "project", "local"],
       ...(requestedFastMode ? { settings: { fastMode: true } } : {}),
+      extraArgs: await this.getClaudeExtraArgs(),
       canUseTool,
       onElicitation,
-      pathToClaudeCodeExecutable: process.env.NUCLEUS_CLAUDE_PATH?.trim() || undefined,
+      pathToClaudeCodeExecutable: await this.getClaudeExecutablePath(),
       stderr: (data) => {
         const trimmed = data.trim()
         if (trimmed) {
@@ -952,6 +1012,7 @@ export class ClaudeRuntimeProvider implements RuntimeProviderAdapter {
   }
 
   private async loadModelsFromSdk(): Promise<RuntimeModel[]> {
+    const pathToClaudeCodeExecutable = await this.getClaudeExecutablePath()
     const probe = query({
       prompt: ".",
       options: {
@@ -959,7 +1020,7 @@ export class ClaudeRuntimeProvider implements RuntimeProviderAdapter {
         persistSession: false,
         maxTurns: 0,
         settingSources: ["user", "project", "local"],
-        pathToClaudeCodeExecutable: process.env.NUCLEUS_CLAUDE_PATH?.trim() || undefined,
+        pathToClaudeCodeExecutable,
         stderr: (data) => {
           const trimmed = data.trim()
           if (trimmed) {
@@ -1013,6 +1074,7 @@ export class ClaudeRuntimeProvider implements RuntimeProviderAdapter {
 
   private async loadCommandsFromSdk(projectPath?: string): Promise<RuntimeCommand[]> {
     const cwd = projectPath?.trim() || process.cwd()
+    const pathToClaudeCodeExecutable = await this.getClaudeExecutablePath()
     const probe = query({
       prompt: ".",
       options: {
@@ -1020,7 +1082,7 @@ export class ClaudeRuntimeProvider implements RuntimeProviderAdapter {
         persistSession: false,
         maxTurns: 0,
         settingSources: ["user", "project", "local"],
-        pathToClaudeCodeExecutable: process.env.NUCLEUS_CLAUDE_PATH?.trim() || undefined,
+        pathToClaudeCodeExecutable,
         stderr: (data) => {
           const trimmed = data.trim()
           if (trimmed) {

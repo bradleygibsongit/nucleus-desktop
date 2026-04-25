@@ -125,9 +125,7 @@ describe("CodexServerService", () => {
 
     const service = new CodexServerService(() => {})
 
-    await expect(service.ensureServer()).rejects.toThrow(
-      "Unable to find the Codex CLI"
-    )
+    await expect(service.ensureServer()).rejects.toThrow("Unable to find codex")
     expect(spawnMock).not.toHaveBeenCalled()
   })
 
@@ -180,5 +178,32 @@ describe("CodexServerService", () => {
       service.send(JSON.stringify({ jsonrpc: "2.0", id: 9, method: "turn/start" }))
     ).rejects.toThrow("write failed")
     expect(service.getActiveTurnCount()).toBe(0)
+  })
+
+  test("emits MCP auth diagnostics from Codex stderr", async () => {
+    executablePaths.add("/Users/tester/.bun/bin/codex")
+
+    const diagnostics: unknown[] = []
+    const service = new CodexServerService(() => {})
+    service.onDiagnostic((diagnostic) => diagnostics.push(diagnostic))
+
+    await service.ensureServer()
+    const child = pendingChildren[0]
+
+    if (!child) {
+      throw new Error("Expected a spawned child process")
+    }
+
+    child.stderr.write(
+      '2026-04-25T10:48:56Z ERROR rmcp::transport::worker: worker quit with fatal: Transport channel closed, when Auth(TokenRefreshFailed("Server returned error response: invalid_grant: Invalid refresh token"))\n'
+    )
+
+    expect(diagnostics).toEqual([
+      expect.objectContaining({
+        kind: "mcp-auth",
+        severity: "warning",
+        message: expect.stringContaining("refresh token expired"),
+      }),
+    ])
   })
 })

@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion"
 import { ChevronDownIcon } from "@/components/icons"
 import { cn } from "@/lib/utils"
 import { Button } from "@/features/shared/components/ui/button"
+import { Badge } from "@/features/shared/components/ui/badge"
 import {
   Collapsible,
   CollapsibleContent,
@@ -23,8 +24,10 @@ import {
   SelectValue,
 } from "@/features/shared/components/ui/select"
 import { SearchableSelect } from "@/features/shared/components/ui/searchable-select"
+import { Input } from "@/features/shared/components/ui/input"
 import { Switch } from "@/features/shared/components/ui/switch"
 import { Textarea } from "@/features/shared/components/ui/textarea"
+import { desktop } from "@/desktop/client"
 import { getHarnessDefinition } from "@/features/chat/runtime/harnesses"
 import { useModels } from "@/features/chat/hooks/useModels"
 import { getRuntimeModelLabel } from "@/features/chat/domain/runtimeModels"
@@ -50,7 +53,7 @@ import {
   GIT_RESOLVE_REASONS,
   GIT_RESOLVE_TEMPLATE_VARIABLES,
 } from "@/features/shared/components/layout/gitResolve"
-import type { GitPullRequestResolveReason } from "@/desktop/contracts"
+import type { GitPullRequestResolveReason, RuntimeProviderStatus } from "@/desktop/contracts"
 
 interface SettingsPageProps {
   activeSection: SettingsSectionId
@@ -63,6 +66,48 @@ const RESOLVE_REASON_LABELS: Record<GitPullRequestResolveReason, string> = {
   blocked: "Blocked",
   draft: "Draft PR",
   unknown: "Unknown reason",
+}
+
+function getProviderStatusLabel(status: RuntimeProviderStatus | null | undefined): string {
+  if (!status) {
+    return "Not checked"
+  }
+
+  if (!status.enabled) {
+    return "Disabled"
+  }
+
+  if (!status.installed) {
+    return "Missing CLI"
+  }
+
+  if (status.auth.status === "authenticated") {
+    return "Ready"
+  }
+
+  if (status.auth.status === "unauthenticated") {
+    return "Needs auth"
+  }
+
+  return "Installed"
+}
+
+function getProviderStatusVariant(
+  status: RuntimeProviderStatus | null | undefined
+): "default" | "secondary" | "destructive" | "outline" {
+  if (!status || !status.enabled) {
+    return "outline"
+  }
+
+  if (!status.installed || status.auth.status === "unauthenticated") {
+    return "destructive"
+  }
+
+  if (status.auth.status === "authenticated") {
+    return "default"
+  }
+
+  return "secondary"
 }
 
 function useHarnessModelsState(harnessId: HarnessId) {
@@ -486,6 +531,7 @@ function HarnessSettingsSection({ harnessId }: { harnessId: HarnessId }) {
   const harnessDefinition = getHarnessDefinition(harnessId)
   const harnessLabel = harnessDefinition.label
   const harnessDefaults = useSettingsStore((state) => state.harnessDefaults)
+  const providerSettings = useSettingsStore((state) => state.providerSettings)
   const hasLoaded = useSettingsStore((state) => state.hasLoaded)
   const initialize = useSettingsStore((state) => state.initialize)
   const setHarnessDefaultModel = useSettingsStore((state) => state.setHarnessDefaultModel)
@@ -500,6 +546,18 @@ function HarnessSettingsSection({ harnessId }: { harnessId: HarnessId }) {
   const resetHarnessDefaultFastMode = useSettingsStore(
     (state) => state.resetHarnessDefaultFastMode
   )
+  const setProviderEnabled = useSettingsStore((state) => state.setProviderEnabled)
+  const setProviderBinaryPath = useSettingsStore((state) => state.setProviderBinaryPath)
+  const setProviderHomePath = useSettingsStore((state) => state.setProviderHomePath)
+  const setProviderLaunchArgs = useSettingsStore((state) => state.setProviderLaunchArgs)
+  const setOpenCodeServerUrl = useSettingsStore((state) => state.setOpenCodeServerUrl)
+  const setOpenCodeServerPassword = useSettingsStore(
+    (state) => state.setOpenCodeServerPassword
+  )
+  const [providerStatuses, setProviderStatuses] = useState<
+    Partial<Record<HarnessId, RuntimeProviderStatus>>
+  >({})
+  const [isRefreshingProvider, setIsRefreshingProvider] = useState(false)
   const isSettingsLoading = !hasLoaded
   const { availableModels, isLoadingModels, loadError, runtimeDefaultModel } = useHarnessModelsState(harnessId)
 
@@ -507,7 +565,53 @@ function HarnessSettingsSection({ harnessId }: { harnessId: HarnessId }) {
     void initialize()
   }, [initialize])
 
+  useEffect(() => {
+    let isCancelled = false
+
+    void desktop.runtime.listProviderStatuses().then((result) => {
+      if (isCancelled) {
+        return
+      }
+
+      setProviderStatuses(
+        result.statuses.reduce<Partial<Record<HarnessId, RuntimeProviderStatus>>>(
+          (accumulator, status) => {
+            accumulator[status.harnessId] = status
+            return accumulator
+          },
+          {}
+        )
+      )
+    }).catch((error) => {
+      console.error("Failed to load provider statuses:", error)
+    })
+
+    return () => {
+      isCancelled = true
+    }
+  }, [])
+
+  const refreshProviderStatus = async () => {
+    setIsRefreshingProvider(true)
+    try {
+      const result = await desktop.runtime.refreshProviderStatus({ harnessId })
+      const nextStatus = result.statuses[0]
+      if (nextStatus) {
+        setProviderStatuses((current) => ({
+          ...current,
+          [harnessId]: nextStatus,
+        }))
+      }
+    } catch (error) {
+      console.error(`Failed to refresh ${harnessId} provider status:`, error)
+    } finally {
+      setIsRefreshingProvider(false)
+    }
+  }
+
   const defaults = harnessDefaults[harnessId]
+  const provider = providerSettings[harnessId]
+  const providerStatus = providerStatuses[harnessId]
   const defaultModelValue = defaults.model
   const defaultReasoningEffortValue = defaults.reasoningEffort
   const defaultFastModeValue = defaults.fastMode
@@ -585,6 +689,139 @@ function HarnessSettingsSection({ harnessId }: { harnessId: HarnessId }) {
           <p className="text-sm text-muted-foreground">
             {introCopy}
           </p>
+        </div>
+
+        <div className="rounded-lg border border-border/70 bg-background/45 px-3 py-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-sm font-medium text-card-foreground">
+                  {harnessLabel} provider
+                </h3>
+                <Badge variant={getProviderStatusVariant(providerStatus)}>
+                  {getProviderStatusLabel(providerStatus)}
+                </Badge>
+                {providerStatus?.version ? (
+                  <span className="text-xs text-muted-foreground">{providerStatus.version}</span>
+                ) : null}
+              </div>
+              <p className="text-xs leading-5 text-muted-foreground">
+                Configure the local CLI Nucleus should use when launching this coding provider.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={refreshProviderStatus}
+              disabled={isRefreshingProvider}
+            >
+              {isRefreshingProvider ? "Refreshing..." : "Refresh"}
+            </Button>
+          </div>
+
+          <FieldGroup className="mt-4 gap-4">
+            <Field orientation="horizontal" className="items-start gap-3">
+              <div className="flex-1 space-y-1">
+                <FieldTitle>Enable provider</FieldTitle>
+                <FieldDescription>
+                  Disabled providers stay hidden from status checks and model loading.
+                </FieldDescription>
+              </div>
+              <Switch
+                checked={provider.enabled}
+                onCheckedChange={(checked) => setProviderEnabled(harnessId, checked === true)}
+                disabled={isSettingsLoading}
+                aria-label={`Toggle ${harnessLabel} provider`}
+              />
+            </Field>
+
+            <Field>
+              <FieldTitle>Binary path</FieldTitle>
+              <FieldDescription>
+                Use the command name when it is on PATH, or paste the full executable path.
+              </FieldDescription>
+              <Input
+                className="mt-2 font-mono"
+                value={provider.binaryPath}
+                onChange={(event) => setProviderBinaryPath(harnessId, event.target.value)}
+                disabled={isSettingsLoading}
+                spellCheck={false}
+              />
+            </Field>
+
+            {harnessId === "codex" ? (
+              <Field>
+                <FieldTitle>Codex home path</FieldTitle>
+                <FieldDescription>
+                  Optional. Leave empty to use the default Codex configuration directory.
+                </FieldDescription>
+                <Input
+                  className="mt-2 font-mono"
+                  value={providerSettings.codex.homePath}
+                  onChange={(event) => setProviderHomePath(event.target.value)}
+                  disabled={isSettingsLoading}
+                  spellCheck={false}
+                  placeholder="Default Codex home"
+                />
+              </Field>
+            ) : null}
+
+            {harnessId === "claude-code" ? (
+              <Field>
+                <FieldTitle>Launch args</FieldTitle>
+                <FieldDescription>
+                  Optional arguments passed through when launching Claude Code sessions.
+                </FieldDescription>
+                <Input
+                  className="mt-2 font-mono"
+                  value={providerSettings["claude-code"].launchArgs}
+                  onChange={(event) => setProviderLaunchArgs(event.target.value)}
+                  disabled={isSettingsLoading}
+                  spellCheck={false}
+                  placeholder="No extra args"
+                />
+              </Field>
+            ) : null}
+
+            {harnessId === "opencode" ? (
+              <>
+                <Field>
+                  <FieldTitle>Server URL</FieldTitle>
+                  <FieldDescription>
+                    Optional. Set this when OpenCode is already running outside Nucleus.
+                  </FieldDescription>
+                  <Input
+                    className="mt-2 font-mono"
+                    value={providerSettings.opencode.serverUrl}
+                    onChange={(event) => setOpenCodeServerUrl(event.target.value)}
+                    disabled={isSettingsLoading}
+                    spellCheck={false}
+                    placeholder="Managed local server"
+                  />
+                </Field>
+                <Field>
+                  <FieldTitle>Server password</FieldTitle>
+                  <FieldDescription>
+                    Optional password for an externally managed OpenCode server.
+                  </FieldDescription>
+                  <Input
+                    className="mt-2 font-mono"
+                    type="password"
+                    value={providerSettings.opencode.serverPassword}
+                    onChange={(event) => setOpenCodeServerPassword(event.target.value)}
+                    disabled={isSettingsLoading}
+                    spellCheck={false}
+                    placeholder="No password"
+                  />
+                </Field>
+              </>
+            ) : null}
+
+            {providerStatus?.message ? (
+              <p className="text-xs leading-5 text-muted-foreground">{providerStatus.message}</p>
+            ) : null}
+          </FieldGroup>
         </div>
 
         <FieldGroup className="gap-4">

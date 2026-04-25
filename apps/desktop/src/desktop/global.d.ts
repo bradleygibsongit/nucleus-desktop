@@ -33,6 +33,8 @@ import type {
   RuntimeListAgentsInput,
   RuntimeListCommandsInput,
   RuntimeListModelsInput,
+  RuntimeProviderStatusesResult,
+  RuntimeRefreshProviderStatusInput,
   RuntimeSearchFilesInput,
   RuntimeModelsResult,
   RuntimeFileSearchResultSet,
@@ -109,6 +111,10 @@ declare global {
       runtime: {
         createSession: (input: RuntimeCreateSessionInput) => Promise<RuntimeSessionResult>
         listModels: (input: RuntimeListModelsInput) => Promise<RuntimeModelsResult>
+        listProviderStatuses: () => Promise<RuntimeProviderStatusesResult>
+        refreshProviderStatus: (
+          input: RuntimeRefreshProviderStatusInput
+        ) => Promise<RuntimeProviderStatusesResult>
         listAgents: (input: RuntimeListAgentsInput) => Promise<RuntimeAgentsResult>
         listCommands: (input: RuntimeListCommandsInput) => Promise<RuntimeCommandsResult>
         searchFiles: (input: RuntimeSearchFilesInput) => Promise<RuntimeFileSearchResultSet>

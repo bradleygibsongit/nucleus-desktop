@@ -32,6 +32,8 @@ import type {
   RuntimeListAgentsInput,
   RuntimeListCommandsInput,
   RuntimeListModelsInput,
+  RuntimeProviderStatusesResult,
+  RuntimeRefreshProviderStatusInput,
   RuntimeSearchFilesInput,
   RuntimeModelsResult,
   RuntimeFileSearchResultSet,
@@ -132,6 +134,15 @@ contextBridge.exposeInMainWorld("nucleus", {
       ipcRenderer.invoke(IPC_CHANNELS.runtimeCreateSession, input) as Promise<RuntimeSessionResult>,
     listModels: (input: RuntimeListModelsInput) =>
       ipcRenderer.invoke(IPC_CHANNELS.runtimeListModels, input) as Promise<RuntimeModelsResult>,
+    listProviderStatuses: () =>
+      ipcRenderer.invoke(
+        IPC_CHANNELS.runtimeListProviderStatuses
+      ) as Promise<RuntimeProviderStatusesResult>,
+    refreshProviderStatus: (input: RuntimeRefreshProviderStatusInput) =>
+      ipcRenderer.invoke(
+        IPC_CHANNELS.runtimeRefreshProviderStatus,
+        input
+      ) as Promise<RuntimeProviderStatusesResult>,
     listAgents: (input: RuntimeListAgentsInput) =>
       ipcRenderer.invoke(IPC_CHANNELS.runtimeListAgents, input) as Promise<RuntimeAgentsResult>,
     listCommands: (input: RuntimeListCommandsInput) =>

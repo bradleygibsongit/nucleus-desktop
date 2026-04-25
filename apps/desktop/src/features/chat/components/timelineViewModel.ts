@@ -138,6 +138,10 @@ function getApprovalDisplayState(
   return "denied"
 }
 
+function isAssistantWorkMessage(message: MessageWithParts): boolean {
+  return message.info.role === "assistant" && message.info.itemType !== "providerNotice"
+}
+
 function buildApprovalTimelineMessage(
   activePromptState: RuntimePromptState,
   approvalDisplayState: RuntimeApprovalDisplayState
@@ -277,14 +281,14 @@ export function buildChatTimelineViewModel({
 
   const latestTurnMessages = renderedMessages.slice(latestTurnStartIndex)
   const latestTurnFooterMessage =
-    [...latestTurnMessages].reverse().find((message) => message.info.role === "assistant") ?? null
+    [...latestTurnMessages].reverse().find(isAssistantWorkMessage) ?? null
   const latestTurnFooterMessageId = latestTurnFooterMessage?.info.id ?? null
   const latestTurnStreamingTextMessageId =
     [...latestTurnMessages]
       .reverse()
       .find(
         (message) =>
-          message.info.role === "assistant" &&
+          isAssistantWorkMessage(message) &&
           message.parts.some((part) => part.type === "text" && part.text.trim())
       )?.info.id ?? null
   const changeTotals = new Map<string, { added: number; removed: number; changes: TimelineFileChangeEntry[] }>()
@@ -322,6 +326,10 @@ export function buildChatTimelineViewModel({
       continue
     }
 
+    if (message.info.itemType === "providerNotice") {
+      continue
+    }
+
     const turnId = message.info.turnId
     if (!turnId) {
       continue
@@ -351,7 +359,7 @@ export function buildChatTimelineViewModel({
   }
 
   for (const message of renderedMessages) {
-    if (message.info.role !== "assistant") {
+    if (!isAssistantWorkMessage(message)) {
       continue
     }
 

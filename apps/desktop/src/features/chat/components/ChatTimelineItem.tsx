@@ -8,6 +8,7 @@ import {
   Eye,
   Globe,
   Image,
+  InformationCircle,
   MagnifyingGlass,
   PencilSimple,
   Robot,
@@ -136,6 +137,31 @@ function TimelineTextBlock({
           </MessageResponse>
         </div>
       </MessageContent>
+    </MessageComponent>
+  )
+}
+
+function TimelineNoticeBlock({
+  text,
+  withinGroup = false,
+}: {
+  text: string
+  withinGroup?: boolean
+}) {
+  const content = (
+    <div className="inline-flex max-w-full items-start gap-2 py-1 text-[13px] leading-5 text-muted-foreground">
+      <InformationCircle className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/70" />
+      <span className="min-w-0 flex-1">{text}</span>
+    </div>
+  )
+
+  if (withinGroup) {
+    return content
+  }
+
+  return (
+    <MessageComponent from="assistant">
+      <MessageContent>{content}</MessageContent>
     </MessageComponent>
   )
 }
@@ -855,6 +881,10 @@ export function ChatTimelineItem({
 
   const itemType = message.info.itemType
   const phase = message.info.phase
+
+  if (itemType === "providerNotice") {
+    return <TimelineNoticeBlock text={text} withinGroup={withinGroup} />
+  }
 
   if (itemType === "reasoning") {
     return (

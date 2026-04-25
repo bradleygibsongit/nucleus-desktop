@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
 import {
   DEFAULT_RUNTIME_MODE,
   type HarnessPromptInput,
@@ -41,6 +44,7 @@ import {
 import { waitForCodexTurnCompletion } from "@/features/chat/runtime/codexTurnTracker"
 import type { CodexServerService } from "../codexServer"
 import { MainCodexRpcClient } from "./codexRpcClient"
+import type { ProviderSettingsService } from "./providerSettings"
 import type { RuntimeProviderAdapter, RuntimeProviderContext } from "./providerTypes"
 
 type CodexSessionPermissionPreset = {
@@ -56,6 +60,68 @@ type CodexTurnSandboxPolicy =
 const CODEX_REASONING_SUMMARY = "detailed" as const
 const CODEX_MODEL_CACHE_TTL_MS = 30 * 60 * 1000
 const CODEX_REASONING_SUMMARY_PARAM = "reasoning.summary"
+
+function parseGptReleaseModelId(modelId: string | null | undefined): {
+  major: number
+  minor: number
+} | null {
+  const match = modelId?.trim().match(/^gpt-(\d+)\.(\d+)$/)
+  if (!match) {
+    return null
+  }
+
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+  }
+}
+
+function compareGptReleaseModelIds(leftId: string, rightId: string): number {
+  const left = parseGptReleaseModelId(leftId)
+  const right = parseGptReleaseModelId(rightId)
+
+  if (!left && !right) {
+    return 0
+  }
+
+  if (!left) {
+    return -1
+  }
+
+  if (!right) {
+    return 1
+  }
+
+  return left.major - right.major || left.minor - right.minor
+}
+
+function applyCodexDefaultModel(models: RuntimeModel[]): RuntimeModel[] {
+  if (models.some((model) => model.isDefault)) {
+    return models
+  }
+
+  const inferredDefault = models
+    .filter((model) => parseGptReleaseModelId(model.id) != null)
+    .sort((left, right) => compareGptReleaseModelIds(right.id, left.id))[0]
+
+  if (!inferredDefault) {
+    return models
+  }
+
+  return models.map((model) => ({
+    ...model,
+    isDefault: model.id === inferredDefault.id,
+  }))
+}
+
+function parseTomlStringValue(content: string, key: string): string | null {
+  const match = content.match(new RegExp(`^${key}\\s*=\\s*\"([^\"]+)\"`, "m"))
+  return match?.[1]?.trim() || null
+}
+
+function getFallbackReasoningEfforts(modelId: string): string[] {
+  return parseGptReleaseModelId(modelId) ? ["low", "medium", "high", "xhigh"] : []
+}
 
 function extractErrorText(error: unknown): string {
   if (typeof error === "string") {
@@ -75,6 +141,36 @@ function extractErrorText(error: unknown): string {
   }
 
   return String(error)
+}
+
+function createProviderNoticeMessage(input: {
+  sessionId: string
+  turnId: string
+  index: number
+  message: string
+}): HarnessTurnResult["messages"] {
+  const itemId = `codex-provider-notice:${input.turnId}:${input.index}`
+
+  return [
+    {
+      info: {
+        id: `${itemId}:message`,
+        sessionId: input.sessionId,
+        role: "assistant",
+        createdAt: Date.now(),
+        itemType: "providerNotice",
+        phase: "runtime",
+        turnId: input.turnId,
+      },
+      parts: [
+        {
+          id: `${itemId}:text`,
+          type: "text",
+          text: input.message,
+        },
+      ],
+    },
+  ]
 }
 
 function isUnsupportedReasoningSummaryError(error: unknown): boolean {
@@ -154,7 +250,8 @@ export class CodexRuntimeProvider implements RuntimeProviderAdapter {
 
   constructor(
     private readonly context: RuntimeProviderContext,
-    codexServerService: CodexServerService
+    private readonly codexServerService: CodexServerService,
+    private readonly providerSettingsService?: ProviderSettingsService
   ) {
     this.rpc = new MainCodexRpcClient(codexServerService)
   }
@@ -250,7 +347,11 @@ export class CodexRuntimeProvider implements RuntimeProviderAdapter {
       cursor = response.nextCursor
     } while (cursor)
 
-    return Array.from(new Map(models.map((model) => [model.id, model])).values()).sort(
+    return applyCodexDefaultModel(
+      await this.mergeConfiguredCodexModel(
+        Array.from(new Map(models.map((model) => [model.id, model])).values())
+      )
+    ).sort(
       (left, right) => {
         if (left.isDefault !== right.isDefault) {
           return left.isDefault ? -1 : 1
@@ -259,6 +360,65 @@ export class CodexRuntimeProvider implements RuntimeProviderAdapter {
         return left.displayName.localeCompare(right.displayName)
       }
     )
+  }
+
+  private async mergeConfiguredCodexModel(models: RuntimeModel[]): Promise<RuntimeModel[]> {
+    const configuredModel = await this.readConfiguredCodexModel()
+    if (!configuredModel?.modelId) {
+      return models
+    }
+
+    const existingModel = models.find((model) => model.id === configuredModel.modelId)
+    if (existingModel) {
+      return models.map((model) => ({
+        ...model,
+        isDefault: model.id === configuredModel.modelId,
+        defaultReasoningEffort:
+          model.id === configuredModel.modelId
+            ? configuredModel.reasoningEffort ?? model.defaultReasoningEffort ?? null
+            : model.defaultReasoningEffort,
+      }))
+    }
+
+    return [
+      {
+        id: configuredModel.modelId,
+        displayName: getRuntimeModelLabel({
+          id: configuredModel.modelId,
+          displayName: configuredModel.modelId,
+        }),
+        isDefault: true,
+        defaultReasoningEffort: configuredModel.reasoningEffort ?? "medium",
+        supportedReasoningEfforts: getFallbackReasoningEfforts(configuredModel.modelId),
+        supportsFastMode: codexModelSupportsFastMode(configuredModel.modelId),
+      },
+      ...models.map((model) => ({
+        ...model,
+        isDefault: false,
+      })),
+    ]
+  }
+
+  private async readConfiguredCodexModel(): Promise<{
+    modelId: string
+    reasoningEffort: string | null
+  } | null> {
+    try {
+      const settings = await this.providerSettingsService?.getProviderSettings("codex")
+      const codexHome = settings?.homePath.trim() || process.env.CODEX_HOME || path.join(os.homedir(), ".codex")
+      const config = await readFile(path.join(codexHome, "config.toml"), "utf8")
+      const modelId = parseTomlStringValue(config, "model")
+      if (!modelId) {
+        return null
+      }
+
+      return {
+        modelId,
+        reasoningEffort: parseTomlStringValue(config, "model_reasoning_effort"),
+      }
+    } catch {
+      return null
+    }
   }
 
   async sendTurn(input: HarnessTurnInput): Promise<HarnessTurnResult> {
@@ -271,11 +431,41 @@ export class CodexRuntimeProvider implements RuntimeProviderAdapter {
       : this.defaultModelSupportsReasoningSummary
 
     let response: CodexTurnStartResponse
+    let activeTurnId: string | null = null
+    let noticeIndex = 0
+    const emittedNotices = new Set<string>()
+    const pendingNotices: string[] = []
+    const emitProviderNotice = (message: string) => {
+      if (emittedNotices.has(message)) {
+        return
+      }
+
+      if (!activeTurnId) {
+        pendingNotices.push(message)
+        return
+      }
+
+      emittedNotices.add(message)
+      const result = {
+        messages: createProviderNoticeMessage({
+          sessionId: threadId,
+          turnId: activeTurnId,
+          index: noticeIndex++,
+          message,
+        }),
+      }
+      input.onUpdate?.(result)
+      this.context.emitUpdate(threadId, this.harnessId, result)
+    }
+    const unsubscribeDiagnostics = this.codexServerService.onDiagnostic((diagnostic) => {
+      emitProviderNotice(diagnostic.message)
+    })
 
     try {
       response = await this.startTurn(input, threadId, shouldIncludeReasoningSummary)
     } catch (error) {
       if (!shouldIncludeReasoningSummary || !isUnsupportedReasoningSummaryError(error)) {
+        unsubscribeDiagnostics()
         throw error
       }
 
@@ -285,27 +475,41 @@ export class CodexRuntimeProvider implements RuntimeProviderAdapter {
         this.defaultModelSupportsReasoningSummary = false
       }
 
-      response = await this.startTurn(input, threadId, false)
+      try {
+        response = await this.startTurn(input, threadId, false)
+      } catch (retryError) {
+        unsubscribeDiagnostics()
+        throw retryError
+      }
     }
 
     const turnId = response.turn.id
+    activeTurnId = turnId
+    for (const notice of pendingNotices) {
+      emitProviderNotice(notice)
+    }
     this.activeTurns.set(threadId, turnId)
     input.onUpdate?.({})
 
-    const completedTurn = await waitForCodexTurnCompletion({
-      rpc: this.rpc as any,
-      threadId,
-      sessionId: threadId,
-      turnId,
-      onUpdate: (result) => {
-        input.onUpdate?.(result)
-        this.context.emitUpdate(threadId, this.harnessId, result)
-      },
-      pendingUserInputRequests: this.pendingUserInputRequests,
-      pendingApprovalRequests: this.pendingApprovalRequests,
-      pendingApprovalNotificationPrompts: this.pendingApprovalNotificationPrompts,
-    })
-    this.activeTurns.delete(threadId)
+    let completedTurn
+    try {
+      completedTurn = await waitForCodexTurnCompletion({
+        rpc: this.rpc as any,
+        threadId,
+        sessionId: threadId,
+        turnId,
+        onUpdate: (result) => {
+          input.onUpdate?.(result)
+          this.context.emitUpdate(threadId, this.harnessId, result)
+        },
+        pendingUserInputRequests: this.pendingUserInputRequests,
+        pendingApprovalRequests: this.pendingApprovalRequests,
+        pendingApprovalNotificationPrompts: this.pendingApprovalNotificationPrompts,
+      })
+    } finally {
+      unsubscribeDiagnostics()
+      this.activeTurns.delete(threadId)
+    }
 
     if (completedTurn?.status === "failed" && completedTurn.error?.message) {
       throw new Error(completedTurn.error.message)

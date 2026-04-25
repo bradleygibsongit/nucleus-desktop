@@ -1,156 +1,27 @@
-import { accessSync, constants, statSync } from "node:fs"
-import os from "node:os"
-import path from "node:path"
-import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
 import readline from "node:readline"
-import { promisify } from "node:util"
 import { EVENT_CHANNELS } from "../ipc/channels"
 import { capture, captureException } from "./analytics"
+import type { ProviderSettingsService } from "./runtime/providerSettings"
+import { resolveProviderCommand } from "./runtime/providerSettings"
 
 type EventSender = (channel: string, payload: unknown) => void
 
-const execFileAsync = promisify(execFile)
-const PATH_SEPARATOR = process.platform === "win32" ? ";" : ":"
-const CODEX_EXECUTABLE_NAME = process.platform === "win32" ? "codex.exe" : "codex"
-
-function isExecutableFile(filePath: string | null | undefined): filePath is string {
-  if (!filePath) {
-    return false
-  }
-
-  try {
-    accessSync(filePath, constants.X_OK)
-    return statSync(filePath).isFile()
-  } catch {
-    return false
-  }
-}
-
-function getShellCandidates(): string[] {
-  if (process.platform === "win32") {
-    return []
-  }
-
-  const candidates = [process.env.SHELL?.trim(), "/bin/zsh", "/bin/bash", "/bin/sh"]
-
-  return Array.from(
-    new Set(
-      candidates.filter(
-        (candidate): candidate is string =>
-          Boolean(candidate) && candidate.startsWith("/") && isExecutableFile(candidate)
-      )
-    )
-  )
-}
-
-function getCommonPathEntries(): string[] {
-  const homeDirectory = os.homedir()
-
-  if (process.platform === "win32") {
-    const localAppData = process.env.LOCALAPPDATA?.trim()
-    return [
-      process.env.USERPROFILE?.trim(),
-      localAppData ? path.join(localAppData, "Programs") : null,
-      localAppData ? path.join(localAppData, "Microsoft", "WinGet", "Links") : null,
-    ].filter((entry): entry is string => Boolean(entry))
-  }
-
-  return [
-    path.join(homeDirectory, ".bun", "bin"),
-    path.join(homeDirectory, ".local", "bin"),
-    "/opt/homebrew/bin",
-    "/usr/local/bin",
-    "/opt/local/bin",
-    "/usr/bin",
-    "/bin",
-    "/usr/sbin",
-    "/sbin",
-  ]
-}
-
-function splitPathEntries(pathValue: string | null | undefined): string[] {
-  return (pathValue ?? "")
-    .split(PATH_SEPARATOR)
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0)
-}
-
-function buildLaunchPath(additionalEntries: string[] = []): string {
-  return Array.from(
-    new Set([
-      ...splitPathEntries(process.env.PATH),
-      ...additionalEntries,
-      ...getCommonPathEntries(),
-    ])
-  ).join(PATH_SEPARATOR)
-}
-
-function findExecutableInPath(pathValue: string): string | null {
-  for (const directory of splitPathEntries(pathValue)) {
-    const candidate = path.join(directory, CODEX_EXECUTABLE_NAME)
-    if (isExecutableFile(candidate)) {
-      return candidate
-    }
-  }
-
-  return null
-}
-
-async function resolveCodexFromShell(): Promise<string | null> {
-  for (const shell of getShellCandidates()) {
-    try {
-      const { stdout } = await execFileAsync(shell, ["-lc", `command -v ${CODEX_EXECUTABLE_NAME}`], {
-        env: {
-          ...process.env,
-          HOME: os.homedir(),
-        },
-      })
-      const candidate = stdout.trim().split(/\r?\n/).find((line) => line.trim().length > 0) ?? null
-
-      if (isExecutableFile(candidate)) {
-        return candidate
-      }
-    } catch {
-      // Ignore shell lookup failures and continue to the next candidate.
-    }
-  }
-
-  return null
+export interface CodexServerDiagnostic {
+  kind: "mcp-auth"
+  severity: "warning"
+  message: string
+  rawMessage: string
 }
 
 export async function resolveCodexLaunchConfig(): Promise<{
   command: string
   env: NodeJS.ProcessEnv
 }> {
-  const configuredExecutable = process.env.NUCLEUS_CODEX_PATH?.trim() ?? null
-  if (configuredExecutable && !isExecutableFile(configuredExecutable)) {
-    throw new Error(
-      `NUCLEUS_CODEX_PATH points to a non-executable Codex binary: ${configuredExecutable}`
-    )
-  }
-
-  const mergedPath = buildLaunchPath(
-    configuredExecutable ? [path.dirname(configuredExecutable)] : []
-  )
-  const resolvedExecutable =
-    configuredExecutable ??
-    findExecutableInPath(mergedPath) ??
-    (await resolveCodexFromShell())
-
-  if (!resolvedExecutable) {
-    throw new Error(
-      "Unable to find the Codex CLI. Install `codex`, add it to your PATH, or set NUCLEUS_CODEX_PATH to the full executable path."
-    )
-  }
-
-  return {
-    command: resolvedExecutable,
-    env: {
-      ...process.env,
-      HOME: os.homedir(),
-      PATH: buildLaunchPath([path.dirname(resolvedExecutable)]),
-    },
-  }
+  return resolveProviderCommand({
+    binaryPath: process.env.NUCLEUS_CODEX_PATH?.trim() || "codex",
+    executableName: process.platform === "win32" ? "codex.exe" : "codex",
+  })
 }
 
 function waitForSpawn(child: ChildProcessWithoutNullStreams): Promise<void> {
@@ -192,8 +63,12 @@ export class CodexServerService {
   private readonly activeTurnIds = new Set<string>()
   private readonly messageListeners = new Set<(message: string) => void>()
   private readonly statusListeners = new Set<(status: string) => void>()
+  private readonly diagnosticListeners = new Set<(diagnostic: CodexServerDiagnostic) => void>()
 
-  constructor(private readonly sendEvent: EventSender) {}
+  constructor(
+    private readonly sendEvent: EventSender,
+    private readonly providerSettingsService?: ProviderSettingsService
+  ) {}
 
   async ensureServer(): Promise<string> {
     if (this.process && this.process.exitCode == null && !this.process.killed) {
@@ -203,7 +78,14 @@ export class CodexServerService {
     let hasReportedUnexpectedExit = false
     this.isDisposingProcess = false
 
-    const { command, env } = await resolveCodexLaunchConfig()
+    const settings = await this.providerSettingsService?.getProviderSettings("codex")
+    const { command, env } = settings
+      ? await resolveProviderCommand({
+          binaryPath: settings.binaryPath,
+          executableName: process.platform === "win32" ? "codex.exe" : "codex",
+          envOverride: settings.homePath ? { CODEX_HOME: settings.homePath } : undefined,
+        })
+      : await resolveCodexLaunchConfig()
     const child = spawn(command, ["app-server"], {
       stdio: "pipe",
       env,
@@ -252,6 +134,12 @@ export class CodexServerService {
     readline.createInterface({ input: child.stderr }).on("line", (line) => {
       const payload = line.trim()
       if (payload) {
+        const diagnostic = this.parseDiagnostic(payload)
+        if (diagnostic) {
+          this.emitDiagnostic(diagnostic)
+          return
+        }
+
         console.warn("[codex]", payload)
       }
     })
@@ -309,6 +197,13 @@ export class CodexServerService {
     }
   }
 
+  onDiagnostic(listener: (diagnostic: CodexServerDiagnostic) => void): () => void {
+    this.diagnosticListeners.add(listener)
+    return () => {
+      this.diagnosticListeners.delete(listener)
+    }
+  }
+
   private emitMessage(message: string): void {
     this.sendEvent(EVENT_CHANNELS.codexMessage, message)
     for (const listener of this.messageListeners) {
@@ -320,6 +215,30 @@ export class CodexServerService {
     this.sendEvent(EVENT_CHANNELS.codexStatus, status)
     for (const listener of this.statusListeners) {
       listener(status)
+    }
+  }
+
+  private emitDiagnostic(diagnostic: CodexServerDiagnostic): void {
+    for (const listener of this.diagnosticListeners) {
+      listener(diagnostic)
+    }
+  }
+
+  private parseDiagnostic(message: string): CodexServerDiagnostic | null {
+    if (!/TokenRefreshFailed|invalid_grant|Invalid refresh token/i.test(message)) {
+      return null
+    }
+
+    if (!/mcp|rmcp|OAuth|refresh token/i.test(message)) {
+      return null
+    }
+
+    return {
+      kind: "mcp-auth",
+      severity: "warning",
+      message:
+        "Codex could not authenticate one MCP connector because its refresh token expired. The turn will continue without that connector. Run `codex mcp login <name>` to reconnect it.",
+      rawMessage: message,
     }
   }
 

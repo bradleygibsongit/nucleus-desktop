@@ -13,6 +13,8 @@ import type {
   RuntimeListAgentsInput,
   RuntimeListCommandsInput,
   RuntimeListModelsInput,
+  RuntimeProviderStatusesResult,
+  RuntimeRefreshProviderStatusInput,
   RuntimeSearchFilesInput,
   RuntimeFileSearchResultSet,
   RuntimeModelsResult,
@@ -28,6 +30,8 @@ import { ClaudeRuntimeProvider } from "./claudeProvider"
 import { CodexRuntimeProvider } from "./codexProvider"
 import { OpenCodeRuntimeProvider } from "./opencodeProvider"
 import type { RuntimeProviderAdapter } from "./providerTypes"
+import { ProviderRuntimeManager } from "./providerRuntimeManager"
+import { ProviderSettingsService } from "./providerSettings"
 import { RuntimeSessionStore } from "./runtimeSessionStore"
 
 type EventSender = (channel: string, payload: unknown) => void
@@ -35,13 +39,15 @@ type EventSender = (channel: string, payload: unknown) => void
 export class RuntimeService {
   private readonly sessionStore: RuntimeSessionStore
   private readonly providers: Record<HarnessId, RuntimeProviderAdapter>
+  private readonly providerManager: ProviderRuntimeManager
 
   constructor(
     private readonly sendEvent: EventSender,
     storeService: JsonStoreService,
     _gitService: unknown,
     codexServerService: CodexServerService,
-    openCodeServerService: OpenCodeServerService
+    openCodeServerService: OpenCodeServerService,
+    providerSettingsService: ProviderSettingsService
   ) {
     this.sessionStore = new RuntimeSessionStore(storeService)
     const context = {
@@ -61,10 +67,18 @@ export class RuntimeService {
     }
 
     this.providers = {
-      codex: new CodexRuntimeProvider(context, codexServerService),
-      "claude-code": new ClaudeRuntimeProvider(context),
-      opencode: new OpenCodeRuntimeProvider(context, openCodeServerService),
+      codex: new CodexRuntimeProvider(context, codexServerService, providerSettingsService),
+      "claude-code": new ClaudeRuntimeProvider(context, providerSettingsService),
+      opencode: new OpenCodeRuntimeProvider(
+        context,
+        openCodeServerService,
+        providerSettingsService
+      ),
     }
+    this.providerManager = new ProviderRuntimeManager(
+      providerSettingsService,
+      (harnessId) => this.getProvider(harnessId)
+    )
   }
 
   async createSession(input: RuntimeCreateSessionInput): Promise<RuntimeSessionResult> {
@@ -78,6 +92,20 @@ export class RuntimeService {
   async listModels(input: RuntimeListModelsInput): Promise<RuntimeModelsResult> {
     return {
       models: await this.getProvider(input.harnessId).listModels(),
+    }
+  }
+
+  async listProviderStatuses(): Promise<RuntimeProviderStatusesResult> {
+    return {
+      statuses: await this.providerManager.listProviderStatuses(),
+    }
+  }
+
+  async refreshProviderStatus(
+    input: RuntimeRefreshProviderStatusInput
+  ): Promise<RuntimeProviderStatusesResult> {
+    return {
+      statuses: [await this.providerManager.refreshProviderStatus(input.harnessId)],
     }
   }
 

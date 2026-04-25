@@ -8,6 +8,8 @@ import {
 describe("codexFastMode", () => {
   test("keeps the current fast-mode allowlist centralized", () => {
     expect(Array.from(CODEX_FAST_MODE_MODEL_ALLOWLIST)).toEqual([
+      "gpt-5.5",
+      "gpt-5.5-mini",
       "gpt-5.4",
       "gpt-5.4-mini",
       "gpt-5.3-codex",
@@ -15,6 +17,8 @@ describe("codexFastMode", () => {
       "gpt-5.2-codex",
       "gpt-5.2",
     ])
+    expect(codexModelSupportsFastMode("gpt-5.5")).toBe(true)
+    expect(codexModelSupportsFastMode("gpt-5.5-mini")).toBe(true)
     expect(codexModelSupportsFastMode("gpt-5.4")).toBe(true)
     expect(codexModelSupportsFastMode("gpt-5.4-mini")).toBe(true)
   })

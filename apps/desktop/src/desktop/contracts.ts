@@ -400,6 +400,10 @@ export interface RuntimeListModelsInput {
   harnessId: HarnessId
 }
 
+export interface RuntimeRefreshProviderStatusInput {
+  harnessId: HarnessId
+}
+
 export interface RuntimeListAgentsInput {
   harnessId: HarnessId
 }
@@ -447,6 +451,54 @@ export interface RuntimeSessionResult {
 
 export interface RuntimeModelsResult {
   models: RuntimeModel[]
+}
+
+export type RuntimeProviderAuthStatus = "authenticated" | "unauthenticated" | "unknown"
+
+export interface RuntimeProviderAuth {
+  status: RuntimeProviderAuthStatus
+  type?: string
+  label?: string
+}
+
+export interface RuntimeProviderStatus {
+  harnessId: HarnessId
+  enabled: boolean
+  installed: boolean
+  version: string | null
+  auth: RuntimeProviderAuth
+  models: RuntimeModel[]
+  message?: string
+  checkedAt: number
+}
+
+export interface RuntimeProviderStatusesResult {
+  statuses: RuntimeProviderStatus[]
+}
+
+export interface RuntimeProviderSettingsBase {
+  enabled: boolean
+  binaryPath: string
+  customModels: string[]
+}
+
+export interface RuntimeCodexProviderSettings extends RuntimeProviderSettingsBase {
+  homePath: string
+}
+
+export interface RuntimeClaudeProviderSettings extends RuntimeProviderSettingsBase {
+  launchArgs: string
+}
+
+export interface RuntimeOpenCodeProviderSettings extends RuntimeProviderSettingsBase {
+  serverUrl: string
+  serverPassword: string
+}
+
+export interface RuntimeProviderSettingsRecord {
+  codex: RuntimeCodexProviderSettings
+  "claude-code": RuntimeClaudeProviderSettings
+  opencode: RuntimeOpenCodeProviderSettings
 }
 
 export interface RuntimeAgentsResult {
