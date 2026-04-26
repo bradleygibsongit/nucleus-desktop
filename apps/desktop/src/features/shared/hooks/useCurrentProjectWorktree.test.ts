@@ -68,7 +68,7 @@ describe("getCurrentProjectWorktreeState", () => {
               id: "ready-worktree",
               name: "Ready",
               branchName: "feature/ready",
-              path: "/tmp/.nucleus-worktrees/repo/ready",
+              path: "/tmp/.vfactor-worktrees/repo/ready",
               createdAt: 2,
               updatedAt: 2,
               source: "managed",

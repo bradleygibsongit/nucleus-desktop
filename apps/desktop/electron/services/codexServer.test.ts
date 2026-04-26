@@ -102,7 +102,7 @@ describe("CodexServerService", () => {
 
     Object.assign(process.env, originalEnv)
     process.env.PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
-    delete process.env.NUCLEUS_CODEX_PATH
+    delete process.env.VFACTOR_CODEX_PATH
     delete process.env.SHELL
   })
 

@@ -63,19 +63,19 @@ class RendererStoreHandle implements DesktopStoreHandle {
   constructor(private readonly file: string) {}
 
   get<T>(key: string): Promise<T | null> {
-    return window.nucleus.store.get<T>(this.file, key)
+    return window.vfactor.store.get<T>(this.file, key)
   }
 
   set(key: string, value: unknown): Promise<void> {
-    return window.nucleus.store.set(this.file, key, value)
+    return window.vfactor.store.set(this.file, key, value)
   }
 
   delete(key: string): Promise<void> {
-    return window.nucleus.store.delete(this.file, key)
+    return window.vfactor.store.delete(this.file, key)
   }
 
   save(): Promise<void> {
-    return window.nucleus.store.save(this.file)
+    return window.vfactor.store.save(this.file)
   }
 }
 
@@ -125,13 +125,13 @@ function normalizePullRequestChecksResponse(
 
 export const desktop = {
   app: {
-    getVersion: () => window.nucleus.app.getVersion(),
-    getUpdateState: () => window.nucleus.app.getUpdateState(),
-    checkForUpdates: () => window.nucleus.app.checkForUpdates(),
-    installUpdate: (options?: { force?: boolean }) => window.nucleus.app.installUpdate(options),
-    dismissUpdate: () => window.nucleus.app.dismissUpdate(),
+    getVersion: () => window.vfactor.app.getVersion(),
+    getUpdateState: () => window.vfactor.app.getUpdateState(),
+    checkForUpdates: () => window.vfactor.app.checkForUpdates(),
+    installUpdate: (options?: { force?: boolean }) => window.vfactor.app.installUpdate(options),
+    dismissUpdate: () => window.vfactor.app.dismissUpdate(),
     syncWindowTheme: (input: AppWindowThemeSyncInput) => {
-      const syncWindowTheme = window.nucleus.app.syncWindowTheme
+      const syncWindowTheme = window.vfactor.app.syncWindowTheme
       if (typeof syncWindowTheme !== "function") {
         console.warn("[desktop.app] syncWindowTheme is unavailable in the current preload bridge")
         return Promise.resolve()
@@ -140,33 +140,33 @@ export const desktop = {
       return syncWindowTheme(input)
     },
     onUpdateState: (listener: (state: AppUpdateState) => void) =>
-      window.nucleus.app.onUpdateState(listener),
+      window.vfactor.app.onUpdateState(listener),
   },
   dialog: {
-    openProjectFolder: () => window.nucleus.dialog.openProjectFolder(),
+    openProjectFolder: () => window.vfactor.dialog.openProjectFolder(),
   },
   fs: {
-    readTextFile: (path: string) => window.nucleus.fs.readTextFile(path),
+    readTextFile: (path: string) => window.vfactor.fs.readTextFile(path),
     readFileAsDataUrl: (path: string, options?: ReadFileAsDataUrlOptions) =>
-      window.nucleus.fs.readFileAsDataUrl(path, options),
+      window.vfactor.fs.readFileAsDataUrl(path, options),
     writeTextFile: (path: string, content: string, options?: WriteTextFileOptions) =>
-      window.nucleus.fs.writeTextFile(path, content, options),
+      window.vfactor.fs.writeTextFile(path, content, options),
     writeDataUrlFile: (path: string, dataUrl: string) => {
-      const writeDataUrlFile = window.nucleus.fs.writeDataUrlFile
+      const writeDataUrlFile = window.vfactor.fs.writeDataUrlFile
       if (typeof writeDataUrlFile !== "function") {
         return Promise.reject(
-          new Error("Uploads require restarting Nucleus to reload the desktop bridge.")
+          new Error("Uploads require restarting vFactor to reload the desktop bridge.")
         )
       }
 
       return writeDataUrlFile(path, dataUrl)
     },
-    exists: (path: string) => window.nucleus.fs.exists(path),
-    readDir: (path: string) => window.nucleus.fs.readDir(path),
+    exists: (path: string) => window.vfactor.fs.exists(path),
+    readDir: (path: string) => window.vfactor.fs.readDir(path),
     mkdir: (path: string, options?: { recursive?: boolean }) =>
-      window.nucleus.fs.mkdir(path, options),
+      window.vfactor.fs.mkdir(path, options),
     removePath: (path: string, options?: RemovePathOptions) => {
-      const removePath = window.nucleus.fs.removePath
+      const removePath = window.vfactor.fs.removePath
       if (typeof removePath !== "function") {
         console.warn("[desktop.fs] removePath is unavailable in the current preload bridge")
         return Promise.resolve()
@@ -174,41 +174,41 @@ export const desktop = {
 
       return removePath(path, options)
     },
-    homeDir: () => window.nucleus.fs.homeDir(),
-    getPathForFile: (file: File) => window.nucleus.fs.getPathForFile(file),
+    homeDir: () => window.vfactor.fs.homeDir(),
+    getPathForFile: (file: File) => window.vfactor.fs.getPathForFile(file),
     copyPathsIntoDirectory: (
       sourcePaths: string[],
       targetDirectory: string,
       options?: CopyPathsIntoDirectoryOptions
-    ) => window.nucleus.fs.copyPathsIntoDirectory(sourcePaths, targetDirectory, options),
+    ) => window.vfactor.fs.copyPathsIntoDirectory(sourcePaths, targetDirectory, options),
   },
   store: {
     load: loadDesktopStore,
   },
   watcher: {
-    start: (projectPath: string) => window.nucleus.watcher.start(projectPath),
-    stop: () => window.nucleus.watcher.stop(),
+    start: (projectPath: string) => window.vfactor.watcher.start(projectPath),
+    stop: () => window.vfactor.watcher.stop(),
     onEvent: (listener: (event: ProjectFileSystemEvent) => void) =>
-      window.nucleus.watcher.onEvent(listener),
+      window.vfactor.watcher.onEvent(listener),
   },
   runtime: {
-    createSession: (input: RuntimeCreateSessionInput) => window.nucleus.runtime.createSession(input),
-    listModels: (input: RuntimeListModelsInput) => window.nucleus.runtime.listModels(input),
-    listProviderStatuses: () => window.nucleus.runtime.listProviderStatuses(),
+    createSession: (input: RuntimeCreateSessionInput) => window.vfactor.runtime.createSession(input),
+    listModels: (input: RuntimeListModelsInput) => window.vfactor.runtime.listModels(input),
+    listProviderStatuses: () => window.vfactor.runtime.listProviderStatuses(),
     refreshProviderStatus: (input: RuntimeRefreshProviderStatusInput) =>
-      window.nucleus.runtime.refreshProviderStatus(input),
-    listAgents: (input: RuntimeListAgentsInput) => window.nucleus.runtime.listAgents(input),
-    listCommands: (input: RuntimeListCommandsInput) => window.nucleus.runtime.listCommands(input),
-    searchFiles: (input: RuntimeSearchFilesInput) => window.nucleus.runtime.searchFiles(input),
-    sendTurn: (input: RuntimeSendTurnInput) => window.nucleus.runtime.sendTurn(input),
-    answerPrompt: (input: RuntimeAnswerPromptInput) => window.nucleus.runtime.answerPrompt(input),
+      window.vfactor.runtime.refreshProviderStatus(input),
+    listAgents: (input: RuntimeListAgentsInput) => window.vfactor.runtime.listAgents(input),
+    listCommands: (input: RuntimeListCommandsInput) => window.vfactor.runtime.listCommands(input),
+    searchFiles: (input: RuntimeSearchFilesInput) => window.vfactor.runtime.searchFiles(input),
+    sendTurn: (input: RuntimeSendTurnInput) => window.vfactor.runtime.sendTurn(input),
+    answerPrompt: (input: RuntimeAnswerPromptInput) => window.vfactor.runtime.answerPrompt(input),
     interruptTurn: (input: RuntimeInterruptTurnInput) =>
-      window.nucleus.runtime.interruptTurn(input),
+      window.vfactor.runtime.interruptTurn(input),
     onEvent: (listener: (event: RuntimeTurnUpdateEvent) => void) =>
-      window.nucleus.runtime.onEvent(listener),
+      window.vfactor.runtime.onEvent(listener),
   },
   shell: {
-    openExternal: (url: string) => window.nucleus.shell.openExternal(url),
+    openExternal: (url: string) => window.vfactor.shell.openExternal(url),
   },
   terminal: {
     createSession: (
@@ -218,21 +218,21 @@ export const desktop = {
       rows: number,
       initialCommand?: string,
       environment?: TerminalCreateSessionEnvironment
-    ) => window.nucleus.terminal.createSession(sessionId, cwd, cols, rows, initialCommand, environment),
-    write: (sessionId: string, data: string) => window.nucleus.terminal.write(sessionId, data),
+    ) => window.vfactor.terminal.createSession(sessionId, cwd, cols, rows, initialCommand, environment),
+    write: (sessionId: string, data: string) => window.vfactor.terminal.write(sessionId, data),
     resize: (sessionId: string, cols: number, rows: number) =>
-      window.nucleus.terminal.resize(sessionId, cols, rows),
-    closeSession: (sessionId: string) => window.nucleus.terminal.closeSession(sessionId),
+      window.vfactor.terminal.resize(sessionId, cols, rows),
+    closeSession: (sessionId: string) => window.vfactor.terminal.closeSession(sessionId),
     onData: (listener: (event: TerminalDataEvent) => void) =>
-      window.nucleus.terminal.onData(listener),
+      window.vfactor.terminal.onData(listener),
     onExit: (listener: (event: TerminalExitEvent) => void) =>
-      window.nucleus.terminal.onExit(listener),
+      window.vfactor.terminal.onExit(listener),
   },
   git: {
-    getBranches: (projectPath: string) => window.nucleus.git.getBranches(projectPath),
-    getChanges: (projectPath: string) => window.nucleus.git.getChanges(projectPath),
+    getBranches: (projectPath: string) => window.vfactor.git.getBranches(projectPath),
+    getChanges: (projectPath: string) => window.vfactor.git.getChanges(projectPath),
     getPullRequestChecks: (projectPath: string) => {
-      const getPullRequestChecks = window.nucleus.git.getPullRequestChecks
+      const getPullRequestChecks = window.vfactor.git.getPullRequestChecks
       if (typeof getPullRequestChecks !== "function") {
         console.warn("[desktop.git] getPullRequestChecks is unavailable in the current preload bridge")
         return Promise.resolve({
@@ -249,24 +249,24 @@ export const desktop = {
         normalizePullRequestChecksResponse(projectPath, result)
       )
     },
-    listWorktrees: (projectPath: string) => window.nucleus.git.listWorktrees(projectPath),
-    initRepo: (projectPath: string) => window.nucleus.git.initRepo(projectPath),
+    listWorktrees: (projectPath: string) => window.vfactor.git.listWorktrees(projectPath),
+    initRepo: (projectPath: string) => window.vfactor.git.initRepo(projectPath),
     createWorktree: (projectPath: string, input: GitCreateWorktreeInput) =>
-      window.nucleus.git.createWorktree(projectPath, input),
+      window.vfactor.git.createWorktree(projectPath, input),
     removeWorktree: (projectPath: string, input: GitRemoveWorktreeInput) =>
-      window.nucleus.git.removeWorktree(projectPath, input),
+      window.vfactor.git.removeWorktree(projectPath, input),
     renameWorktree: (projectPath: string, input: GitRenameWorktreeInput) =>
-      window.nucleus.git.renameWorktree(projectPath, input),
+      window.vfactor.git.renameWorktree(projectPath, input),
     getFileDiff: (projectPath: string, filePath: string, previousPath?: string | null) =>
-      window.nucleus.git.getFileDiff(projectPath, filePath, previousPath),
+      window.vfactor.git.getFileDiff(projectPath, filePath, previousPath),
     checkoutBranch: (projectPath: string, branchName: string) =>
-      window.nucleus.git.checkoutBranch(projectPath, branchName),
+      window.vfactor.git.checkoutBranch(projectPath, branchName),
     createAndCheckoutBranch: (projectPath: string, branchName: string) =>
-      window.nucleus.git.createAndCheckoutBranch(projectPath, branchName),
-    pull: (projectPath: string) => window.nucleus.git.pull(projectPath),
-    mergePullRequest: (projectPath: string) => window.nucleus.git.mergePullRequest(projectPath),
+      window.vfactor.git.createAndCheckoutBranch(projectPath, branchName),
+    pull: (projectPath: string) => window.vfactor.git.pull(projectPath),
+    mergePullRequest: (projectPath: string) => window.vfactor.git.mergePullRequest(projectPath),
     ensureInfoExcludeEntries: (projectPath: string, entries: string[]) => {
-      const ensureInfoExcludeEntries = window.nucleus.git.ensureInfoExcludeEntries
+      const ensureInfoExcludeEntries = window.vfactor.git.ensureInfoExcludeEntries
       if (typeof ensureInfoExcludeEntries !== "function") {
         console.warn(
           "[desktop.git] ensureInfoExcludeEntries is unavailable in the current preload bridge"
@@ -277,12 +277,12 @@ export const desktop = {
       return ensureInfoExcludeEntries(projectPath, entries)
     },
     runStackedAction: (projectPath: string, input: GitRunStackedActionInput) =>
-      window.nucleus.git.runStackedAction(projectPath, input),
+      window.vfactor.git.runStackedAction(projectPath, input),
     onActionProgress: (listener: (event: GitActionProgressEvent) => void) =>
-      window.nucleus.git.onActionProgress(listener),
+      window.vfactor.git.onActionProgress(listener),
   },
   skills: {
-    list: () => window.nucleus.skills.list(),
+    list: () => window.vfactor.skills.list(),
   },
 }
 

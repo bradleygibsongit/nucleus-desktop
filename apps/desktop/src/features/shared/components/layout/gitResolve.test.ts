@@ -79,7 +79,7 @@ describe("gitResolve", () => {
         ].join("\n"),
       }),
       {
-        projectName: "Nucleus",
+        projectName: "vFactor",
         worktreeName: "Readme Test",
         worktreePath: "/tmp/readme-test",
       }

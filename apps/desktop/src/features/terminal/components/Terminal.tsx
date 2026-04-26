@@ -50,7 +50,7 @@ export function Terminal({
   const [connectionError, setConnectionError] = useState<string | null>(null)
 
   const clearHoveredLinkRow = useCallback(() => {
-    hoveredLinkRowRef.current?.classList.remove("nucleus-terminal-link-hover")
+    hoveredLinkRowRef.current?.classList.remove("vfactor-terminal-link-hover")
     hoveredLinkRowRef.current = null
   }, [])
 
@@ -358,7 +358,7 @@ export function Terminal({
     }
 
     clearHoveredLinkRow()
-    row.classList.add("nucleus-terminal-link-hover")
+    row.classList.add("vfactor-terminal-link-hover")
     hoveredLinkRowRef.current = row
   }, [clearHoveredLinkRow])
 

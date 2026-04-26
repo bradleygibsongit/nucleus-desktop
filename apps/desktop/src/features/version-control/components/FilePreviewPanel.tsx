@@ -11,7 +11,7 @@ interface FilePreviewPanelProps {
   projectPath?: string | null
 }
 
-const FILE_PREVIEW_THEME_NAME = "nucleus-file-preview"
+const FILE_PREVIEW_THEME_NAME = "vfactor-file-preview"
 
 let filePreviewThemeRegistered = false
 

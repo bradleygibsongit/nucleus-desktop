@@ -20,7 +20,7 @@ describe("runCommandInProjectTerminal", () => {
     const createSession = mock(async () => ({ initialData: "", shellKind: "posix" as const }))
     const write = mock(async () => {})
     const environment = {
-      NUCLEUS_WORKSPACE_PATH: "/tmp/repo/worktree-1",
+      VFACTOR_WORKSPACE_PATH: "/tmp/repo/worktree-1",
     }
 
     const result = await runCommandInProjectTerminal(
@@ -57,7 +57,7 @@ describe("runCommandInProjectTerminal", () => {
     expect(write).toHaveBeenCalledTimes(1)
     expect(write).toHaveBeenCalledWith(
       result.sessionId,
-      "export NUCLEUS_WORKSPACE_PATH='/tmp/repo/worktree-1'\ncd -- '/tmp/repo/worktree-1'\necho ready\n",
+      "export VFACTOR_WORKSPACE_PATH='/tmp/repo/worktree-1'\ncd -- '/tmp/repo/worktree-1'\necho ready\n",
     )
   })
 

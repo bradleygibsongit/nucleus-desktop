@@ -1,10 +1,10 @@
 import { nanoid } from "nanoid"
 import type { RuntimeAttachmentKind, RuntimeAttachmentPart } from "../../types"
 
-export const CHAT_INPUTS_RELATIVE_ROOT = ".nucleus/chat-inputs"
-export const ATTACHMENT_CHIP_PREFIX = "[[nucleus-upload:"
+export const CHAT_INPUTS_RELATIVE_ROOT = ".vfactor/chat-inputs"
+export const ATTACHMENT_CHIP_PREFIX = "[[vfactor-upload:"
 export const ATTACHMENT_CHIP_SUFFIX = "]]"
-export const ATTACHMENT_CHIP_PATTERN = /\[\[nucleus-upload:([A-Za-z0-9_-]+)\]\]/g
+export const ATTACHMENT_CHIP_PATTERN = /\[\[vfactor-upload:([A-Za-z0-9_-]+)\]\]/g
 export const LARGE_TEXT_PASTE_CHARACTER_THRESHOLD = 4000
 export const LARGE_TEXT_PASTE_LINE_THRESHOLD = 40
 

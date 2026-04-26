@@ -105,7 +105,7 @@ describe("CodexRuntimeProvider", () => {
     getProviderSettings: async () => ({
       enabled: true,
       binaryPath: "codex",
-      homePath: "/tmp/nucleus-missing-codex-home",
+      homePath: "/tmp/vfactor-missing-codex-home",
       customModels: [],
     }),
   }

@@ -1,10 +1,10 @@
-# Nucleus Desktop
+# vFactor
 
 Open-source desktop AI co-worker app with Electron + React.
 
 ## Product Direction
 
-Nucleus Desktop is intended to become an open-source analogue to Claude Cowork: a desktop agent workspace for knowledge work beyond coding.
+vFactor is intended to become an open-source analogue to Claude Cowork: a desktop agent workspace for knowledge work beyond coding.
 
 - The target experience is outcome-oriented task execution, not just turn-by-turn chat.
 - Users should be able to grant scoped access to local folders, tools, connectors, and browser workflows so the agent can complete multi-step work on their behalf.
@@ -38,7 +38,7 @@ bun run typecheck                  # TypeScript type checking for the desktop ap
 
 ### Current (Phase 1 - UI shell)
 ```
-nucleus/
+vfactor/
 ├── apps/
 │   ├── desktop/           # Electron shell, renderer, CLI, packaging assets
 │   └── site/              # Marketing website package
@@ -48,7 +48,7 @@ nucleus/
 
 ### Target (Phase 2+)
 ```
-nucleus/
+vfactor/
 ├── apps/
 │   ├── desktop/
 │   │   ├── electron/      # Electron shell, IPC, and native services

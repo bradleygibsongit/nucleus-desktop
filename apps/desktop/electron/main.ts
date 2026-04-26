@@ -38,11 +38,32 @@ import { syncShellEnvironment } from "./services/shellEnvironment"
 syncShellEnvironment()
 
 let mainWindow: BrowserWindow | null = null
-const LEGACY_USER_DATA_DIRS = ["nucleus-desktop", "io.nucleus.desktop"] as const
+const isDevelopment = !app.isPackaged
+const APP_DISPLAY_NAME = isDevelopment ? "vFactor Dev" : "vFactor"
+const APP_ID = isDevelopment ? "io.vfactor.desktop.dev" : "io.vfactor.desktop"
+const LINUX_DESKTOP_ENTRY_NAME = isDevelopment ? "vfactor-dev.desktop" : "vfactor.desktop"
+const LINUX_WM_CLASS = isDevelopment ? "vfactor-dev" : "vfactor"
+const USER_DATA_DIRS = isDevelopment
+  ? ["vfactor-desktop-dev", "io.vfactor.desktop.dev"]
+  : ["vfactor-desktop", "io.vfactor.desktop"]
 let windowThemeState: WindowThemeState = resolveWindowThemeState("system", false)
 
-function getDevAppIconPath(): string {
-  return join(process.cwd(), "public", "brands", "nucleus-app-icon-desktop.png")
+app.setName(APP_DISPLAY_NAME)
+
+if (process.platform === "linux") {
+  app.commandLine.appendSwitch("class", LINUX_WM_CLASS)
+}
+
+if (process.platform === "win32") {
+  app.setAppUserModelId(APP_ID)
+}
+
+function getAppIconPath(fileName: "icon.ico" | "icon.png" | "dock.png"): string {
+  if (app.isPackaged) {
+    return join(process.resourcesPath, "icons", fileName)
+  }
+
+  return join(process.cwd(), "build", "icons", "dev", fileName)
 }
 
 function hasPersistedDesktopData(directoryPath: string): boolean {
@@ -52,10 +73,10 @@ function hasPersistedDesktopData(directoryPath: string): boolean {
 function resolveUserDataPath(): string {
   const currentPath = app.getPath("userData")
   const appDataPath = app.getPath("appData")
-  const fallbackPath = join(appDataPath, LEGACY_USER_DATA_DIRS[0])
+  const fallbackPath = join(appDataPath, USER_DATA_DIRS[0])
   const candidatePaths = [
     currentPath,
-    ...LEGACY_USER_DATA_DIRS.map((directoryName) => join(appDataPath, directoryName)),
+    ...USER_DATA_DIRS.map((directoryName) => join(appDataPath, directoryName)),
   ]
   const preferredPath = candidatePaths.find((candidatePath) => hasPersistedDesktopData(candidatePath))
 
@@ -243,9 +264,9 @@ function createWindow(): BrowserWindow {
     minWidth: 800,
     minHeight: 600,
     backgroundColor: windowThemeState.backgroundColor,
-    title: "Nucleus",
+    title: APP_DISPLAY_NAME,
     icon: process.platform === "linux" || process.platform === "win32"
-      ? getDevAppIconPath()
+      ? getAppIconPath(process.platform === "win32" ? "icon.ico" : "icon.png")
       : undefined,
     webPreferences: {
       preload: join(__dirname, "../preload/preload.mjs"),
@@ -552,8 +573,14 @@ async function initializeAnalytics(): Promise<void> {
 async function bootstrap(): Promise<void> {
   await app.whenReady()
 
-  if (!app.isPackaged && process.platform === "darwin") {
-    app.dock.setIcon(nativeImage.createFromPath(getDevAppIconPath()))
+  if (process.platform === "linux") {
+    ;(app as typeof app & { setDesktopName?: (desktopName: string) => void }).setDesktopName?.(
+      LINUX_DESKTOP_ENTRY_NAME
+    )
+  }
+
+  if (process.platform === "darwin" && app.dock) {
+    app.dock.setIcon(nativeImage.createFromPath(getAppIconPath("dock.png")))
   }
 
   await initializeAnalytics()

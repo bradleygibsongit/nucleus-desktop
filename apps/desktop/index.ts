@@ -1,5 +1,5 @@
 /**
- * Nucleus Desktop - OpenCode CLI
+ * vFactor - OpenCode CLI
  *
  * Usage:
  *   bun run cli "your prompt"

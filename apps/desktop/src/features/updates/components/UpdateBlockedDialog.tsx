@@ -38,7 +38,7 @@ export function UpdateBlockedDialog() {
           </AlertDialogMedia>
           <AlertDialogTitle>Restart anyway?</AlertDialogTitle>
           <AlertDialogDescription>
-            Restarting now will interrupt active coding work. Nucleus found:
+            Restarting now will interrupt active coding work. vFactor found:
           </AlertDialogDescription>
         </AlertDialogHeader>
 

@@ -7,26 +7,26 @@ import {
 
 const ARM64_MANIFEST = `version: 0.1.9
 files:
-  - url: Nucleus-0.1.9-arm64.zip
+  - url: vFactor-0.1.9-arm64.zip
     sha512: arm64-zip-hash
     size: 101
-  - url: Nucleus-0.1.9-arm64.dmg
+  - url: vFactor-0.1.9-arm64.dmg
     sha512: arm64-dmg-hash
     size: 202
-path: Nucleus-0.1.9-arm64.zip
+path: vFactor-0.1.9-arm64.zip
 sha512: arm64-zip-hash
 releaseDate: '2026-04-09T12:00:00.000Z'
 `
 
 const X64_MANIFEST = `version: 0.1.9
 files:
-  - url: Nucleus-0.1.9-x64.zip
+  - url: vFactor-0.1.9-x64.zip
     sha512: x64-zip-hash
     size: 303
-  - url: Nucleus-0.1.9-x64.dmg
+  - url: vFactor-0.1.9-x64.dmg
     sha512: x64-dmg-hash
     size: 404
-path: Nucleus-0.1.9-x64.zip
+path: vFactor-0.1.9-x64.zip
 sha512: x64-zip-hash
 releaseDate: '2026-04-09T12:00:00.000Z'
 `
@@ -39,25 +39,25 @@ describe("mergeMacUpdateManifests", () => {
     )
 
     expect(merged.version).toBe("0.1.9")
-    expect(merged.path).toBe("Nucleus-0.1.9-arm64.zip")
+    expect(merged.path).toBe("vFactor-0.1.9-arm64.zip")
     expect(merged.files).toEqual([
       {
-        url: "Nucleus-0.1.9-arm64.zip",
+        url: "vFactor-0.1.9-arm64.zip",
         sha512: "arm64-zip-hash",
         size: 101,
       },
       {
-        url: "Nucleus-0.1.9-arm64.dmg",
+        url: "vFactor-0.1.9-arm64.dmg",
         sha512: "arm64-dmg-hash",
         size: 202,
       },
       {
-        url: "Nucleus-0.1.9-x64.zip",
+        url: "vFactor-0.1.9-x64.zip",
         sha512: "x64-zip-hash",
         size: 303,
       },
       {
-        url: "Nucleus-0.1.9-x64.dmg",
+        url: "vFactor-0.1.9-x64.dmg",
         sha512: "x64-dmg-hash",
         size: 404,
       },

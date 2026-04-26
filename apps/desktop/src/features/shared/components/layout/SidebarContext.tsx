@@ -2,8 +2,8 @@ import { useState, useCallback, useEffect, type ReactNode } from "react"
 import { SidebarContext } from "./sidebar-context"
 import { LEFT_SIDEBAR_WIDTH_CSS_VAR } from "./layoutSizing"
 
-const SIDEBAR_STORAGE_KEY = "nucleus:left-sidebar-width"
-const SIDEBAR_COLLAPSED_STORAGE_KEY = "nucleus:left-sidebar-collapsed"
+const SIDEBAR_STORAGE_KEY = "vfactor:left-sidebar-width"
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "vfactor:left-sidebar-collapsed"
 const DEFAULT_SIDEBAR_WIDTH = 300
 const MIN_SIDEBAR_WIDTH = 240
 const MAX_SIDEBAR_WIDTH = 420

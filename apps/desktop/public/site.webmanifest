@@ -1,14 +1,14 @@
 {
-  "name": "Nucleus Desktop",
-  "short_name": "Nucleus",
+  "name": "vFactor",
+  "short_name": "vFactor",
   "icons": [
     {
-      "src": "/brands/nucleus-app-icon-light.png",
+      "src": "/brands/vfactor-app-icon-light.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "/brands/nucleus-app-icon-light.png",
+      "src": "/brands/vfactor-app-icon-light.png",
       "sizes": "512x512",
       "type": "image/png"
     }

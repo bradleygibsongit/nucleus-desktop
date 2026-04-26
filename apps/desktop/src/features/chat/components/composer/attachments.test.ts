@@ -57,8 +57,8 @@ describe("composer attachments", () => {
           type: "attachment",
           kind: "pasted_text",
           label: "Pasted text",
-          relativePath: ".nucleus/chat-inputs/2026-04-07/attachment-1-pasted-text.txt",
-          absolutePath: "/tmp/project/.nucleus/chat-inputs/2026-04-07/attachment-1-pasted-text.txt",
+          relativePath: ".vfactor/chat-inputs/2026-04-07/attachment-1-pasted-text.txt",
+          absolutePath: "/tmp/project/.vfactor/chat-inputs/2026-04-07/attachment-1-pasted-text.txt",
         },
       ])
     ).toBe(
@@ -66,8 +66,9 @@ describe("composer attachments", () => {
         "Please inspect this",
         "",
         "Attached local context:",
-        '- pasted text "Pasted text": .nucleus/chat-inputs/2026-04-07/attachment-1-pasted-text.txt',
+        '- pasted text "Pasted text": .vfactor/chat-inputs/2026-04-07/attachment-1-pasted-text.txt',
         "These files are staged locally in the project and can be read directly from disk.",
+        "If an attachment is an image, inspect the image file directly instead of saying no image was provided.",
       ].join("\n")
     )
   })

@@ -54,14 +54,14 @@ const TREE_UNSAFE_CSS = `
     cursor: default;
   }
 
-  [data-nucleus-external-drop-target='true'] {
+  [data-vfactor-external-drop-target='true'] {
     background-color: var(--trees-selected-bg);
     color: var(--trees-selected-fg);
     --truncate-marker-background-overlay-color: var(--trees-selected-bg);
   }
 
-  [data-nucleus-external-drop-target='true'] > [data-item-section='icon'],
-  [data-nucleus-external-drop-target='true'] > [data-item-section='content'] {
+  [data-vfactor-external-drop-target='true'] > [data-item-section='icon'],
+  [data-vfactor-external-drop-target='true'] > [data-item-section='content'] {
     color: inherit;
   }
 `
@@ -70,7 +70,7 @@ const INITIAL_VISIBLE_ROW_COUNT = 48
 
 function extractDroppedPaths(files: FileList): string[] {
   const sourcePaths = Array.from(files)
-    .map((file) => window.nucleus.fs.getPathForFile(file) ?? (file as ElectronFile).path?.trim())
+    .map((file) => window.vfactor.fs.getPathForFile(file) ?? (file as ElectronFile).path?.trim())
     .filter((path): path is string => Boolean(path))
 
   return Array.from(new Set(sourcePaths))
@@ -224,8 +224,8 @@ function syncExternalDropHighlight(host: HTMLElement | null, hoveredPath: string
   }
 
   shadowRoot
-    .querySelector<HTMLElement>("[data-nucleus-external-drop-target='true']")
-    ?.removeAttribute("data-nucleus-external-drop-target")
+    .querySelector<HTMLElement>("[data-vfactor-external-drop-target='true']")
+    ?.removeAttribute("data-vfactor-external-drop-target")
 
   if (!hoveredPath) {
     return
@@ -233,7 +233,7 @@ function syncExternalDropHighlight(host: HTMLElement | null, hoveredPath: string
 
   shadowRoot
     .querySelector<HTMLElement>(`[data-item-path="${cssEscape(hoveredPath)}"]`)
-    ?.setAttribute("data-nucleus-external-drop-target", "true")
+    ?.setAttribute("data-vfactor-external-drop-target", "true")
 }
 
 function resolveTreeEntryFromCanonicalPath(

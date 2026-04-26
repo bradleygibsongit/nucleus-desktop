@@ -4,10 +4,10 @@ import { useCurrentProjectWorktree } from "@/features/shared/hooks"
 import { useSidebar } from "./useSidebar"
 import { MIN_MAIN_CONTENT_WIDTH, RIGHT_SIDEBAR_WIDTH_CSS_VAR } from "./layoutSizing"
 
-const RIGHT_SIDEBAR_STORAGE_KEY = "nucleus:right-sidebar-width"
-const RIGHT_SIDEBAR_PREFERRED_WIDTH_STORAGE_KEY = "nucleus:right-sidebar-preferred-width"
-const RIGHT_SIDEBAR_COLLAPSED_STORAGE_KEY = "nucleus:right-sidebar-collapsed"
-const RIGHT_SIDEBAR_ACTIVE_TAB_STORAGE_KEY = "nucleus:right-sidebar-active-tab"
+const RIGHT_SIDEBAR_STORAGE_KEY = "vfactor:right-sidebar-width"
+const RIGHT_SIDEBAR_PREFERRED_WIDTH_STORAGE_KEY = "vfactor:right-sidebar-preferred-width"
+const RIGHT_SIDEBAR_COLLAPSED_STORAGE_KEY = "vfactor:right-sidebar-collapsed"
+const RIGHT_SIDEBAR_ACTIVE_TAB_STORAGE_KEY = "vfactor:right-sidebar-active-tab"
 const DEFAULT_RIGHT_SIDEBAR_WIDTH = 400
 const MIN_RIGHT_SIDEBAR_WIDTH = 300
 const BROWSER_RIGHT_SIDEBAR_MIN_WIDTH = 180

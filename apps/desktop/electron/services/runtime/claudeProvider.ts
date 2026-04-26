@@ -787,7 +787,7 @@ export class ClaudeRuntimeProvider implements RuntimeProviderAdapter {
 
   private async getClaudeExecutablePath(): Promise<string | undefined> {
     const settings = await this.providerSettingsService?.getProviderSettings("claude-code")
-    return settings?.binaryPath.trim() || process.env.NUCLEUS_CLAUDE_PATH?.trim() || undefined
+    return settings?.binaryPath.trim() || process.env.VFACTOR_CLAUDE_PATH?.trim() || undefined
   }
 
   private async getClaudeExtraArgs(): Promise<Record<string, string | null> | undefined> {

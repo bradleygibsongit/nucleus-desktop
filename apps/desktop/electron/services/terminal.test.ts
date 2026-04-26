@@ -65,7 +65,7 @@ describe("TerminalService", () => {
   })
 
   test("recreates an existing session when the requested cwd changes", async () => {
-    const rootDir = await mkdtemp(path.join(tmpdir(), "nucleus-terminal-test-"))
+    const rootDir = await mkdtemp(path.join(tmpdir(), "vfactor-terminal-test-"))
     const firstDir = path.join(rootDir, "first")
     const secondDir = path.join(rootDir, "second")
     const sendEvent = mock(() => {})
@@ -96,7 +96,7 @@ describe("TerminalService", () => {
       return
     }
 
-    const rootDir = await mkdtemp(path.join(tmpdir(), "nucleus-terminal-test-"))
+    const rootDir = await mkdtemp(path.join(tmpdir(), "vfactor-terminal-test-"))
     const sendEvent = mock(() => {})
     const originalShell = process.env.SHELL
     const availableShells = ["/bin/zsh", "/bin/bash", "/bin/sh"].filter((candidate) => {

@@ -1,6 +1,6 @@
 import { desktop } from "@/desktop/client"
 
-const AGENT_DIGEST_DIRECTORY = ".nucleus"
+const AGENT_DIGEST_DIRECTORY = ".vfactor"
 const AGENT_DIGEST_FILENAME = "digest.md"
 
 export function getAgentDigestPath(agentPath: string): string {

@@ -47,11 +47,11 @@ describe("buildWorkspaceSetupScriptEnvironment", () => {
     )
 
     expect(environment).toEqual({
-      NUCLEUS_PROJECT_ROOT: "/tmp/repo",
-      NUCLEUS_WORKSPACE_PATH: "/tmp/repo-kolkata",
-      NUCLEUS_WORKSPACE_NAME: "Kolkata",
-      NUCLEUS_SOURCE_WORKSPACE_PATH: "/tmp/repo-feature",
-      NUCLEUS_SOURCE_WORKSPACE_NAME: "Feature",
+      VFACTOR_PROJECT_ROOT: "/tmp/repo",
+      VFACTOR_WORKSPACE_PATH: "/tmp/repo-kolkata",
+      VFACTOR_WORKSPACE_NAME: "Kolkata",
+      VFACTOR_SOURCE_WORKSPACE_PATH: "/tmp/repo-feature",
+      VFACTOR_SOURCE_WORKSPACE_NAME: "Feature",
     })
   })
 })

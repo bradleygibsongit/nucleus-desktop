@@ -401,7 +401,7 @@ function AppearanceSettingsSection() {
           <Field>
             <FieldTitle>Theme</FieldTitle>
             <FieldDescription>
-              Choose a fixed theme or follow the operating system with the Nucleus light and dark pair.
+              Choose a fixed theme or follow the operating system with the vFactor light and dark pair.
             </FieldDescription>
             <Select
               value={appearanceThemeId}
@@ -530,7 +530,7 @@ function AppearanceSettingsSection() {
               </SelectContent>
             </Select>
             <p className="mt-2 text-xs leading-5 text-muted-foreground">
-              The default is the in-app browser so local dev links open immediately inside Nucleus.
+              The default is the in-app browser so local dev links open immediately inside vFactor.
             </p>
           </Field>
         </FieldGroup>
@@ -745,7 +745,7 @@ function HarnessSettingsSection({ harnessId }: { harnessId: HarnessId }) {
                 ) : null}
               </div>
               <p className="text-xs leading-5 text-muted-foreground">
-                Configure the local CLI Nucleus should use when launching this coding provider.
+                Configure the local CLI vFactor should use when launching this coding provider.
               </p>
             </div>
             <Button
@@ -828,7 +828,7 @@ function HarnessSettingsSection({ harnessId }: { harnessId: HarnessId }) {
                 <Field>
                   <FieldTitle>Server URL</FieldTitle>
                   <FieldDescription>
-                    Optional. Set this when OpenCode is already running outside Nucleus.
+                    Optional. Set this when OpenCode is already running outside vFactor.
                   </FieldDescription>
                   <Input
                     className="mt-2 font-mono"

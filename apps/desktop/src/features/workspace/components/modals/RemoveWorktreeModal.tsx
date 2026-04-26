@@ -127,7 +127,7 @@ export function RemoveWorktreeModal({
           </AlertDialogMedia>
           <AlertDialogTitle>{intent === "archive" ? "Archive workspace?" : "Remove workspace?"}</AlertDialogTitle>
           <AlertDialogDescription>
-            {worktree?.name ?? "This workspace"} will be removed from Nucleus.
+            {worktree?.name ?? "This workspace"} will be removed from vFactor.
             {errorMessage ? ` ${errorMessage}` : ""}
           </AlertDialogDescription>
         </AlertDialogHeader>

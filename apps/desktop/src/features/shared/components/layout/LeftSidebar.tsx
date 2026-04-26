@@ -53,7 +53,7 @@ import {
 } from "./sidebarGitIndicators"
 import { LEFT_SIDEBAR_WIDTH_CSS_VAR } from "./layoutSizing"
 
-const OPEN_PROJECT_SETTINGS_EVENT = "nucleus:open-project-settings"
+const OPEN_PROJECT_SETTINGS_EVENT = "vfactor:open-project-settings"
 const LEFT_SIDEBAR_MIN_WIDTH = 240
 const LEFT_SIDEBAR_MAX_WIDTH = 420
 

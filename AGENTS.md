@@ -1,4 +1,4 @@
-# Nucleus Desktop
+# vFactor
 
 Open-source desktop coding ADE with Electron + React.
 
@@ -9,7 +9,7 @@ Open-source desktop coding ADE with Electron + React.
 
 ## Product Direction
 
-Nucleus Desktop is intended to become an open-source coding ADE: a desktop environment for supervised, agentic software development.
+vFactor is intended to become an open-source coding ADE: a desktop environment for supervised, agentic software development.
 
 - The primary unit in the product is a project backed by a local folder. In product copy, navigation, and UX discussions, refer to these folder-backed units as projects rather than agents.
 - Local-first operation is a core product principle. When choosing architecture, dependencies, or UX flows, prefer approaches that keep the app self-managed on the user's machine and avoid unnecessary external services.
@@ -52,7 +52,7 @@ bun run typecheck                  # TypeScript type checking for the desktop ap
 
 ### Current (Phase 1 - UI shell)
 ```
-nucleus/
+vfactor/
 ├── apps/
 │   ├── desktop/           # Electron shell, renderer, CLI, packaging assets
 │   └── site/              # Marketing website package
@@ -62,7 +62,7 @@ nucleus/
 
 ### Target (Phase 2+)
 ```
-nucleus/
+vfactor/
 ├── apps/
 │   ├── desktop/
 │   │   ├── electron/      # Electron shell, IPC, and native services
@@ -106,7 +106,7 @@ These components have already been decoupled from the old ACP implementation and
 - The product direction has changed from an agent-builder framing to a coding ADE with project-backed workspaces. Existing stores/types may still say `agent` in places, but new UX and architectural work should treat that layer as project selection with chat threads nested under each project.
 - If adding multiple coding harnesses (OpenCode, Codex, Claude Code), keep orchestration out of this app and introduce a thin per-harness adapter that maps each provider into shared UI-local thread/message/tool/subagent types before data reaches hooks or components.
 - Codex is not a drop-in replacement for the OpenCode client. The closest fit is Codex App Server, which uses JSON-RPC `thread/*` and `turn/*` events instead of OpenCode's REST/SSE shape; prefer generating version-matched bindings with `codex app-server generate-ts` rather than hand-rolling protocol types.
-- Claude Cowork is still a useful product reference for supervised agentic workflows, but Nucleus Desktop should stay focused on coding-first ADE experiences built around local projects.
+- Claude Cowork is still a useful product reference for supervised agentic workflows, but vFactor should stay focused on coding-first ADE experiences built around local projects.
 - For app UI controls, prefer the shared `shared/components/ui` primitives and standard sizing over one-off button/input overrides; search fields should use the shared `InputGroup` pattern unless a custom design is explicitly requested.
 - Sidebar chrome should use the standard sidebar tokens (`bg-sidebar`, `--sidebar-item-hover`, `--sidebar-item-active`) rather than the older translucent/glass backgrounds so both sidebars read as the same surface.
 - When a sidebar header opens a `DropdownMenu`, drive the trigger's visual active state with local `onOpenChange` state and use the shared radius tokens (`--radius-*`) instead of arbitrary extra-round corners.

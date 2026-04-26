@@ -110,7 +110,7 @@ export function useComposerAttachments({
       throw new Error("Select a project workspace before adding uploads.")
     }
 
-    await desktop.git.ensureInfoExcludeEntries(selectedWorktreePath, ["/.nucleus/"])
+    await desktop.git.ensureInfoExcludeEntries(selectedWorktreePath, ["/.vfactor/"])
     return selectedWorktreePath
   }, [selectedWorktreePath])
 

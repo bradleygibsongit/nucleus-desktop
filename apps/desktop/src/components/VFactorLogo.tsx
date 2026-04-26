@@ -1,27 +1,27 @@
-import nucleusLogoDarkUrl from "@/assets/brands/nucleus-logo-dark.png"
-import nucleusLogoLightUrl from "@/assets/brands/nucleus-logo-light.png"
+import vfactorLogoDarkUrl from "@/assets/brands/vfactor-logo-dark.png"
+import vfactorLogoLightUrl from "@/assets/brands/vfactor-logo-light.png"
 import { cn } from "@/lib/utils"
 
-interface NucleusLogoProps {
+interface VFactorLogoProps {
   className?: string
   imageClassName?: string
   alt?: string
 }
 
-export function NucleusLogo({
+export function VFactorLogo({
   className,
   imageClassName,
-  alt = "Nucleus logo",
-}: NucleusLogoProps) {
+  alt = "vFactor logo",
+}: VFactorLogoProps) {
   return (
     <span className={cn("relative inline-flex shrink-0", className)}>
       <img
-        src={nucleusLogoLightUrl}
+        src={vfactorLogoLightUrl}
         alt={alt}
         className={cn("size-full object-contain dark:hidden", imageClassName)}
       />
       <img
-        src={nucleusLogoDarkUrl}
+        src={vfactorLogoDarkUrl}
         alt={alt}
         className={cn("hidden size-full object-contain dark:block", imageClassName)}
       />
