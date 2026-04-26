@@ -34,11 +34,11 @@ async function git(cwd: string, args: string[]): Promise<string> {
 }
 
 async function createRepository(): Promise<string> {
-  const repoDir = await mkdtemp(path.join(tmpdir(), "nucleus-git-test-"))
+  const repoDir = await mkdtemp(path.join(tmpdir(), "vfactor-git-test-"))
 
   await git(repoDir, ["init", "--initial-branch=main"])
-  await git(repoDir, ["config", "user.name", "Nucleus Test"])
-  await git(repoDir, ["config", "user.email", "nucleus@example.com"])
+  await git(repoDir, ["config", "user.name", "vFactor Test"])
+  await git(repoDir, ["config", "user.email", "vfactor@example.com"])
 
   await writeFile(path.join(repoDir, "a.txt"), "alpha\n", "utf8")
   await writeFile(path.join(repoDir, "b.txt"), "beta\n", "utf8")
@@ -50,7 +50,7 @@ async function createRepository(): Promise<string> {
 
 async function createRepositoryWithOrigin(): Promise<{ repoDir: string; remoteDir: string }> {
   const repoDir = await createRepository()
-  const remoteDir = await mkdtemp(path.join(tmpdir(), "nucleus-git-remote-"))
+  const remoteDir = await mkdtemp(path.join(tmpdir(), "vfactor-git-remote-"))
 
   try {
     await git(remoteDir, ["init", "--bare", "--initial-branch=main"])
@@ -66,7 +66,7 @@ async function createRepositoryWithOrigin(): Promise<{ repoDir: string; remoteDi
 
 describe("GitService repository setup", () => {
   test("reports explicit non-repo status for plain folders", async () => {
-    const projectDir = await mkdtemp(path.join(tmpdir(), "nucleus-git-plain-folder-"))
+    const projectDir = await mkdtemp(path.join(tmpdir(), "vfactor-git-plain-folder-"))
 
     try {
       const service = new GitService()
@@ -84,7 +84,7 @@ describe("GitService repository setup", () => {
   })
 
   test("returns no worktrees for plain folders", async () => {
-    const projectDir = await mkdtemp(path.join(tmpdir(), "nucleus-git-worktree-folder-"))
+    const projectDir = await mkdtemp(path.join(tmpdir(), "vfactor-git-worktree-folder-"))
 
     try {
       const service = new GitService()
@@ -97,7 +97,7 @@ describe("GitService repository setup", () => {
   })
 
   test("initializes git for a plain folder", async () => {
-    const projectDir = await mkdtemp(path.join(tmpdir(), "nucleus-git-init-folder-"))
+    const projectDir = await mkdtemp(path.join(tmpdir(), "vfactor-git-init-folder-"))
 
     try {
       const service = new GitService()
@@ -139,7 +139,7 @@ describe("GitService.runStackedAction", () => {
   })
 
   test("creates and pushes a feature branch even when there are no new changes to commit", async () => {
-    const remoteDir = await mkdtemp(path.join(tmpdir(), "nucleus-git-remote-"))
+    const remoteDir = await mkdtemp(path.join(tmpdir(), "vfactor-git-remote-"))
     const repoDir = await createRepository()
 
     try {
@@ -201,14 +201,14 @@ describe("GitService.runStackedAction", () => {
 describe("GitService worktrees", () => {
   test("creates a worktree from the fetched remote target branch state", async () => {
     const { repoDir, remoteDir } = await createRepositoryWithOrigin()
-    const cloneRoot = await mkdtemp(path.join(tmpdir(), "nucleus-git-clone-"))
+    const cloneRoot = await mkdtemp(path.join(tmpdir(), "vfactor-git-clone-"))
     const cloneDir = path.join(cloneRoot, "repo")
-    const worktreeDir = path.join(repoDir, "..", ".nucleus-worktrees-test", "kolkata")
+    const worktreeDir = path.join(repoDir, "..", ".vfactor-worktrees-test", "kolkata")
 
     try {
       await git(cloneRoot, ["clone", remoteDir, cloneDir])
-      await git(cloneDir, ["config", "user.name", "Nucleus Test"])
-      await git(cloneDir, ["config", "user.email", "nucleus@example.com"])
+      await git(cloneDir, ["config", "user.name", "vFactor Test"])
+      await git(cloneDir, ["config", "user.email", "vfactor@example.com"])
       await mkdir(path.join(cloneDir, "remote-only"), { recursive: true })
       await writeFile(path.join(cloneDir, "remote-only", "state.txt"), "from remote\n", "utf8")
       await git(cloneDir, ["add", "."])
@@ -239,13 +239,13 @@ describe("GitService worktrees", () => {
       await rm(repoDir, { recursive: true, force: true })
       await rm(remoteDir, { recursive: true, force: true })
       await rm(cloneRoot, { recursive: true, force: true })
-      await rm(path.join(repoDir, "..", ".nucleus-worktrees-test"), { recursive: true, force: true })
+      await rm(path.join(repoDir, "..", ".vfactor-worktrees-test"), { recursive: true, force: true })
     }
   })
 
   test("fails when the target branch only exists locally", async () => {
     const { repoDir, remoteDir } = await createRepositoryWithOrigin()
-    const worktreeDir = path.join(repoDir, "..", ".nucleus-worktrees-test", "release")
+    const worktreeDir = path.join(repoDir, "..", ".vfactor-worktrees-test", "release")
 
     try {
       await git(repoDir, ["checkout", "-b", "release/candidate"])
@@ -268,13 +268,13 @@ describe("GitService worktrees", () => {
     } finally {
       await rm(repoDir, { recursive: true, force: true })
       await rm(remoteDir, { recursive: true, force: true })
-      await rm(path.join(repoDir, "..", ".nucleus-worktrees-test"), { recursive: true, force: true })
+      await rm(path.join(repoDir, "..", ".vfactor-worktrees-test"), { recursive: true, force: true })
     }
   })
 
   test("creates and removes a managed worktree without deleting its branch", async () => {
     const { repoDir, remoteDir } = await createRepositoryWithOrigin()
-    const worktreeDir = path.join(repoDir, "..", ".nucleus-worktrees-test", "kolkata")
+    const worktreeDir = path.join(repoDir, "..", ".vfactor-worktrees-test", "kolkata")
 
     try {
       const service = new GitService()
@@ -300,13 +300,13 @@ describe("GitService worktrees", () => {
     } finally {
       await rm(repoDir, { recursive: true, force: true })
       await rm(remoteDir, { recursive: true, force: true })
-      await rm(path.join(repoDir, "..", ".nucleus-worktrees-test"), { recursive: true, force: true })
+      await rm(path.join(repoDir, "..", ".vfactor-worktrees-test"), { recursive: true, force: true })
     }
   })
 
   test("blocks removing a dirty worktree", async () => {
     const { repoDir, remoteDir } = await createRepositoryWithOrigin()
-    const worktreeDir = path.join(repoDir, "..", ".nucleus-worktrees-test", "oslo")
+    const worktreeDir = path.join(repoDir, "..", ".vfactor-worktrees-test", "oslo")
 
     try {
       const service = new GitService()
@@ -325,14 +325,14 @@ describe("GitService worktrees", () => {
     } finally {
       await rm(repoDir, { recursive: true, force: true })
       await rm(remoteDir, { recursive: true, force: true })
-      await rm(path.join(repoDir, "..", ".nucleus-worktrees-test"), { recursive: true, force: true })
+      await rm(path.join(repoDir, "..", ".vfactor-worktrees-test"), { recursive: true, force: true })
     }
   })
 
   test("ignores prunable worktree entries when listing and creating worktrees", async () => {
     const { repoDir, remoteDir } = await createRepositoryWithOrigin()
-    const staleWorktreeDir = path.join(repoDir, "..", ".nucleus-worktrees-test", "stale")
-    const freshWorktreeDir = path.join(repoDir, "..", ".nucleus-worktrees-test", "fresh")
+    const staleWorktreeDir = path.join(repoDir, "..", ".vfactor-worktrees-test", "stale")
+    const freshWorktreeDir = path.join(repoDir, "..", ".vfactor-worktrees-test", "fresh")
 
     try {
       const service = new GitService()
@@ -362,13 +362,13 @@ describe("GitService worktrees", () => {
     } finally {
       await rm(repoDir, { recursive: true, force: true })
       await rm(remoteDir, { recursive: true, force: true })
-      await rm(path.join(repoDir, "..", ".nucleus-worktrees-test"), { recursive: true, force: true })
+      await rm(path.join(repoDir, "..", ".vfactor-worktrees-test"), { recursive: true, force: true })
     }
   })
 
   test("creates a unique branch when the requested worktree branch already exists", async () => {
     const { repoDir, remoteDir } = await createRepositoryWithOrigin()
-    const worktreesRoot = path.join(repoDir, "..", ".nucleus-worktrees", path.basename(repoDir))
+    const worktreesRoot = path.join(repoDir, "..", ".vfactor-worktrees", path.basename(repoDir))
 
     try {
       await git(repoDir, ["branch", "hobart"])
@@ -386,13 +386,13 @@ describe("GitService worktrees", () => {
     } finally {
       await rm(repoDir, { recursive: true, force: true })
       await rm(remoteDir, { recursive: true, force: true })
-      await rm(path.join(repoDir, "..", ".nucleus-worktrees"), { recursive: true, force: true })
+      await rm(path.join(repoDir, "..", ".vfactor-worktrees"), { recursive: true, force: true })
     }
   })
 
   test("preserves slash-separated branch names when creating a worktree", async () => {
     const { repoDir, remoteDir } = await createRepositoryWithOrigin()
-    const worktreeDir = path.join(repoDir, "..", ".nucleus-worktrees-test", "feature-foo")
+    const worktreeDir = path.join(repoDir, "..", ".vfactor-worktrees-test", "feature-foo")
 
     try {
       const service = new GitService()
@@ -408,14 +408,14 @@ describe("GitService worktrees", () => {
     } finally {
       await rm(repoDir, { recursive: true, force: true })
       await rm(remoteDir, { recursive: true, force: true })
-      await rm(path.join(repoDir, "..", ".nucleus-worktrees-test"), { recursive: true, force: true })
+      await rm(path.join(repoDir, "..", ".vfactor-worktrees-test"), { recursive: true, force: true })
     }
   })
 
   test("renames a managed worktree branch and path", async () => {
     const { repoDir, remoteDir } = await createRepositoryWithOrigin()
-    const originalWorktreeDir = path.join(repoDir, "..", ".nucleus-worktrees-test", "draft-task")
-    const renamedWorktreeDir = path.join(repoDir, "..", ".nucleus-worktrees-test", "fix-first-turn")
+    const originalWorktreeDir = path.join(repoDir, "..", ".vfactor-worktrees-test", "draft-task")
+    const renamedWorktreeDir = path.join(repoDir, "..", ".vfactor-worktrees-test", "fix-first-turn")
 
     try {
       const service = new GitService()
@@ -442,14 +442,14 @@ describe("GitService worktrees", () => {
     } finally {
       await rm(repoDir, { recursive: true, force: true })
       await rm(remoteDir, { recursive: true, force: true })
-      await rm(path.join(repoDir, "..", ".nucleus-worktrees-test"), { recursive: true, force: true })
+      await rm(path.join(repoDir, "..", ".vfactor-worktrees-test"), { recursive: true, force: true })
     }
   })
 
   test("does not rename the branch when the destination path is unavailable", async () => {
     const { repoDir, remoteDir } = await createRepositoryWithOrigin()
-    const originalWorktreeDir = path.join(repoDir, "..", ".nucleus-worktrees-test", "draft-task")
-    const blockedWorktreeDir = path.join(repoDir, "..", ".nucleus-worktrees-test", "blocked")
+    const originalWorktreeDir = path.join(repoDir, "..", ".vfactor-worktrees-test", "draft-task")
+    const blockedWorktreeDir = path.join(repoDir, "..", ".vfactor-worktrees-test", "blocked")
 
     try {
       const service = new GitService()
@@ -474,7 +474,7 @@ describe("GitService worktrees", () => {
     } finally {
       await rm(repoDir, { recursive: true, force: true })
       await rm(remoteDir, { recursive: true, force: true })
-      await rm(path.join(repoDir, "..", ".nucleus-worktrees-test"), { recursive: true, force: true })
+      await rm(path.join(repoDir, "..", ".vfactor-worktrees-test"), { recursive: true, force: true })
     }
   })
 })
@@ -488,11 +488,11 @@ describe("GitService.ensureInfoExcludeEntries", () => {
       const infoExcludePath = path.join(repoDir, ".git", "info", "exclude")
       await writeFile(infoExcludePath, "# local excludes\n", "utf8")
 
-      await service.ensureInfoExcludeEntries(repoDir, ["/.nucleus/"])
-      await service.ensureInfoExcludeEntries(repoDir, ["/.nucleus/"])
+      await service.ensureInfoExcludeEntries(repoDir, ["/.vfactor/"])
+      await service.ensureInfoExcludeEntries(repoDir, ["/.vfactor/"])
 
       const contents = await readFile(infoExcludePath, "utf8")
-      expect(contents).toBe("# local excludes\n/.nucleus/\n")
+      expect(contents).toBe("# local excludes\n/.vfactor/\n")
     } finally {
       await rm(repoDir, { recursive: true, force: true })
     }

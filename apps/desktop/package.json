@@ -1,18 +1,19 @@
 {
-  "name": "nucleus-desktop",
-  "version": "0.1.21",
+  "name": "vfactor-desktop",
+  "version": "0.1.22",
   "description": "Desktop ADE for local-first coding projects",
   "repository": {
     "type": "git",
-    "url": "https://github.com/bradleygibsongit/nucleus-desktop.git"
+    "url": "https://github.com/bradleygibsongit/vfactor-desktop.git"
   },
   "type": "module",
   "main": "out/main/main.js",
   "private": true,
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "bun run prepare:icons dev && electron-vite dev",
     "preview": "electron-vite preview",
-    "build": "electron-vite build",
+    "build": "bun run prepare:icons prod && electron-vite build",
+    "prepare:icons": "bun run ../../scripts/prepare-desktop-icons.ts",
     "prepare:runtime-env": "bun run ../../scripts/write-desktop-runtime-env.ts",
     "dist": "bun run build && bun run prepare:runtime-env && electron-builder",
     "dist:local": "bun run build && bun run prepare:runtime-env && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir --mac -c.mac.identity=-",
@@ -72,8 +73,8 @@
     "zustand": "^5.0.9"
   },
   "build": {
-    "appId": "io.nucleus.desktop",
-    "productName": "Nucleus",
+    "appId": "io.vfactor.desktop",
+    "productName": "vFactor",
     "files": [
       "out/**/*",
       "package.json"
@@ -83,6 +84,18 @@
       "output": "../../release"
     },
     "extraResources": [
+      {
+        "from": "build/icons",
+        "to": "icons",
+        "filter": [
+          "icon.png",
+          "dock.png",
+          "icon.icns",
+          "icon.ico",
+          "128x128.png",
+          "32x32.png"
+        ]
+      },
       {
         "from": "build/runtime",
         "to": ".",
@@ -95,7 +108,7 @@
       {
         "provider": "github",
         "owner": "bradleygibsongit",
-        "repo": "nucleus-desktop"
+        "repo": "vfactor-desktop"
       }
     ],
     "mac": {

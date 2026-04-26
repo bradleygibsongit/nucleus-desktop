@@ -1,10 +1,10 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro"
 
-const GITHUB_REPO_URL = "https://github.com/bradleygibsongit/nucleus-desktop"
+const GITHUB_REPO_URL = "https://github.com/bradleygibsongit/vfactor-desktop"
 const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
 const LATEST_RELEASE_API_URL =
-  "https://api.github.com/repos/bradleygibsongit/nucleus-desktop/releases/latest"
+  "https://api.github.com/repos/bradleygibsongit/vfactor-desktop/releases/latest"
 ---
 
 <BaseLayout>
@@ -12,7 +12,7 @@ const LATEST_RELEASE_API_URL =
   <nav class="nav">
     <div class="container" style="display: flex; align-items: center; justify-content: space-between; height: 56px;">
       <a href="#" class="font-display" style="font-size: 1.1rem; color: var(--text); text-decoration: none; letter-spacing: 0.02em;">
-        NUCLEUS
+        VFACTOR
       </a>
       <div style="display: flex; align-items: center; gap: 32px;">
         <a href="#features" class="nav-link hidden-sm">Features</a>
@@ -32,7 +32,7 @@ const LATEST_RELEASE_API_URL =
       <div style="opacity: 0; animation: fadeUp 1s cubic-bezier(0.16, 1, 0.3, 1) 0.1s forwards;">
         <div class="section-label" style="margin-bottom: 24px;">Open Source &middot; Desktop &middot; Local First</div>
         <h1 class="font-display" style="font-size: clamp(3rem, 10vw, 7.5rem); line-height: 0.95; letter-spacing: -0.02em; color: var(--text);">
-          NUCLEUS
+          VFACTOR
         </h1>
         <p class="font-body" style="margin-top: 28px; font-size: clamp(1.1rem, 2vw, 1.4rem); font-weight: 400; color: var(--text-muted); max-width: 560px; margin-left: auto; margin-right: auto; font-style: italic;">
           The desktop environment for agentic software development. Bring your own models. Own your code.
@@ -58,7 +58,7 @@ const LATEST_RELEASE_API_URL =
         <div class="screenshot-container">
           <img
             src="/app-screenshot.png"
-            alt="Nucleus Desktop — Multi-agent workspace with chat, file browser, terminal, and built-in browser"
+            alt="vFactor — Multi-agent workspace with chat, file browser, terminal, and built-in browser"
             style="display: block; width: 100%; height: auto;"
             loading="eager"
           />
@@ -75,7 +75,7 @@ const LATEST_RELEASE_API_URL =
       <div class="reveal" style="text-align: center; margin-bottom: 48px;">
         <div class="section-label">Download</div>
         <h2 class="font-display" style="font-size: clamp(1.8rem, 4vw, 2.8rem); line-height: 1.1; margin-bottom: 16px;">
-          GET NUCLEUS<br />DESKTOP
+          GET VFACTOR<br />DESKTOP
         </h2>
         <p class="font-body" style="color: var(--text-muted); max-width: 500px; margin: 0 auto; font-style: italic;">
           Install the latest signed release for your machine.
@@ -121,7 +121,7 @@ const LATEST_RELEASE_API_URL =
           CHOOSE YOUR<br />CO-PILOT
         </h2>
         <p class="font-body" style="color: var(--text-muted); max-width: 480px; font-style: italic;">
-          Nucleus adapts to the runtime you prefer. Switch between models without leaving your workspace.
+          vFactor adapts to the runtime you prefer. Switch between models without leaving your workspace.
         </p>
       </div>
 
@@ -313,17 +313,17 @@ const LATEST_RELEASE_API_URL =
             <div class="terminal-dot red"></div>
             <div class="terminal-dot yellow"></div>
             <div class="terminal-dot green"></div>
-            <span class="font-mono" style="font-size: 0.7rem; color: var(--text-dim); margin-left: 8px;">nucleus — zsh</span>
+            <span class="font-mono" style="font-size: 0.7rem; color: var(--text-dim); margin-left: 8px;">vfactor — zsh</span>
           </div>
           <div class="terminal-body">
             <div class="terminal-line">
-              <span class="prompt">$</span> <span class="command">nucleus init landing-page</span>
+              <span class="prompt">$</span> <span class="command">vfactor init landing-page</span>
             </div>
             <div class="terminal-line">
               <span class="success">✓</span> <span class="output">Project initialized in ./landing-page</span>
             </div>
             <div class="terminal-line" style="margin-top: 8px;">
-              <span class="prompt">$</span> <span class="command">nucleus chat "Build a responsive landing page with a hero, features grid, and CTA"</span>
+              <span class="prompt">$</span> <span class="command">vfactor chat "Build a responsive landing page with a hero, features grid, and CTA"</span>
             </div>
             <div class="terminal-line">
               <span class="output">→ Using harness: codex</span>
@@ -350,7 +350,7 @@ const LATEST_RELEASE_API_URL =
               <span class="success">✓</span> <span class="output">Changes complete. 4 files modified.</span>
             </div>
             <div class="terminal-line">
-              <span class="prompt">$</span> <span class="command">nucleus pr --title "Add landing page"</span>
+              <span class="prompt">$</span> <span class="command">vfactor pr --title "Add landing page"</span>
             </div>
             <div class="terminal-line">
               <span class="success">✓</span> <span class="output">Pull request opened: #42</span>
@@ -375,7 +375,7 @@ const LATEST_RELEASE_API_URL =
           BUILT IN THE OPEN
         </h2>
         <p class="font-body" style="color: var(--text-muted); max-width: 520px; margin: 0 auto 40px; font-style: italic;">
-          Nucleus is open source and community-driven. No black boxes, no vendor lock-in. Inspect the code, contribute, or fork it for your own needs.
+          vFactor is open source and community-driven. No black boxes, no vendor lock-in. Inspect the code, contribute, or fork it for your own needs.
         </p>
         <div style="display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;">
           <a href={GITHUB_REPO_URL} target="_blank" rel="noopener" class="btn btn-primary">
@@ -385,7 +385,7 @@ const LATEST_RELEASE_API_URL =
             Star on GitHub
           </a>
           <a href={LATEST_RELEASE_URL} class="btn btn-ghost" data-download-primary>
-            Download Nucleus
+            Download vFactor
           </a>
         </div>
       </div>
@@ -395,7 +395,7 @@ const LATEST_RELEASE_API_URL =
   {/* ── Footer ── */}
   <footer class="footer">
     <div class="container" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
-      <span class="font-display" style="font-size: 0.9rem; color: var(--text-dim);">NUCLEUS</span>
+      <span class="font-display" style="font-size: 0.9rem; color: var(--text-dim);">VFACTOR</span>
       <div style="display: flex; gap: 24px;">
         <a href={GITHUB_REPO_URL} class="link-effect font-mono" style="font-size: 0.75rem; color: var(--text-muted);" target="_blank" rel="noopener">GitHub</a>
         <a href="#" class="link-effect font-mono" style="font-size: 0.75rem; color: var(--text-muted);">Documentation</a>
@@ -418,8 +418,8 @@ const LATEST_RELEASE_API_URL =
     const windows = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M6.555 1.375 0 2.237v5.45h6.555zM0 8.313v5.45l6.555.862V8.313zm7.278-7.06L16 0v7.687H7.278zM16 8.313v7.687l-8.722-1.252V8.313z"/></svg>`
     const linux = `<svg width="16" height="18" viewBox="0 0 448 512" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M236.9 .2c-40 0-77.9 16.5-97.1 53.3C121.5 87.2 116 133.5 120.4 175c-25.8 31.4-45.2 67.2-55.6 105.7-6.3 23.2-9.7 47.3-4.1 70.8 5.5 23.1 20.2 43.3 44.1 54.5l2.9 1.4c-3.2 10.3-3.4 21.5-.2 32.1 5.1 17 18 30 34.6 35.2 16.5 5.1 34.3 1.7 48.1-8.9l.5-.4.4.5c13.9 10.6 31.7 14 48.1 8.9 16.5-5.2 29.5-18.2 34.6-35.2 3.2-10.6 3-21.8-.2-32.1l2.9-1.4c23.8-11.3 38.6-31.5 44.1-54.5 5.6-23.5 2.2-47.6-4.1-70.8-10.4-38.6-29.8-74.3-55.6-105.7 4.4-41.5-1.1-87.8-19.4-121.5C222.6 16.7 276.9.2 236.9.2zm0 32c14 0 38.9 9.3 53.9 39.9 12.5 25.5 17.8 59 16 93.7-5.6-5.9-11.5-11.5-17.8-16.8 1.8-22.8-.2-46.5-8.7-66.1-4.7-10.8-15.7-16.2-26.7-16.2h-33.5c-11 0-22 5.4-26.7 16.2-8.5 19.6-10.5 43.3-8.7 66.1-6.2 5.3-12.2 10.9-17.8 16.8-1.8-34.7 3.5-68.2 16-93.7 15-30.6 39.9-39.9 53.9-39.9z"/></svg>`
 
-    const releaseApiUrl = "https://api.github.com/repos/bradleygibsongit/nucleus-desktop/releases/latest"
-    const fallbackReleaseUrl = "https://github.com/bradleygibsongit/nucleus-desktop/releases/latest"
+    const releaseApiUrl = "https://api.github.com/repos/bradleygibsongit/vfactor-desktop/releases/latest"
+    const fallbackReleaseUrl = "https://github.com/bradleygibsongit/vfactor-desktop/releases/latest"
     const cardIcons = {
       'mac-arm64': apple,
       'mac-x64': apple,
@@ -455,9 +455,9 @@ const LATEST_RELEASE_API_URL =
     }
 
     const assetPatterns = {
-      'mac-arm64': /Nucleus-.+-arm64\.dmg$/i,
-      'mac-x64': /Nucleus-.+-x64\.dmg$/i,
-      'windows-x64': /Nucleus-.+-x64\.exe$/i,
+      'mac-arm64': /vFactor-.+-arm64\.dmg$/i,
+      'mac-x64': /vFactor-.+-x64\.dmg$/i,
+      'windows-x64': /vFactor-.+-x64\.exe$/i,
     }
 
     async function hydrateDownloadLinks() {

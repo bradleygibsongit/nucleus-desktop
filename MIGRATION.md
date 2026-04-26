@@ -1,6 +1,6 @@
-# Nucleus Desktop - Migration Plan
+# vFactor - Migration Plan
 
-This document details the migration from `claude-interface` (custom ACP implementation) to `nucleus-desktop`.
+This document details the migration from `claude-interface` (custom ACP implementation) to `vfactor-desktop`.
 
 ## Background
 

@@ -156,9 +156,8 @@ describe("themeRegistry", () => {
     expect(resolveThemeIdForAppearance("dark")).toBe("vfactor-dark")
   })
 
-  test("legacy nucleus theme ids normalize to the vFactor replacements", () => {
-    expect(normalizeThemeId("nucleus-light")).toBe("vfactor-light")
-    expect(normalizeThemeId("nucleus-dark")).toBe("vfactor-dark")
+  test("known theme ids normalize to themselves", () => {
+    expect(normalizeThemeId("vfactor-light")).toBe("vfactor-light")
     expect(normalizeThemeId("vfactor-dark")).toBe("vfactor-dark")
     expect(normalizeThemeId("missing-theme")).toBe(DEFAULT_THEME_ID)
   })

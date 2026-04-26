@@ -19,7 +19,7 @@ export async function resolveCodexLaunchConfig(): Promise<{
   env: NodeJS.ProcessEnv
 }> {
   return resolveProviderCommand({
-    binaryPath: process.env.NUCLEUS_CODEX_PATH?.trim() || "codex",
+    binaryPath: process.env.VFACTOR_CODEX_PATH?.trim() || "codex",
     executableName: process.platform === "win32" ? "codex.exe" : "codex",
   })
 }

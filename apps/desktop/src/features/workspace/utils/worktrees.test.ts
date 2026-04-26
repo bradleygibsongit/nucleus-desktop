@@ -14,16 +14,16 @@ describe("worktree utils", () => {
   test("resolves the repo root from a selected subdirectory", () => {
     const repoRootPath = resolveRepoRootPath("/tmp/repo/packages/app", [
       { path: "/tmp/repo", isMain: true },
-      { path: "/tmp/.nucleus-worktrees/repo-123/feature", isMain: false },
+      { path: "/tmp/.vfactor-worktrees/repo-123/feature", isMain: false },
     ])
 
     expect(repoRootPath).toBe("/tmp/repo")
   })
 
   test("prefers the main checkout when opening a linked worktree", () => {
-    const repoRootPath = resolveRepoRootPath("/tmp/.nucleus-worktrees/repo-123/feature", [
+    const repoRootPath = resolveRepoRootPath("/tmp/.vfactor-worktrees/repo-123/feature", [
       { path: "/tmp/repo", isMain: true },
-      { path: "/tmp/.nucleus-worktrees/repo-123/feature", isMain: false },
+      { path: "/tmp/.vfactor-worktrees/repo-123/feature", isMain: false },
     ])
 
     expect(repoRootPath).toBe("/tmp/repo")
@@ -38,7 +38,7 @@ describe("worktree utils", () => {
       "kolkata"
     )
 
-    expect(managedWorktreePath).toBe("/tmp/.nucleus-worktrees/repo-project-123/kolkata")
+    expect(managedWorktreePath).toBe("/tmp/.vfactor-worktrees/repo-project-123/kolkata")
   })
 
   test("builds managed worktree paths correctly for Windows repo roots", () => {
@@ -50,7 +50,7 @@ describe("worktree utils", () => {
       "kolkata"
     )
 
-    expect(managedWorktreePath).toBe("C:\\.nucleus-worktrees\\repo-project-123\\kolkata")
+    expect(managedWorktreePath).toBe("C:\\.vfactor-worktrees\\repo-project-123\\kolkata")
   })
 
   test("resolves the default workspaces path from the repo root", () => {
@@ -59,7 +59,7 @@ describe("worktree utils", () => {
         id: "project-123",
         repoRootPath: "/tmp/repo",
       })
-    ).toBe("/tmp/.nucleus-worktrees/repo-project-123")
+    ).toBe("/tmp/.vfactor-worktrees/repo-project-123")
   })
 
   test("prefers a stored custom workspaces path when present", () => {

@@ -1,7 +1,7 @@
 <wizard-report>
 # PostHog post-wizard report
 
-The wizard has completed a deep integration of PostHog analytics into Nucleus Desktop's Electron main process using `posthog-node`. A new `analytics.ts` service module was created to manage the PostHog singleton and a persistent anonymous device ID (stored per-machine in `device-id.json`). Event capture calls were added across five Electron main-process files covering app startup, agent server lifecycle, terminal session creation, update checking and installation, and all git workspace operations. Exception tracking was added to the agent server and auto-updater error paths. The PostHog client is cleanly shut down on `before-quit`.
+The wizard has completed a deep integration of PostHog analytics into vFactor's Electron main process using `posthog-node`. A new `analytics.ts` service module was created to manage the PostHog singleton and a persistent anonymous device ID (stored per-machine in `device-id.json`). Event capture calls were added across five Electron main-process files covering app startup, agent server lifecycle, terminal session creation, update checking and installation, and all git workspace operations. Exception tracking was added to the agent server and auto-updater error paths. The PostHog client is cleanly shut down on `before-quit`.
 
 | Event | Description | File |
 |---|---|---|

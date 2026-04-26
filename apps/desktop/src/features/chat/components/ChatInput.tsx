@@ -1018,7 +1018,7 @@ export function ChatInput({
 
   const composerInitialConfig = useMemo(
     () => ({
-      namespace: "nucleus-chat-composer",
+      namespace: "vfactor-chat-composer",
       nodes: [SkillChipNode, UploadChipNode],
       onError(error: Error) {
         throw error

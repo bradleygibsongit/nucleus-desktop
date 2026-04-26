@@ -85,7 +85,7 @@ export function RemoveProjectModal({
           </AlertDialogMedia>
           <AlertDialogTitle>Remove project?</AlertDialogTitle>
           <AlertDialogDescription>
-            Remove {project?.name ?? "this project"} and its chat history from Nucleus Desktop.
+            Remove {project?.name ?? "this project"} and its chat history from vFactor.
             This keeps the local folder and files on disk.
             {errorMessage ? ` ${errorMessage}` : ""}
           </AlertDialogDescription>

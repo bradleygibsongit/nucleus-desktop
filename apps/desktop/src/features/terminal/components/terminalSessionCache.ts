@@ -96,7 +96,7 @@ function applyTerminalSurfaceStyles(container: HTMLElement) {
   container.style.setProperty("--term-font-family", theme.fontFamily)
   container.style.setProperty("--term-font-size", theme.fontSize)
   container.style.setProperty("--term-line-height", theme.lineHeight)
-  container.style.setProperty("--nucleus-term-selection", theme.selection)
+  container.style.setProperty("--vfactor-term-selection", theme.selection)
 }
 
 function waitForAnimationFrame() {
@@ -317,7 +317,7 @@ function ensureTerminalInitialized(session: CachedTerminalSession) {
 
 function createCachedTerminalSession(sessionId: string): CachedTerminalSession {
   const wrapper = document.createElement("div")
-  wrapper.className = "nucleus-wterm-shell h-full min-h-0 w-full overflow-hidden bg-terminal"
+  wrapper.className = "vfactor-wterm-shell h-full min-h-0 w-full overflow-hidden bg-terminal"
 
   const listeners = new Set<(event: CachedTerminalEvent) => void>()
 

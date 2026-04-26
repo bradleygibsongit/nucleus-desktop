@@ -1,8 +1,8 @@
-# Nucleus
+# vFactor
 
-Monorepo for the Nucleus desktop ADE and its supporting surfaces.
+Monorepo for the vFactor desktop ADE and its supporting surfaces.
 
-Nucleus is a local-first coding environment for supervised, agentic software development. Projects in the app are folder-backed workspaces with chats, plans, tools, files, and approvals scoped to that local context.
+vFactor is a local-first coding environment for supervised, agentic software development. Projects in the app are folder-backed workspaces with chats, plans, tools, files, and approvals scoped to that local context.
 
 ## Prerequisites
 
@@ -61,18 +61,18 @@ bun run build
 bun run desktop:dist:local
 ```
 
-This packages the Electron app without using a dev server and disables automatic Apple identity discovery so it still works on Macs that do not have Apple developer signing keys installed. The app bundle is written to `apps/desktop/dist/mac-arm64/Nucleus.app`. For local installs on the same Mac, that `.app` is enough: drag it into `/Applications` or launch it directly.
+This packages the Electron app without using a dev server and disables automatic Apple identity discovery so it still works on Macs that do not have Apple developer signing keys installed. The app bundle is written to `apps/desktop/dist/mac-arm64/vFactor.app`. For local installs on the same Mac, that `.app` is enough: drag it into `/Applications` or launch it directly.
 
 Unsigned or ad hoc signed builds are fine for local testing, but macOS Gatekeeper may still warn when you open a copied or downloaded build. On the destination Mac, either use Finder's `Open` action once or remove quarantine with:
 
 ```bash
-xattr -dr com.apple.quarantine apps/desktop/dist/mac-arm64/Nucleus.app
+xattr -dr com.apple.quarantine apps/desktop/dist/mac-arm64/vFactor.app
 ```
 
 ## Project Structure
 
 ```
-nucleus/
+vfactor/
 ├── apps/
 │   ├── desktop/          # Electron app, CLI, and desktop-specific assets
 │   └── site/             # Marketing website package

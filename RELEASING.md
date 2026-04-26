@@ -1,4 +1,4 @@
-# Releasing Nucleus Desktop
+# Releasing vFactor
 
 ## One-time setup
 
@@ -48,5 +48,5 @@ If you want the packaged app to emit PostHog events locally, export `POSTHOG_API
 ## In-app updates
 
 - The packaged app checks GitHub Releases through `electron-updater`.
-- When GitHub Releases contains a newer compatible build, Nucleus shows an in-app update banner, downloads the installer, and installs it directly.
+- When GitHub Releases contains a newer compatible build, vFactor shows an in-app update banner, downloads the installer, and installs it directly.
 - If PostHog is configured, updater checks, download completion, blocked restarts, install attempts, and updater failures are also captured from the packaged app.

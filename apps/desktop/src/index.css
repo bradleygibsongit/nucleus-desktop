@@ -186,7 +186,7 @@
 }
 
 @layer components {
-  .nucleus-wterm-shell.wterm {
+  .vfactor-wterm-shell.wterm {
     width: 100%;
     height: 100%;
     padding: 0;
@@ -197,24 +197,24 @@
     scrollbar-width: thin;
   }
 
-  .nucleus-wterm-shell.wterm::-webkit-scrollbar {
+  .vfactor-wterm-shell.wterm::-webkit-scrollbar {
     width: 8px;
   }
 
-  .nucleus-wterm-shell.wterm::-webkit-scrollbar-thumb {
+  .vfactor-wterm-shell.wterm::-webkit-scrollbar-thumb {
     background-color: var(--color-scrollbar-thumb);
     border-radius: 9999px;
   }
 
-  .nucleus-wterm-shell.wterm::-webkit-scrollbar-track {
+  .vfactor-wterm-shell.wterm::-webkit-scrollbar-track {
     background: transparent;
   }
 
-  .nucleus-wterm-shell .term-grid {
+  .vfactor-wterm-shell .term-grid {
     min-height: 100%;
   }
 
-  .nucleus-wterm-shell .term-row.nucleus-terminal-link-hover {
+  .vfactor-wterm-shell .term-row.vfactor-terminal-link-hover {
     cursor: pointer;
     text-decoration-line: underline;
     text-decoration-thickness: 1px;
@@ -222,8 +222,8 @@
     text-decoration-color: color-mix(in oklab, var(--term-fg) 78%, transparent);
   }
 
-  .nucleus-wterm-shell ::selection {
-    background: var(--nucleus-term-selection, rgba(110, 110, 110, 0.4));
+  .vfactor-wterm-shell ::selection {
+    background: var(--vfactor-term-selection, rgba(110, 110, 110, 0.4));
   }
 
   .chat-composer-shell {

@@ -178,7 +178,7 @@ export function getDefaultProjectWorkspacesPath(
   const repoRootPath = project.repoRootPath || ""
   const repoParentPath = getDirname(repoRootPath)
   const repoName = getBasename(repoRootPath)
-  return joinPaths(repoParentPath, ".nucleus-worktrees", `${repoName}-${project.id}`)
+  return joinPaths(repoParentPath, ".vfactor-worktrees", `${repoName}-${project.id}`)
 }
 
 export function getProjectWorkspacesPath(

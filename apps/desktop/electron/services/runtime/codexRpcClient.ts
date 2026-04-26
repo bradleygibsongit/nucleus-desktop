@@ -214,8 +214,8 @@ export class MainCodexRpcClient {
     try {
       await this.sendRequestWithoutReconnect("initialize", {
         clientInfo: {
-          name: "nucleus-desktop",
-          title: "Nucleus Desktop",
+          name: "vfactor-desktop",
+          title: "vFactor",
           version: "0.1.0",
         },
         capabilities: {

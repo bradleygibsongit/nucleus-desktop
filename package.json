@@ -1,5 +1,5 @@
 {
-  "name": "nucleus",
+  "name": "vfactor",
   "private": true,
   "workspaces": [
     "apps/*"

@@ -123,7 +123,7 @@ function createManagedWorktree(overrides: Partial<ProjectWorktree> = {}): Projec
     id: "managed-worktree",
     name: "Kolkata",
     branchName: "kolkata",
-    path: "/tmp/.nucleus-worktrees/repo-project-1/kolkata",
+    path: "/tmp/.vfactor-worktrees/repo-project-1/kolkata",
     createdAt: 2,
     updatedAt: 2,
     source: "managed",
@@ -461,7 +461,7 @@ describe("projectStore", () => {
         isMain: true,
       },
       {
-        path: "/tmp/.nucleus-worktrees/repo-project-1/feature-fast-restore",
+        path: "/tmp/.vfactor-worktrees/repo-project-1/feature-fast-restore",
         branchName: "feature/fast-restore",
         isMain: false,
       },
@@ -723,7 +723,7 @@ describe("projectStore", () => {
     const project = state.projects[0]
 
     expect(createdWorktree.branchName).toBe("feature/fix-first-turn-setup")
-    expect(createdWorktree.path).toBe("/tmp/.nucleus-worktrees/repo-project-1/fix-first-turn-setup")
+    expect(createdWorktree.path).toBe("/tmp/.vfactor-worktrees/repo-project-1/fix-first-turn-setup")
     expect(createdWorktree.name).toBe("Fix first turn setup")
     expect(createdWorktree.intentStatus).toBe("configured")
     expect(project?.selectedWorktreeId).toBe(createdWorktree.id)
@@ -740,7 +740,7 @@ describe("projectStore", () => {
               id: "existing-worktree",
               name: "Fix first turn setup",
               branchName: "feature/fix-first-turn-setup",
-              path: "/tmp/.nucleus-worktrees/repo-project-1/fix-first-turn-setup",
+              path: "/tmp/.vfactor-worktrees/repo-project-1/fix-first-turn-setup",
             }),
           ],
         }),
@@ -756,7 +756,7 @@ describe("projectStore", () => {
     })
 
     expect(createdWorktree.branchName).toBe("feature/fix-first-turn-setup-2")
-    expect(createdWorktree.path).toBe("/tmp/.nucleus-worktrees/repo-project-1/fix-first-turn-setup-2")
+    expect(createdWorktree.path).toBe("/tmp/.vfactor-worktrees/repo-project-1/fix-first-turn-setup-2")
     expect(createdWorktree.name).toBe("Fix first turn setup 2")
   })
 
@@ -786,7 +786,7 @@ describe("projectStore", () => {
     })
 
     expect(createdWorktree.branchName).toBe("feature/fix-first-turn-setup-2")
-    expect(createdWorktree.path).toBe("/tmp/.nucleus-worktrees/repo-project-1/fix-first-turn-setup-2")
+    expect(createdWorktree.path).toBe("/tmp/.vfactor-worktrees/repo-project-1/fix-first-turn-setup-2")
     expect(createdWorktree.name).toBe("Fix first turn setup 2")
   })
 
@@ -906,13 +906,13 @@ describe("projectStore", () => {
 
     expect(renameWorktreeCallCount).toBe(1)
     expect(renamedWorktree.branchName).toBe("fix-first-turn-setup")
-    expect(renamedWorktree.path).toBe("/tmp/.nucleus-worktrees/repo-project-1/fix-first-turn-setup")
+    expect(renamedWorktree.path).toBe("/tmp/.vfactor-worktrees/repo-project-1/fix-first-turn-setup")
     expect(renamedWorktree.name).toBe("Fix first turn setup")
     expect(renamedWorktree.intentStatus).toBe("configured")
     expect(useTabStore.getState().rebaseWorktreeTabPaths).toHaveBeenCalledWith(
       "managed-worktree",
-      "/tmp/.nucleus-worktrees/repo-project-1/kolkata",
-      "/tmp/.nucleus-worktrees/repo-project-1/fix-first-turn-setup",
+      "/tmp/.vfactor-worktrees/repo-project-1/kolkata",
+      "/tmp/.vfactor-worktrees/repo-project-1/fix-first-turn-setup",
     )
   })
 
@@ -925,13 +925,13 @@ describe("projectStore", () => {
             createManagedWorktree({
               id: "managed-worktree",
               intentStatus: "pending",
-              path: "/tmp/.nucleus-worktrees/repo-project-1/kolkata",
+              path: "/tmp/.vfactor-worktrees/repo-project-1/kolkata",
             }),
             createManagedWorktree({
               id: "existing-worktree",
               name: "Fix first turn setup",
               branchName: "feature/fix-first-turn-setup",
-              path: "/tmp/.nucleus-worktrees/repo-project-1/fix-first-turn-setup",
+              path: "/tmp/.vfactor-worktrees/repo-project-1/fix-first-turn-setup",
               createdAt: 3,
               updatedAt: 3,
             }),
@@ -955,7 +955,7 @@ describe("projectStore", () => {
 
     expect(renameWorktreeCallCount).toBe(1)
     expect(renamedWorktree.branchName).toBe("fix-first-turn-setup-2")
-    expect(renamedWorktree.path).toBe("/tmp/.nucleus-worktrees/repo-project-1/fix-first-turn-setup-2")
+    expect(renamedWorktree.path).toBe("/tmp/.vfactor-worktrees/repo-project-1/fix-first-turn-setup-2")
     expect(renamedWorktree.name).toBe("Fix first turn setup 2")
     expect(renamedWorktree.intentStatus).toBe("configured")
   })
@@ -981,7 +981,7 @@ describe("projectStore", () => {
     const project = state.projects[0]
 
     expect(project?.worktrees.map((worktree) => worktree.id)).toEqual(["root-worktree"])
-    expect(project?.hiddenWorktreePaths).toContain("/tmp/.nucleus-worktrees/repo-project-1/kolkata")
+    expect(project?.hiddenWorktreePaths).toContain("/tmp/.vfactor-worktrees/repo-project-1/kolkata")
     expect(state.activeWorktreeId).toBe("root-worktree")
     expect(removeWorktreeCallCount).toBe(0)
     expect(getChangesCallCount).toBe(0)
@@ -1008,7 +1008,7 @@ describe("projectStore", () => {
     const project = state.projects[0]
 
     expect(project?.worktrees.map((worktree) => worktree.id)).toEqual(["root-worktree"])
-    expect(project?.hiddenWorktreePaths).not.toContain("/tmp/.nucleus-worktrees/repo-project-1/kolkata")
+    expect(project?.hiddenWorktreePaths).not.toContain("/tmp/.vfactor-worktrees/repo-project-1/kolkata")
     expect(state.activeWorktreeId).toBe("root-worktree")
     expect(removeWorktreeCallCount).toBe(1)
     expect(getChangesCallCount).toBe(0)

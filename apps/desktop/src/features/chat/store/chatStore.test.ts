@@ -753,8 +753,8 @@ describe("chatStore worktree scoping", () => {
           type: "attachment",
           kind: "image",
           label: "diagram.png",
-          relativePath: ".nucleus/chat-inputs/2026-04-07/attachment-1-diagram.png",
-          absolutePath: "/tmp/worktree-1/.nucleus/chat-inputs/2026-04-07/attachment-1-diagram.png",
+          relativePath: ".vfactor/chat-inputs/2026-04-07/attachment-1-diagram.png",
+          absolutePath: "/tmp/worktree-1/.vfactor/chat-inputs/2026-04-07/attachment-1-diagram.png",
           mediaType: "image/png",
           sizeBytes: 128,
         },
@@ -763,7 +763,7 @@ describe("chatStore worktree scoping", () => {
 
     expect(lastHarnessTurnInput?.text).toContain("Attached local context:")
     expect(lastHarnessTurnInput?.text).toContain(
-      '- image "diagram.png": .nucleus/chat-inputs/2026-04-07/attachment-1-diagram.png'
+      '- image "diagram.png": .vfactor/chat-inputs/2026-04-07/attachment-1-diagram.png'
     )
 
     const persisted = storeData.get("chatState") as {
@@ -781,7 +781,7 @@ describe("chatStore worktree scoping", () => {
       expect.objectContaining({
         type: "attachment",
         label: "diagram.png",
-        relativePath: ".nucleus/chat-inputs/2026-04-07/attachment-1-diagram.png",
+        relativePath: ".vfactor/chat-inputs/2026-04-07/attachment-1-diagram.png",
       }),
     ])
   })

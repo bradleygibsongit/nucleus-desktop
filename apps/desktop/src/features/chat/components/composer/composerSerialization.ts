@@ -6,7 +6,7 @@ import { $createSkillChipNode, $isSkillChipNode } from "../SkillChipNode"
 import { $createUploadChipNode, $isUploadChipNode } from "../UploadChipNode"
 
 export const SKILL_REFERENCE_PATTERN = /\$([a-z0-9][a-z0-9-]*)/gi
-const COMPOSER_TOKEN_PATTERN = /\[\[nucleus-upload:[A-Za-z0-9_-]+\]\]|\$([a-z0-9][a-z0-9-]*)/gi
+const COMPOSER_TOKEN_PATTERN = /\[\[vfactor-upload:[A-Za-z0-9_-]+\]\]|\$([a-z0-9][a-z0-9-]*)/gi
 
 function appendTextNodesToParagraph(
   text: string,
@@ -51,7 +51,7 @@ export function populateComposerFromSerializedValue(
 
     const attachmentMatch = fullMatch.match(ATTACHMENT_CHIP_PATTERN)
     const attachmentId = attachmentMatch?.[0]
-      ? fullMatch.slice("[[nucleus-upload:".length, -"]]".length)
+      ? fullMatch.slice("[[vfactor-upload:".length, -"]]".length)
       : null
 
     if (attachmentId) {

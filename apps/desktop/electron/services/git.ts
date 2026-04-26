@@ -34,7 +34,7 @@ import type {
 
 const execFileAsync = promisify(execFile)
 const CODEX_REASONING_EFFORT = "low"
-const ENABLE_VERBOSE_GIT_LOGS = process.env.NUCLEUS_VERBOSE_GIT_LOGS === "1"
+const ENABLE_VERBOSE_GIT_LOGS = process.env.VFACTOR_VERBOSE_GIT_LOGS === "1"
 
 type CommitSuggestion = {
   subject: string
@@ -381,7 +381,7 @@ async function listGitWorktrees(projectPath: string): Promise<GitWorktreeSummary
 function resolveDefaultManagedWorktreePath(repoRoot: string, branchName: string): string {
   const repoParentPath = path.dirname(repoRoot)
   const repoName = path.basename(repoRoot)
-  return path.join(repoParentPath, ".nucleus-worktrees", repoName, branchName)
+  return path.join(repoParentPath, ".vfactor-worktrees", repoName, branchName)
 }
 
 async function assertWorktreeIsClean(worktreePath: string): Promise<void> {
@@ -2167,7 +2167,7 @@ async function prepareCommitContext(
   filePaths?: string[]
 ): Promise<{ stagedSummary: string; stagedPatch: string } | null> {
   const commitTarget = await resolveCommitTarget(projectPath, filePaths)
-  const tempDir = await mkdtemp(path.join(tmpdir(), "nucleus-git-index-"))
+  const tempDir = await mkdtemp(path.join(tmpdir(), "vfactor-git-index-"))
   const env = {
     ...process.env,
     GIT_INDEX_FILE: path.join(tempDir, "index"),
@@ -2309,7 +2309,7 @@ async function runCodexJson<T>(
   schema: Record<string, unknown>,
   model?: string | null
 ): Promise<T> {
-  const tempDir = await mkdtemp(path.join(tmpdir(), "nucleus-git-"))
+  const tempDir = await mkdtemp(path.join(tmpdir(), "vfactor-git-"))
   const schemaPath = path.join(tempDir, "schema.json")
   const outputPath = path.join(tempDir, "output.json")
 

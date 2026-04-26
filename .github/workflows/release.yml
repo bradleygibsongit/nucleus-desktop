@@ -56,7 +56,7 @@ jobs:
 
       - name: Install dependencies
         env:
-          NUCLEUS_SKIP_DESKTOP_POSTINSTALL: "1"
+          VFACTOR_SKIP_DESKTOP_POSTINSTALL: "1"
         run: bun install --frozen-lockfile
 
       - name: Import macOS signing certificate
@@ -122,7 +122,7 @@ jobs:
               exit 1
             fi
 
-            preflight_binary="$RUNNER_TEMP/nucleus-codesign-preflight"
+            preflight_binary="$RUNNER_TEMP/vfactor-codesign-preflight"
             printf '#!/bin/sh\nexit 0\n' > "$preflight_binary"
             chmod +x "$preflight_binary"
             echo "Running codesign preflight with: $signing_identity"

@@ -46,7 +46,7 @@ export function UpdatesSection() {
             {updateState.status === "up-to-date" ? (
               <div className="flex items-center gap-2">
                 <CheckCircle size={15} className={feedbackIconClassName("success")} />
-                <p className="text-sm font-medium">Nucleus is up to date</p>
+                <p className="text-sm font-medium">vFactor is up to date</p>
               </div>
             ) : (
               <p className="text-sm font-medium">{getUpdateStatusLabel(updateState)}</p>

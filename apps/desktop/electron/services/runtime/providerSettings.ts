@@ -136,12 +136,12 @@ export async function resolveProviderCommand(input: {
   }
 
   if (!command && input.executableName === "codex") {
-    const configuredExecutable = process.env.NUCLEUS_CODEX_PATH?.trim()
+    const configuredExecutable = process.env.VFACTOR_CODEX_PATH?.trim()
     command = isExecutableFile(configuredExecutable) ? configuredExecutable : null
   }
 
   if (!command && input.executableName === "claude") {
-    const configuredExecutable = process.env.NUCLEUS_CLAUDE_PATH?.trim()
+    const configuredExecutable = process.env.VFACTOR_CLAUDE_PATH?.trim()
     command = isExecutableFile(configuredExecutable) ? configuredExecutable : null
   }
 

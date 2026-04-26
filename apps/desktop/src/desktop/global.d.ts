@@ -60,7 +60,7 @@ declare global {
   }
 
   interface Window {
-    nucleus: {
+    vfactor: {
       app: {
         getVersion: () => Promise<string>
         getUpdateState: () => Promise<AppUpdateState>

@@ -17,7 +17,7 @@ describe("normalizeChatInputAttachments", () => {
         type: "attachment" as const,
         kind: "file" as const,
         label: "notes.txt",
-        relativePath: ".nucleus/chat-inputs/2026-04-07/att-1-notes.txt",
+        relativePath: ".vfactor/chat-inputs/2026-04-07/att-1-notes.txt",
         absolutePath: "/tmp/notes.txt",
       },
     ]

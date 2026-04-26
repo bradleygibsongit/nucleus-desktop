@@ -62,7 +62,7 @@ function createMonacoTheme(seed: ThemeSeed): ThemeDefinition["monaco"] {
   const lineHighlight = isDark ? withAlpha(seed.foreground, 6) : withAlpha(seed.foreground, 4)
 
   return {
-    id: `nucleus-${seed.id}`,
+    id: `vfactor-${seed.id}`,
     base: isDark ? "vs-dark" : "vs",
     inherit: true,
     rules: [
@@ -1177,14 +1177,6 @@ export function isThemeId(value: string | null | undefined): value is ThemeId {
 }
 
 export function normalizeThemeId(value: string | null | undefined): ThemeId {
-  if (value === "nucleus-light") {
-    return "vfactor-light"
-  }
-
-  if (value === "nucleus-dark") {
-    return "vfactor-dark"
-  }
-
   return isThemeId(value) ? value : DEFAULT_THEME_ID
 }
 

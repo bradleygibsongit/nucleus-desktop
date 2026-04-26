@@ -8,7 +8,7 @@ describe("JsonStoreService", () => {
   let userDataPath = ""
 
   beforeEach(async () => {
-    userDataPath = await mkdtemp(join(tmpdir(), "nucleus-store-test-"))
+    userDataPath = await mkdtemp(join(tmpdir(), "vfactor-store-test-"))
   })
 
   afterEach(async () => {

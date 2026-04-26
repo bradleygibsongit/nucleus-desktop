@@ -14,12 +14,12 @@ import { capture, captureException } from "./analytics"
 const { autoUpdater } = electronUpdater
 
 const UPDATE_FEED_URL =
-  "https://github.com/bradleygibsongit/nucleus-desktop/releases/latest/download"
+  "https://github.com/bradleygibsongit/vfactor-desktop/releases/latest/download"
 const AUTO_CHECK_DELAY_MS = 30_000
 const AUTO_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1_000
 const INSTALL_HANDOFF_TIMEOUT_MS = 15_000
 const UPDATE_DISABLED_MESSAGE =
-  "Automatic updates are unavailable in this build. Install Nucleus from a packaged release to use the updater."
+  "Automatic updates are unavailable in this build. Install vFactor from a packaged release to use the updater."
 const PRIVATE_GITHUB_RELEASES_MESSAGE =
   "Automatic updates are unavailable because the release feed is private or inaccessible. Publish the release publicly or install the latest version manually."
 
@@ -567,7 +567,7 @@ export class UpdaterService {
 
       void this.restoreAfterInstallFailure().finally(() => {
         const error = new Error(
-          "Nucleus couldn't restart to install the update. Retry restart, or download the latest release manually."
+          "vFactor couldn't restart to install the update. Retry restart, or download the latest release manually."
         )
         captureException(error, { context: "auto_updater_install_handoff_timeout" })
         this.setState({

@@ -2,7 +2,7 @@
 
 const shouldSkip =
   process.env.VERCEL === "1" ||
-  process.env.NUCLEUS_SKIP_DESKTOP_POSTINSTALL === "1"
+  process.env.VFACTOR_SKIP_DESKTOP_POSTINSTALL === "1"
 
 if (shouldSkip) {
   console.log("Skipping desktop native dependency rebuild in hosted install environment.")

@@ -128,7 +128,7 @@ export function BrowserSidebar({ toolbarContainer }: BrowserSidebarProps) {
       setIsWebviewReady(false)
       setIsLoading(false)
       setLoadError(
-        "The embedded browser is not ready yet. Fully restart the Nucleus desktop app to enable this panel."
+        "The embedded browser is not ready yet. Fully restart the vFactor desktop app to enable this panel."
       )
       return
     }
@@ -346,7 +346,7 @@ export function BrowserSidebar({ toolbarContainer }: BrowserSidebarProps) {
           <webview
             ref={webviewRef}
             src={browserUrl}
-            partition="persist:nucleus-browser"
+            partition="persist:vfactor-browser"
             className="h-full min-w-0 w-full bg-white"
           />
         </div>

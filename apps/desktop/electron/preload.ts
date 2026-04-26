@@ -59,7 +59,7 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): () => vo
   }
 }
 
-contextBridge.exposeInMainWorld("nucleus", {
+contextBridge.exposeInMainWorld("vfactor", {
   app: {
     getVersion: () => ipcRenderer.invoke(IPC_CHANNELS.appGetVersion) as Promise<string>,
     getUpdateState: () => ipcRenderer.invoke(IPC_CHANNELS.appGetUpdateState) as Promise<unknown>,
