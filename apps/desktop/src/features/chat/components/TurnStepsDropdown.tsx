@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react"
 import {
   Bash,
+  Brain,
   CaretDown,
   CaretRight,
   Compass,
@@ -36,6 +37,8 @@ interface TurnStepsDropdownProps {
 
 function getAggregateToolIcon(itemType?: string): Icon {
   switch (itemType) {
+    case "reasoning":
+      return Brain
     case "commandExecution":
       return Bash
     case "fileChange":
@@ -57,11 +60,18 @@ function buildSummary(messages: MessageWithParts[]): string {
   const toolCount = messages.filter((message) =>
     message.parts.some((part) => part.type === "tool")
   ).length
+  const thoughtCount = messages.filter(
+    (message) => message.info.itemType === "reasoning"
+  ).length
   const messageCount = messages.filter((message) =>
+    message.info.itemType !== "reasoning" &&
     message.parts.every((part) => part.type !== "tool")
   ).length
 
   const parts: string[] = []
+  if (thoughtCount > 0) {
+    parts.push(`${thoughtCount} ${thoughtCount === 1 ? "thought" : "thoughts"}`)
+  }
   if (messageCount > 0) {
     parts.push(`${messageCount} ${messageCount === 1 ? "message" : "messages"}`)
   }
@@ -78,7 +88,9 @@ function getSummaryToolIcons(messages: MessageWithParts[]) {
 
   for (const message of messages) {
     const hasToolPart = message.parts.some((part) => part.type === "tool")
-    if (!hasToolPart) {
+    const isThought = message.info.itemType === "reasoning"
+
+    if (!hasToolPart && !isThought) {
       continue
     }
 
