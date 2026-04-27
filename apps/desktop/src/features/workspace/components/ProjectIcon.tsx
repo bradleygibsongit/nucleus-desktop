@@ -12,7 +12,7 @@ import {
 interface ProjectIconProps {
   project?: Pick<Project, "iconPath" | "faviconPath"> | null
   isExpanded?: boolean
-  size?: number
+  size?: number | string
   className?: string
 }
 
@@ -75,13 +75,17 @@ export function ProjectIcon({
   }, [resolvedIconPath])
 
   if (iconSrc && !hasImageError) {
+    const imageSizeProps =
+      typeof size === "number"
+        ? { width: size, height: size }
+        : { style: { width: size, height: size } }
+
     return (
       <img
         aria-hidden="true"
         src={iconSrc}
         alt=""
-        width={size}
-        height={size}
+        {...imageSizeProps}
         onError={() => setHasImageError(true)}
         className={cn("rounded-[4px] object-cover", className)}
       />

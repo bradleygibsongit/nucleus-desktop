@@ -1,5 +1,4 @@
-import { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef } from "react"
-import { useAnimate, useReducedMotion } from "framer-motion"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { desktop, type GitPullRequest } from "@/desktop/client"
 import { CheckCircle, Folder, GitDiff, Globe } from "@/components/icons"
 import { BrowserSidebar } from "@/features/browser/components/BrowserSidebar"
@@ -37,7 +36,6 @@ const RIGHT_SIDEBAR_TABS: Array<{
   { key: "checks", label: "Checks", icon: CheckCircle },
   { key: "browser", label: "Browser", icon: Globe },
 ]
-const COLLAPSED_HOVER_TRIGGER_WIDTH = 12
 const FILES_TREE_PANEL_WIDTH_CSS_VAR = "--files-tree-panel-width"
 const FILES_TREE_PANEL_MIN_WIDTH = 180
 const FILES_PREVIEW_PANEL_MIN_WIDTH = 260
@@ -46,12 +44,7 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   const [fileImportError, setFileImportError] = useState<string | null>(null)
   const [isImportingFiles, setIsImportingFiles] = useState(false)
-  const [isHoverPreviewOpen, setIsHoverPreviewOpen] = useState(false)
   const [browserToolbarContainer, setBrowserToolbarContainer] = useState<HTMLDivElement | null>(null)
-  const [toolbarSlotScope, animateToolbarSlot] = useAnimate<HTMLDivElement>()
-  const shouldReduceMotion = useReducedMotion()
-  const previousToolbarSlotRectRef = useRef<DOMRect | null>(null)
-  const previousStackedToolbarRef = useRef<boolean | null>(null)
   const [selectedPreviewFile, setSelectedPreviewFile] = useState<{
     path: string
     name: string
@@ -61,7 +54,7 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
   >(new Map())
   const { isAvailable, isCollapsed, width, clampWidth, setWidth, persistWidth, activeTab, setActiveTab, expand, toggle } = useRightSidebar()
   const [filesTreePanelWidth, setFilesTreePanelWidth] = useState(() =>
-    Math.round(Math.max(FILES_TREE_PANEL_MIN_WIDTH, width / 3))
+    Math.round(Math.max(FILES_TREE_PANEL_MIN_WIDTH, width * 0.32))
   )
   const { selectedWorktreeId, selectedWorktree, selectedWorktreePath } = useCurrentProjectWorktree()
   const {
@@ -125,7 +118,7 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
       isCollapsed: activeTab !== "files",
       widthCssVariable: FILES_TREE_PANEL_WIDTH_CSS_VAR,
       clampWidth: clampFilesTreePanelWidth,
-      side: "left",
+      side: "right",
     })
 
   const resolvedFilesTreePanelWidth = clampFilesTreePanelWidth(filesTreePanelWidth)
@@ -235,9 +228,6 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
     },
     [selectedWorktreeId, selectedWorktreePath]
   )
-  const handleHoverPreviewIntent = useCallback(() => {
-    void prewarmProjectData(selectedWorktreeId, selectedWorktreePath, activeTab)
-  }, [activeTab, selectedWorktreeId, selectedWorktreePath])
 
   const handleFilePreviewSelect = useCallback((filePath: string, fileName: string) => {
     setSelectedPreviewFile((current) =>
@@ -247,67 +237,12 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
     )
   }, [])
 
-  useEffect(() => {
-    if (!isCollapsed && isHoverPreviewOpen) {
-      setIsHoverPreviewOpen(false)
-    }
-  }, [isCollapsed, isHoverPreviewOpen])
-
-  useEffect(() => {
-    if ((!isAvailable || activeView !== "chat") && isHoverPreviewOpen) {
-      setIsHoverPreviewOpen(false)
-    }
-  }, [activeView, isAvailable, isHoverPreviewOpen])
-
-  const activeTabLabel = RIGHT_SIDEBAR_TABS.find((tab) => tab.key === activeTab)?.label ?? ""
-  const shouldStackTabToolbar = width < 430
   const setToolbarSlotRef = useCallback(
     (node: HTMLDivElement | null) => {
-      toolbarSlotScope.current = node
       setBrowserToolbarContainer(activeTab === "browser" ? node : null)
     },
-    [activeTab, toolbarSlotScope]
+    [activeTab]
   )
-
-  useLayoutEffect(() => {
-    const element = toolbarSlotScope.current
-    if (!element) {
-      previousToolbarSlotRectRef.current = null
-      previousStackedToolbarRef.current = shouldStackTabToolbar
-      return
-    }
-
-    const nextRect = element.getBoundingClientRect()
-    const previousRect = previousToolbarSlotRectRef.current
-    const previousStacked = previousStackedToolbarRef.current
-    const didChangeRows =
-      previousRect != null &&
-      previousStacked != null &&
-      previousStacked !== shouldStackTabToolbar
-
-    if (didChangeRows && !shouldReduceMotion) {
-      const deltaX = previousRect.left - nextRect.left
-      const deltaY = previousRect.top - nextRect.top
-
-      if (Math.abs(deltaX) > 1 || Math.abs(deltaY) > 1) {
-        void animateToolbarSlot(
-          element,
-          {
-            x: [deltaX * 0.5, 0],
-            y: [deltaY * 0.5, 0],
-            opacity: [0.96, 1],
-          },
-          {
-            duration: 0.16,
-            ease: [0.22, 1, 0.36, 1],
-          }
-        )
-      }
-    }
-
-    previousToolbarSlotRectRef.current = nextRect
-    previousStackedToolbarRef.current = shouldStackTabToolbar
-  }, [animateToolbarSlot, shouldReduceMotion, shouldStackTabToolbar, toolbarSlotScope])
 
   if (!isAvailable || activeView !== "chat") {
     return null
@@ -315,83 +250,71 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
 
   const renderSidebarBody = (isResizingTabs: boolean) => (
     <>
-        <div
-          className={cn(
-            "grid shrink-0 items-center px-3 py-2",
-            shouldStackTabToolbar
-              ? "grid-cols-1 gap-1"
-              : "h-12 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3"
-          )}
-        >
-          <HorizontalOverflowFade viewportClassName="w-full" contentClassName="pr-3">
-            <div className="flex items-center gap-1">
-            {RIGHT_SIDEBAR_TABS.map(({ key, label, icon: Icon }) => {
-              const isActive = activeTab === key
+        <div className="flex shrink-0 flex-col">
+          <div className="flex h-12 items-center px-3">
+            <HorizontalOverflowFade viewportClassName="w-full" contentClassName="pr-3">
+              <div className="flex items-center gap-1">
+                {RIGHT_SIDEBAR_TABS.map(({ key, label, icon: Icon }) => {
+                  const isActive = activeTab === key
 
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setActiveTab(key)}
-                  onPointerEnter={() => handleTabIntent(key)}
-                  className={cn(
-                    "group relative inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs leading-none",
-                    !isResizingTabs && "transition-colors",
-                    isActive
-                      ? "text-sidebar-accent-foreground"
-                      : "text-sidebar-foreground hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground"
-                  )}
-                >
-                  {isActive && (
-                    <span className="absolute inset-0 rounded-lg bg-[var(--sidebar-item-active)]" />
-                  )}
-                  <span className="relative z-10 flex items-center gap-1">
-                    <Icon className="size-3.5 shrink-0" />
-                    <span>{label}</span>
-                  </span>
-                  {key === "changes" && trackedProjectChanges.length > 0 ? (
-                    <span
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setActiveTab(key)}
+                      onPointerEnter={() => handleTabIntent(key)}
                       className={cn(
-                        "relative z-10 text-[9px] leading-none",
+                        "group relative inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs leading-none",
+                        !isResizingTabs && "transition-colors",
                         isActive
-                          ? "text-sidebar-accent-foreground/70"
-                          : "text-sidebar-foreground/72"
+                          ? "text-sidebar-accent-foreground"
+                          : "text-sidebar-foreground hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground"
                       )}
                     >
-                      {trackedProjectChanges.length}
-                    </span>
-                  ) : null}
-                  {key === "checks" && checksTabBadgeCount > 0 ? (
-                    <span
-                      className={cn(
-                        "relative z-10 text-[9px] leading-none",
-                        isActive
-                          ? "text-sidebar-accent-foreground/70"
-                          : "text-sidebar-foreground/72"
+                      {isActive && (
+                        <span className="absolute inset-0 rounded-lg bg-[var(--sidebar-item-active)]" />
                       )}
-                    >
-                      {checksTabBadgeCount}
-                    </span>
-                  ) : null}
-                </button>
-              )
-            })}
-            </div>
-          </HorizontalOverflowFade>
-
-          <div
-            ref={setToolbarSlotRef}
-            className={cn(
-              "flex h-8 min-w-0 items-center",
-              shouldStackTabToolbar ? "w-full justify-start" : "justify-end"
-            )}
-          >
-            {activeTab !== "browser" ? (
-              <span className="truncate text-sm font-medium text-sidebar-foreground">
-                {activeTabLabel}
-              </span>
-            ) : null}
+                      <span className="relative z-10 flex items-center gap-1">
+                        <Icon className="size-3.5 shrink-0" />
+                        <span>{label}</span>
+                      </span>
+                      {key === "changes" && trackedProjectChanges.length > 0 ? (
+                        <span
+                          className={cn(
+                            "relative z-10 text-[9px] leading-none",
+                            isActive
+                              ? "text-sidebar-accent-foreground/70"
+                              : "text-sidebar-foreground/72"
+                          )}
+                        >
+                          {trackedProjectChanges.length}
+                        </span>
+                      ) : null}
+                      {key === "checks" && checksTabBadgeCount > 0 ? (
+                        <span
+                          className={cn(
+                            "relative z-10 text-[9px] leading-none",
+                            isActive
+                              ? "text-sidebar-accent-foreground/70"
+                              : "text-sidebar-foreground/72"
+                          )}
+                        >
+                          {checksTabBadgeCount}
+                        </span>
+                      ) : null}
+                    </button>
+                  )
+                })}
+              </div>
+            </HorizontalOverflowFade>
           </div>
+
+          {activeTab === "browser" ? (
+            <div
+              ref={setToolbarSlotRef}
+              className="flex min-h-10 min-w-0 items-center border-t border-sidebar-border/70 px-3 py-1.5"
+            />
+          ) : null}
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col">
@@ -415,6 +338,7 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
                     </div>
                   ) : !selectedWorktree ? (
                     <RightSidebarEmptyState
+                      icon={Folder}
                       title="No project selected"
                       description="Choose a worktree to browse files in this panel."
                     />
@@ -438,24 +362,27 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
                         </div>
                       ) : Object.keys(fileTreeData).length === 0 ? (
                         <RightSidebarEmptyState
+                          icon={Folder}
                           title="No files yet"
                           description="This project folder is empty right now."
                         />
                       ) : (
                         <div className="flex min-h-0 flex-1">
-                          <div
-                            style={{
-                              width: `var(${FILES_TREE_PANEL_WIDTH_CSS_VAR}, ${resolvedFilesTreePanelWidth}px)`,
-                            }}
-                            className="min-h-0 shrink-0 overflow-hidden pr-2 pt-1.5"
-                          >
-                            <FileTreeViewer
-                              data={fileTreeData}
-                              initialExpanded={["root"]}
-                              projectPath={selectedWorktree.path}
-                              onFileClick={handleFilePreviewSelect}
-                              onExternalDrop={handleExternalFileDrop}
-                            />
+                          <div className="min-h-0 min-w-0 flex-1 pr-2 pt-1.5">
+                            {selectedPreviewFile ? (
+                              <FilePreviewPanel
+                                key={selectedPreviewFile.path}
+                                fileName={selectedPreviewFile.name}
+                                filePath={selectedPreviewFile.path}
+                                projectPath={selectedWorktree.path}
+                              />
+                            ) : (
+                              <RightSidebarEmptyState
+                                icon={Folder}
+                                title="Select a file"
+                                description="Choose a file from the project tree to preview it here."
+                              />
+                            )}
                           </div>
 
                           <div
@@ -475,19 +402,19 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
                             />
                           </div>
 
-                          <div className="min-h-0 min-w-0 flex-1 border-l border-sidebar-border/80 pl-2 pt-1.5">
-                            {selectedPreviewFile ? (
-                              <FilePreviewPanel
-                                key={selectedPreviewFile.path}
-                                fileName={selectedPreviewFile.name}
-                                filePath={selectedPreviewFile.path}
-                                projectPath={selectedWorktree.path}
-                              />
-                            ) : (
-                              <div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted-foreground">
-                                Select a file to preview it here.
-                              </div>
-                            )}
+                          <div
+                            style={{
+                              width: `var(${FILES_TREE_PANEL_WIDTH_CSS_VAR}, ${resolvedFilesTreePanelWidth}px)`,
+                            }}
+                            className="min-h-0 shrink-0 overflow-hidden border-l border-sidebar-border/80 pl-2 pt-1.5"
+                          >
+                            <FileTreeViewer
+                              data={fileTreeData}
+                              initialExpanded={["root"]}
+                              projectPath={selectedWorktree.path}
+                              onFileClick={handleFilePreviewSelect}
+                              onExternalDrop={handleExternalFileDrop}
+                            />
                           </div>
                         </div>
                       )}
@@ -500,16 +427,19 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
                 <div className="app-scrollbar-sm min-h-0 flex-1 overflow-y-auto border-t border-sidebar-border/70 bg-background px-1.5 py-1.5">
                   {!selectedWorktree ? (
                     <RightSidebarEmptyState
+                      icon={GitDiff}
                       title="No project selected"
                       description="Choose a worktree to inspect local changes."
                     />
                   ) : gitMissing ? (
                     <RightSidebarEmptyState
+                      icon={GitDiff}
                       title="Git not installed"
                       description="Install Git on this machine to inspect tracked changes for this project."
                     />
                   ) : gitUninitialized ? (
                     <RightSidebarEmptyState
+                      icon={GitDiff}
                       title="Git not initialized"
                       description="Initialize Git for this project to inspect tracked changes here."
                     />
@@ -523,6 +453,7 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
                     </div>
                   ) : trackedProjectChanges.length === 0 ? (
                     <RightSidebarEmptyState
+                      icon={GitDiff}
                       title="No tracked changes"
                       description="This worktree has no tracked file changes right now."
                     />
@@ -539,16 +470,19 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
                 <div className="app-scrollbar-sm min-h-0 flex-1 overflow-y-auto border-t border-sidebar-border/70 bg-background">
                   {!selectedWorktree ? (
                     <RightSidebarEmptyState
+                      icon={CheckCircle}
                       title="No project selected"
                       description="Choose a worktree to inspect pull request checks."
                     />
                   ) : gitMissing ? (
                     <RightSidebarEmptyState
+                      icon={CheckCircle}
                       title="Git not installed"
                       description="Install Git on this machine to inspect pull request checks for this project."
                     />
                   ) : gitUninitialized ? (
                     <RightSidebarEmptyState
+                      icon={CheckCircle}
                       title="Git not initialized"
                       description="Initialize Git for this project before checking pull request status."
                     />
@@ -573,29 +507,6 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
 
   return (
     <>
-      {isCollapsed ? (
-        <>
-          <div
-            className="fixed top-11 right-0 bottom-0 z-30"
-            style={{ width: COLLAPSED_HOVER_TRIGGER_WIDTH }}
-            onMouseEnter={() => {
-              handleHoverPreviewIntent()
-              setIsHoverPreviewOpen(true)
-            }}
-          />
-          {isHoverPreviewOpen ? (
-            <div
-              className="fixed top-11 right-0 bottom-0 z-30 flex flex-col overflow-hidden border-l border-sidebar-border bg-sidebar text-sidebar-foreground shadow-[-12px_0_28px_rgba(0,0,0,0.12)]"
-              style={{ width: `var(${RIGHT_SIDEBAR_WIDTH_CSS_VAR}, ${width}px)` }}
-              onMouseEnter={() => setIsHoverPreviewOpen(true)}
-              onMouseLeave={() => setIsHoverPreviewOpen(false)}
-            >
-              {renderSidebarBody(false)}
-            </div>
-          ) : null}
-        </>
-      ) : null}
-
       <SidebarShell
         width={width}
         setWidth={setWidth}

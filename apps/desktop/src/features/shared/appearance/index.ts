@@ -27,7 +27,11 @@ export {
   subscribeToAppearance,
   useAppearance,
 } from "./store"
-export { registerMonacoThemes } from "./monaco"
+export {
+  getSidebarFilePreviewMonacoThemeId,
+  registerMonacoThemes,
+  registerSidebarFilePreviewMonacoThemes,
+} from "./monaco"
 export {
   contentTextClassNames,
   feedbackIconClassName,

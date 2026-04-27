@@ -503,6 +503,7 @@ export function PullRequestChecksPanel({
   if (!isOpenPullRequest || !pullRequest) {
     return (
       <RightSidebarEmptyState
+        icon={CheckCircle}
         title="No open pull request"
         description="Open a pull request on this branch to view checks here."
       />
@@ -569,6 +570,7 @@ export function PullRequestChecksPanel({
         sortedReviewComments.length === 0 &&
         !loadError ? (
           <RightSidebarEmptyState
+            icon={CheckCircle}
             className="py-10"
             title="No checks, reviews, or comments yet"
             description="This pull request has not published any checks or discussion activity yet."

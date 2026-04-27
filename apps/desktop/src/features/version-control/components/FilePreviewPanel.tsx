@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useState } from "react"
-import { File as PierreFile, WorkerPoolContextProvider } from "@pierre/diffs/react"
-import PierreDiffWorker from "@pierre/diffs/worker/worker-portable.js?worker"
-import { registerCustomCSSVariableTheme } from "@pierre/diffs"
+import Editor from "@monaco-editor/react"
 import { desktop } from "@/desktop/client"
-import { useAppearance } from "@/features/shared/appearance"
+import { getFileIcon } from "@/features/editor/utils/fileIcons"
+import { getLanguageFromFilename } from "@/features/editor/utils/language"
+import {
+  getSidebarFilePreviewMonacoThemeId,
+  registerSidebarFilePreviewMonacoThemes,
+  useAppearance,
+} from "@/features/shared/appearance"
+import { RightSidebarEmptyState } from "@/features/shared/components/layout/RightSidebarEmptyState"
 
 interface FilePreviewPanelProps {
   fileName: string
@@ -11,33 +16,29 @@ interface FilePreviewPanelProps {
   projectPath?: string | null
 }
 
-const FILE_PREVIEW_THEME_NAME = "vfactor-file-preview"
-
-let filePreviewThemeRegistered = false
-
-function ensureFilePreviewThemeRegistered() {
-  if (filePreviewThemeRegistered) {
-    return
-  }
-
-  registerCustomCSSVariableTheme(FILE_PREVIEW_THEME_NAME, {
-    foreground: "var(--sidebar-foreground)",
-    background: "var(--right-sidebar-content-bg, var(--background))",
-    "token-constant": "var(--sidebar-foreground)",
-    "token-string": "var(--color-vcs-added)",
-    "token-comment": "var(--muted-foreground)",
-    "token-keyword": "var(--primary)",
-    "token-parameter": "var(--sidebar-foreground)",
-    "token-function": "var(--color-vcs-renamed)",
-    "token-string-expression": "var(--color-vcs-added)",
-    "token-punctuation": "var(--sidebar-foreground)",
-    "token-link": "var(--primary)",
-  })
-
-  filePreviewThemeRegistered = true
-}
-
-ensureFilePreviewThemeRegistered()
+const IMAGE_EXTENSIONS = new Set(["avif", "gif", "ico", "jpeg", "jpg", "png", "svg", "webp"])
+const NON_PREVIEWABLE_FILENAMES = new Set([".ds_store", "thumbs.db", "desktop.ini"])
+const NON_PREVIEWABLE_EXTENSIONS = new Set([
+  "7z",
+  "a",
+  "app",
+  "bin",
+  "db",
+  "dmg",
+  "dylib",
+  "exe",
+  "gz",
+  "ico",
+  "jar",
+  "lockb",
+  "o",
+  "pdf",
+  "sqlite",
+  "sqlite3",
+  "tar",
+  "wasm",
+  "zip",
+])
 
 function normalizePath(value: string): string {
   return value.replace(/\\/g, "/")
@@ -63,15 +64,40 @@ function getRelativePath(filePath: string, projectPath: string | null | undefine
   return normalizedFilePath.split("/").filter(Boolean).at(-1) ?? normalizedFilePath
 }
 
+function isImageFile(filename: string): boolean {
+  const extension = filename.split(".").pop()?.toLowerCase()
+  return extension ? IMAGE_EXTENSIONS.has(extension) : false
+}
+
+function getFileExtension(filename: string): string {
+  return filename.split(".").pop()?.toLowerCase() ?? ""
+}
+
+function isNonPreviewableFile(filename: string): boolean {
+  const normalizedName = filename.trim().toLowerCase()
+  const extension = getFileExtension(filename)
+
+  return (
+    NON_PREVIEWABLE_FILENAMES.has(normalizedName) ||
+    (!isImageFile(filename) && NON_PREVIEWABLE_EXTENSIONS.has(extension))
+  )
+}
+
 export function FilePreviewPanel({
   fileName,
   filePath,
   projectPath,
 }: FilePreviewPanelProps) {
   const [content, setContent] = useState("")
+  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null)
   const [showLoading, setShowLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { resolvedAppearance, textSizePx } = useAppearance()
+  const { monacoThemeId, textSizePx } = useAppearance()
+  const isImage = isImageFile(fileName)
+  const isNonPreviewable = isNonPreviewableFile(fileName)
+  const language = getLanguageFromFilename(fileName)
+  const FileIcon = getFileIcon(fileName)
+  const sidebarMonacoThemeId = getSidebarFilePreviewMonacoThemeId(monacoThemeId)
 
   const relativePath = useMemo(
     () => getRelativePath(filePath, projectPath),
@@ -84,6 +110,8 @@ export function FilePreviewPanel({
 
     async function loadFile() {
       setError(null)
+      setContent("")
+      setImageDataUrl(null)
 
       loadingTimeout = setTimeout(() => {
         if (!cancelled) {
@@ -92,14 +120,26 @@ export function FilePreviewPanel({
       }, 120)
 
       try {
-        const nextContent = await desktop.fs.readTextFile(filePath)
-        if (!cancelled) {
-          setContent(nextContent)
+        if (isNonPreviewable) {
+          return
+        }
+
+        if (isImage) {
+          const nextImageDataUrl = await desktop.fs.readFileAsDataUrl(filePath)
+          if (!cancelled) {
+            setImageDataUrl(nextImageDataUrl)
+          }
+        } else {
+          const nextContent = await desktop.fs.readTextFile(filePath)
+          if (!cancelled) {
+            setContent(nextContent)
+          }
         }
       } catch (loadError) {
         if (!cancelled) {
           setError("This file couldn’t be previewed here.")
           setContent("")
+          setImageDataUrl(null)
         }
       } finally {
         if (loadingTimeout) {
@@ -119,7 +159,7 @@ export function FilePreviewPanel({
         clearTimeout(loadingTimeout)
       }
     }
-  }, [filePath])
+  }, [filePath, isImage, isNonPreviewable])
 
   if (showLoading) {
     return (
@@ -139,104 +179,67 @@ export function FilePreviewPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="app-scrollbar-sm min-h-0 flex-1 overflow-auto">
-        <WorkerPoolContextProvider
-          key={`${resolvedAppearance}:${textSizePx}`}
-          poolOptions={{
-            workerFactory: () => new PierreDiffWorker(),
-            poolSize: 1,
-          }}
-          highlighterOptions={{
-            theme: FILE_PREVIEW_THEME_NAME,
-          }}
-        >
-          <PierreFile
-            file={{
-              name: relativePath || fileName,
-              contents: content,
-              cacheKey: `${filePath}:${content.length}:${content.slice(0, 64)}`,
+      <div className="flex min-h-[34px] shrink-0 items-center gap-2 border-b border-sidebar-border/80 px-2 text-xs text-sidebar-foreground">
+        <FileIcon size={14} className="shrink-0 text-sidebar-foreground/80" />
+        <span className="truncate">{relativePath || fileName}</span>
+      </div>
+      <div className="app-scrollbar-sm min-h-0 flex-1 overflow-auto bg-[var(--right-sidebar-content-bg,var(--background))]">
+        {isNonPreviewable ? (
+          <RightSidebarEmptyState
+            icon={FileIcon}
+            title="Binary or system file"
+            description="This file can't be previewed as text."
+          />
+        ) : isImage ? (
+          <div className="flex h-full min-h-0 items-center justify-center p-4">
+            {imageDataUrl ? (
+              <img
+                src={imageDataUrl}
+                alt={fileName}
+                className="max-h-full max-w-full object-contain"
+              />
+            ) : null}
+          </div>
+        ) : (
+          <Editor
+            height="100%"
+            language={language}
+            value={content}
+            theme={sidebarMonacoThemeId}
+            beforeMount={(monaco) => {
+              registerSidebarFilePreviewMonacoThemes(monaco)
             }}
             options={{
-              theme: FILE_PREVIEW_THEME_NAME,
-              themeType: resolvedAppearance,
-              overflow: "scroll",
-              disableFileHeader: false,
-              unsafeCSS: `
-                :host {
-                  color-scheme: ${resolvedAppearance};
-                  --diffs-header-font-family: var(--font-sans);
-                  --diffs-font-size: var(--app-text-size, ${textSizePx}px);
-                  --diffs-line-height: 1.4;
-                  --bg: var(--right-sidebar-content-bg, var(--background));
-                  --fg: var(--sidebar-foreground);
-                  --diffs-light-bg: var(--right-sidebar-content-bg, var(--background));
-                  --diffs-dark-bg: var(--right-sidebar-content-bg, var(--background));
-                  --diffs-light: var(--sidebar-foreground);
-                  --diffs-dark: var(--sidebar-foreground);
-                  --diffs-fg-number-override: color-mix(in oklab, var(--sidebar-foreground) 62%, var(--right-sidebar-content-bg, var(--background)) 38%);
-                  --diffs-bg-buffer-override: color-mix(in oklab, var(--right-sidebar-content-bg, var(--background)) 96%, var(--sidebar-foreground) 4%);
-                  --diffs-bg-hover-override: var(--sidebar-item-hover);
-                  --diffs-bg-context-override: color-mix(in oklab, var(--right-sidebar-content-bg, var(--background)) 94%, var(--sidebar-foreground) 6%);
-                  --diffs-bg-context-number-override: color-mix(in oklab, var(--right-sidebar-content-bg, var(--background)) 88%, var(--sidebar-foreground) 12%);
-                  --diffs-bg-separator-override: color-mix(in oklab, var(--right-sidebar-content-bg, var(--background)) 90%, var(--border) 10%);
-                }
-
-                [data-file],
-                [data-diff] {
-                  border-radius: 0 !important;
-                  background: var(--right-sidebar-content-bg, var(--background)) !important;
-                  box-shadow: none !important;
-                  border: 0 !important;
-                }
-
-                [data-file] [data-header] {
-                  border-bottom-color: color-mix(in oklab, var(--color-border) 80%, transparent) !important;
-                  background: color-mix(in oklab, var(--right-sidebar-content-bg, var(--background)) 94%, var(--sidebar-foreground) 6%) !important;
-                  padding-inline: 0 !important;
-                  min-height: 34px !important;
-                }
-
-                [data-file-info] {
-                  color: var(--sidebar-foreground) !important;
-                  background: color-mix(in oklab, var(--right-sidebar-content-bg, var(--background)) 94%, var(--sidebar-foreground) 6%) !important;
-                  border-block-color: color-mix(in oklab, var(--sidebar-foreground) 12%, var(--right-sidebar-content-bg, var(--background)) 88%) !important;
-                }
-
-                [data-title],
-                [data-header-content],
-                [data-change-icon='file'] {
-                  color: var(--sidebar-foreground) !important;
-                }
-
-                pre,
-                code,
-                [data-code],
-                [data-gutter],
-                [data-content],
-                [data-column-number],
-                [data-separator],
-                [data-content-buffer],
-                [data-gutter-buffer] {
-                  background-color: var(--right-sidebar-content-bg, var(--background)) !important;
-                }
-
-                [data-code] {
-                  padding-top: 0 !important;
-                  padding-bottom: 6px !important;
-                }
-
-                [data-line] span {
-                  background-color: inherit !important;
-                }
-
-                pre,
-                code {
-                  font-family: var(--font-mono, ui-monospace, monospace) !important;
-                }
-              `,
+              readOnly: true,
+              minimap: { enabled: false },
+              fontSize: textSizePx,
+              lineNumbers: "on",
+              scrollBeyondLastLine: false,
+              wordWrap: "on",
+              folding: false,
+              glyphMargin: false,
+              lineDecorationsWidth: 8,
+              lineNumbersMinChars: 3,
+              renderWhitespace: "none",
+              bracketPairColorization: { enabled: false },
+              guides: {
+                bracketPairs: false,
+                bracketPairsHorizontal: false,
+                highlightActiveBracketPair: false,
+              },
+              matchBrackets: "never",
+              occurrencesHighlight: "off",
+              overviewRulerBorder: false,
+              renderLineHighlight: "none",
+              selectionHighlight: false,
+              scrollbar: {
+                verticalScrollbarSize: 8,
+                horizontalScrollbarSize: 8,
+              },
+              padding: { top: 8, bottom: 8 },
             }}
           />
-        </WorkerPoolContextProvider>
+        )}
       </div>
     </div>
   )

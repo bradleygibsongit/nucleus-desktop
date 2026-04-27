@@ -200,9 +200,9 @@ export function LeftSidebar({
   const expandedRowActiveClass =
     "bg-[var(--sidebar-item-active)] text-sidebar-accent-foreground"
   const projectActionButtonClass =
-    "absolute top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-sidebar-foreground/52 transition hover:text-sidebar-foreground/90 focus-visible:text-sidebar-foreground/90"
+    "absolute top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-sm text-sidebar-foreground/52 transition hover:text-sidebar-foreground/90 focus-visible:text-sidebar-foreground/90"
   const sectionLabelClass =
-    "text-[11px] font-medium uppercase tracking-[0.08em] text-sidebar-foreground/40"
+    "text-xs font-medium uppercase tracking-[0.08em] text-sidebar-foreground/40"
   const hoveredWorktreePrewarmTarget =
     activeView === "chat" && !isRightSidebarCollapsed ? rightSidebarActiveTab : "changes"
   const projectById = useMemo(
@@ -416,11 +416,11 @@ export function LeftSidebar({
             aria-label={isExpanded ? `Collapse ${project.name}` : `Expand ${project.name}`}
             aria-expanded={isExpanded}
           >
-            <span className="relative flex size-5 shrink-0 items-center justify-center">
+            <span className="relative flex size-5 shrink-0 items-center justify-center text-sm">
               <ProjectIcon
                 project={project}
                 isExpanded={isExpanded}
-                size={16}
+                size="1em"
                 className="text-sidebar-foreground/68"
               />
             </span>
@@ -439,7 +439,7 @@ export function LeftSidebar({
             )}
             aria-label={`Create workspace in ${project.name}`}
           >
-            <Plus size={14} />
+            <Plus size="1em" />
           </button>
 
           <DropdownMenu
@@ -455,7 +455,7 @@ export function LeftSidebar({
               )}
               aria-label={`${project.name} settings menu`}
             >
-              <DotsThree size={16} weight="bold" />
+              <DotsThree size="1em" weight="bold" />
             </DropdownMenuTrigger>
             <DropdownMenuContent side="bottom" align="end" className="w-40">
               <DropdownMenuItem onClick={() => setProjectSettingsProject(project)}>
@@ -477,7 +477,7 @@ export function LeftSidebar({
           if (project.worktrees.length === 0) {
             return (
               <div>
-                <div className="px-8 py-1.5 text-[13px] text-sidebar-foreground/36">
+                <div className="px-8 py-1.5 text-sm text-sidebar-foreground/36">
                   No workspaces yet.
                 </div>
               </div>
@@ -539,7 +539,7 @@ export function LeftSidebar({
                     >
                       <span
                         className={cn(
-                          "flex size-4 shrink-0 items-center justify-center",
+                          "flex size-[1em] shrink-0 items-center justify-center text-sm",
                           isWorktreeRunning
                             ? (isSelectedWorktree ? "text-sidebar-accent-foreground" : "text-sidebar-foreground/72")
                             : (branchIndicator?.colorClass ??
@@ -558,8 +558,8 @@ export function LeftSidebar({
                         ) : (
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <span className="inline-flex items-center justify-center">
-                                <GitBranch size={13} />
+                              <span className="inline-flex items-center justify-center text-sm">
+                                <GitBranch size="1em" />
                               </span>
                             </TooltipTrigger>
                             <TooltipContent side="top" className="max-w-72 text-sm leading-5">
@@ -568,7 +568,7 @@ export function LeftSidebar({
                           </Tooltip>
                         )}
                       </span>
-                      <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-none">
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium leading-none">
                         {worktree.name}
                       </span>
                     </button>
@@ -579,7 +579,7 @@ export function LeftSidebar({
                           <button
                             type="button"
                             className={cn(
-                              "absolute top-1/2 right-8 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-sm transition hover:bg-[var(--sidebar-item-hover)]",
+                              "absolute top-1/2 right-8 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-sm text-xs transition hover:bg-[var(--sidebar-item-hover)]",
                               pullRequestIndicator.colorClass
                             )}
                             aria-label={pullRequestIndicator.tooltip}
@@ -589,7 +589,7 @@ export function LeftSidebar({
                               void desktop.shell.openExternal(pullRequestIndicator.url)
                             }}
                           >
-                            <GitPullRequest size={12} />
+                            <GitPullRequest size="1em" />
                           </button>
                         </TooltipTrigger>
                         <TooltipContent side="top" className="max-w-72 text-sm leading-5">
@@ -603,14 +603,14 @@ export function LeftSidebar({
                     >
                       <DropdownMenuTrigger
                         className={cn(
-                          "absolute top-1/2 right-1.5 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-sidebar-foreground/42 transition hover:text-sidebar-foreground/82 focus-visible:text-sidebar-foreground/82",
+                          "absolute top-1/2 right-1.5 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-sm text-sidebar-foreground/42 transition hover:text-sidebar-foreground/82 focus-visible:text-sidebar-foreground/82",
                           isWorktreeMenuOpen
                             ? "text-sidebar-foreground/72 opacity-100"
                             : "opacity-0 group-hover/worktree-row:opacity-100",
                         )}
                         aria-label={`${worktree.name} settings menu`}
                       >
-                        <DotsThree size={16} weight="bold" />
+                        <DotsThree size="1em" weight="bold" />
                       </DropdownMenuTrigger>
                       <DropdownMenuContent side="bottom" align="end" className="w-44">
                         {removeWorktreeDisabledReason ? (
@@ -682,7 +682,7 @@ export function LeftSidebar({
               onClick={() => onOpenChat?.()}
               className={cn(expandedRowClass, expandedRowIdleClass)}
             >
-              <BackIcon size={16} className="shrink-0" />
+              <BackIcon size="1em" className="shrink-0" />
               <span className="truncate">Back to app</span>
             </button>
 
@@ -710,9 +710,9 @@ export function LeftSidebar({
                         )}
                       >
                         {section.logoKind ? (
-                          <ModelLogo kind={section.logoKind} className="size-4 shrink-0" />
+                          <ModelLogo kind={section.logoKind} className="size-[1em] shrink-0" />
                         ) : Icon ? (
-                          <Icon size={16} className="shrink-0" />
+                          <Icon size="1em" className="shrink-0" />
                         ) : null}
                         <span className="truncate">{section.label}</span>
                       </button>
@@ -733,10 +733,10 @@ export function LeftSidebar({
                 <button
                   type="button"
                   onClick={() => void handleOpenProject()}
-                  className="flex h-6 w-6 items-center justify-center rounded text-sidebar-foreground/40 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground/68"
+                  className="flex h-6 w-6 items-center justify-center rounded text-xs text-sidebar-foreground/40 hover:bg-[var(--sidebar-item-hover)] hover:text-sidebar-foreground/68"
                   aria-label="Add project"
                 >
-                  <FolderSimplePlus size={14} />
+                  <FolderSimplePlus size="1em" />
                 </button>
               </div>
 
@@ -780,7 +780,7 @@ export function LeftSidebar({
                   : expandedRowIdleClass
               )}
             >
-              <GearSix size={16} className="shrink-0" />
+              <GearSix size="1em" className="shrink-0" />
               <span className="truncate">Settings</span>
             </button>
           </div>

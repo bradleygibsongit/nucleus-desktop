@@ -4,7 +4,9 @@ import {
   Bash,
   CaretDown,
   CaretRight,
+  Check,
   Compass,
+  Copy,
   Eye,
   Globe,
   Image,
@@ -67,6 +69,70 @@ function getMessageText(parts: RuntimeMessagePart[]): string {
   return getMessageTextContent(parts)
 }
 
+function UserMessageCopyButton({ text }: { text: string }) {
+  const [isCopied, setIsCopied] = useState(false)
+
+  useEffect(() => {
+    if (!isCopied) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => setIsCopied(false), 1800)
+    return () => window.clearTimeout(timeoutId)
+  }, [isCopied])
+
+  if (!text.trim()) {
+    return null
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
+          return
+        }
+
+        try {
+          await navigator.clipboard.writeText(text)
+          setIsCopied(true)
+        } catch (error) {
+          console.warn("[chat] Failed to copy user message to clipboard:", error)
+          setIsCopied(false)
+        }
+      }}
+      className={cn(
+        "relative inline-flex h-5 w-5 items-center justify-center self-end overflow-hidden rounded-sm p-0.5 text-muted-foreground/78 opacity-0",
+        "transition-[background-color,color,opacity,transform] duration-150 ease-out hover:bg-muted/55 hover:text-foreground active:scale-[0.96]",
+        "group-hover:opacity-100 focus-visible:opacity-100",
+        isCopied && "text-foreground opacity-100"
+      )}
+      aria-label={isCopied ? "Copied message" : "Copy message"}
+    >
+      <Copy
+        size={15}
+        aria-hidden="true"
+        className={cn(
+          "absolute transition-[opacity,transform,filter] duration-180 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
+          isCopied
+            ? "translate-y-1 scale-[0.72] opacity-0 blur-[8px] motion-reduce:translate-y-0 motion-reduce:scale-100 motion-reduce:blur-0"
+            : "translate-y-0 scale-100 opacity-100 blur-0"
+        )}
+      />
+      <Check
+        size={14}
+        aria-hidden="true"
+        className={cn(
+          "absolute transition-[opacity,transform,filter] duration-180 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
+          isCopied
+            ? "translate-y-0 scale-100 opacity-100 blur-0"
+            : "-translate-y-1 scale-[0.72] opacity-0 blur-[8px] motion-reduce:translate-y-0 motion-reduce:scale-100 motion-reduce:blur-0"
+        )}
+      />
+    </button>
+  )
+}
+
 function TimelineTextBlock({
   eyebrow,
   text,
@@ -76,13 +142,13 @@ function TimelineTextBlock({
 }: {
   eyebrow?: string
   text: string
-  tone?: "default" | "muted" | "accent"
+  tone?: "default" | "muted" | "accent" | "reasoning"
   isStreaming?: boolean
   withinGroup?: boolean
 }) {
   if (withinGroup) {
     const toneClass =
-      tone === "muted"
+      tone === "muted" || tone === "reasoning"
         ? "text-muted-foreground"
         : tone === "accent"
           ? "text-secondary-foreground/80"
@@ -105,13 +171,16 @@ function TimelineTextBlock({
     )
   }
 
-  if (tone === "default") {
+  if (tone === "default" || tone === "reasoning") {
     return (
       <MessageComponent from="assistant">
         <MessageContent>
           <MessageResponse
             isStreaming={isStreaming}
-            className="leading-relaxed [&>p]:mb-4 last:[&>p]:mb-0"
+            className={cn(
+              "leading-relaxed [&>p]:mb-4 last:[&>p]:mb-0",
+              tone === "reasoning" && "text-muted-foreground"
+            )}
           >
             {text}
           </MessageResponse>
@@ -951,7 +1020,7 @@ export function ChatTimelineItem({
     }
 
     return (
-      <MessageComponent from="user">
+      <MessageComponent from="user" className="gap-1">
         <MessageContent className="gap-3">
           {text.trim() ? <MessageUserContent>{text}</MessageUserContent> : null}
           {attachments.length > 0 ? (
@@ -966,6 +1035,7 @@ export function ChatTimelineItem({
             </div>
           ) : null}
         </MessageContent>
+        <UserMessageCopyButton text={text} />
       </MessageComponent>
     )
   }
@@ -1005,6 +1075,7 @@ export function ChatTimelineItem({
     return (
       <TimelineTextBlock
         text={text}
+        tone="reasoning"
         isStreaming={isStreaming}
         withinGroup={withinGroup}
       />

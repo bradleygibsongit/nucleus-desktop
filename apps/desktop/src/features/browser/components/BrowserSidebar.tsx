@@ -207,6 +207,8 @@ export function BrowserSidebar({ toolbarContainer }: BrowserSidebarProps) {
   if (!worktreeId) {
     return (
       <RightSidebarEmptyState
+        icon={Globe}
+        className="-translate-y-5"
         title="No project selected"
         description="Choose a worktree to open the browser panel."
       />
@@ -353,6 +355,8 @@ export function BrowserSidebar({ toolbarContainer }: BrowserSidebarProps) {
       ) : (
         <div className="flex min-h-0 min-w-0 flex-1 border-t border-sidebar-border/70 bg-background">
           <RightSidebarEmptyState
+            icon={Globe}
+            className="-translate-y-5"
             title="Open a page"
             description="Enter a URL above to load a site in the browser panel."
           />
