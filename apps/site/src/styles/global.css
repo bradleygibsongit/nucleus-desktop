@@ -98,13 +98,13 @@ body::before {
 }
 
 /* ── Shared section corner marks ── */
-:where(.section > .container, .bp-section > .bp-container, .mb-section > .mb-container, .pm-section > .pm-container) {
+:where(.bp-section > .bp-container) {
   position: relative;
   overflow: visible;
 }
 
-:where(.section > .container, .bp-section > .bp-container, .mb-section > .mb-container, .pm-section > .pm-container)::before,
-:where(.section > .container, .bp-section > .bp-container, .mb-section > .mb-container, .pm-section > .pm-container)::after {
+:where(.bp-section > .bp-container)::before,
+:where(.bp-section > .bp-container)::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -114,7 +114,7 @@ body::before {
   transition: opacity 0.3s ease;
 }
 
-:where(.section > .container, .bp-section > .bp-container, .mb-section > .mb-container, .pm-section > .pm-container)::before {
+:where(.bp-section > .bp-container)::before {
   background:
     linear-gradient(var(--section-corner-color), var(--section-corner-color)) left calc(var(--section-corner-offset) * -1) top calc(var(--section-corner-stroke) / -2) / var(--section-corner-size) var(--section-corner-stroke) no-repeat,
     linear-gradient(var(--section-corner-color), var(--section-corner-color)) right calc(var(--section-corner-offset) * -1) top calc(var(--section-corner-stroke) / -2) / var(--section-corner-size) var(--section-corner-stroke) no-repeat,
@@ -122,7 +122,7 @@ body::before {
     linear-gradient(var(--section-corner-color), var(--section-corner-color)) right calc(var(--section-corner-offset) * -1) bottom calc(var(--section-corner-stroke) / -2) / var(--section-corner-size) var(--section-corner-stroke) no-repeat;
 }
 
-:where(.section > .container, .bp-section > .bp-container, .mb-section > .mb-container, .pm-section > .pm-container)::after {
+:where(.bp-section > .bp-container)::after {
   background:
     linear-gradient(var(--section-corner-color), var(--section-corner-color)) left calc(var(--section-corner-stroke) / -2) top calc(var(--section-corner-offset) * -1) / var(--section-corner-stroke) var(--section-corner-size) no-repeat,
     linear-gradient(var(--section-corner-color), var(--section-corner-color)) right calc(var(--section-corner-stroke) / -2) top calc(var(--section-corner-offset) * -1) / var(--section-corner-stroke) var(--section-corner-size) no-repeat,
@@ -130,8 +130,8 @@ body::before {
     linear-gradient(var(--section-corner-color), var(--section-corner-color)) right calc(var(--section-corner-stroke) / -2) bottom calc(var(--section-corner-offset) * -1) / var(--section-corner-stroke) var(--section-corner-size) no-repeat;
 }
 
-:where(.bp-wrapper, .mb-wrapper, .pm-wrapper) {
-  --section-corner-color: var(--bp-text-bright, var(--mb-text-bright, var(--pm-text-bright, var(--text))));
+.bp-wrapper {
+  --section-corner-color: var(--bp-text-bright);
 }
 
 /* ── Animations ── */
@@ -453,31 +453,6 @@ body::before {
 
 .harness-card:hover::before {
   opacity: 1;
-}
-
-.harness-logo-mark {
-  width: 40px;
-  height: 40px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.harness-logo-mark img {
-  display: block;
-  width: 22px;
-  height: 22px;
-  object-fit: contain;
-}
-
-.harness-logo-mark-openai {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.harness-logo-mark-claude {
-  background: rgba(217, 119, 87, 0.1);
 }
 
 /* ── Feature cards ── */
