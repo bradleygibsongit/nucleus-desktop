@@ -80,7 +80,7 @@ export async function flushAnalyticsWithTimeout(timeoutMs = 2_000): Promise<void
 
   try {
     await Promise.race([
-      client.flush(),
+      client.flush().catch(() => {}),
       new Promise<void>((resolve) => {
         timeout = setTimeout(resolve, timeoutMs)
       }),
