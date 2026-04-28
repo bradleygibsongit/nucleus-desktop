@@ -21,7 +21,7 @@ type ThemeSeed = {
   foreground: string
   mutedForeground: string
   border: string
-  input: string
+  input?: string
   sidebarBorder?: string
   controlBorder?: string
   ring: string
@@ -265,11 +265,10 @@ export const THEME_REGISTRY: Record<ConcreteThemeId, ThemeDefinition> = {
     surface: "#ffffff",
     surfaceElevated: "#ffffff",
     foreground: "#000000",
-    mutedForeground: "#888888",
+    mutedForeground: "#606060",
     border: "#d9d9d9",
-    input: "#e8e8e8",
     ring: "#333333",
-    primary: "#111111",
+    primary: "#5f5f5f",
     primaryForeground: "#ffffff",
     secondary: "#dedede",
     secondaryForeground: "#000000",
@@ -299,11 +298,10 @@ export const THEME_REGISTRY: Record<ConcreteThemeId, ThemeDefinition> = {
     surface: "#0a0a0a",
     surfaceElevated: "#111111",
     foreground: "#ffffff",
-    mutedForeground: "#666666",
+    mutedForeground: "#8a8a8a",
     border: "#1a1a1a",
-    input: "#111111",
     ring: "#e5e5e5",
-    primary: "#ffffff",
+    primary: "#b7a6ff",
     primaryForeground: "#050505",
     secondary: "#1f1f1f",
     secondaryForeground: "#e5e5e5",

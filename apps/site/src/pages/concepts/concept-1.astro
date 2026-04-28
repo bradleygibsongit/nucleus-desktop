@@ -3,12 +3,15 @@ import BaseLayout from "../../layouts/BaseLayout.astro"
 
 const GITHUB_REPO_URL = "https://github.com/vFactor-io/vfactor-desktop"
 const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
+const currentYear = new Date().getFullYear()
 ---
 
 <BaseLayout title="vFactor — Blueprint Grid">
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Fragment+Mono:ital@0;1&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <Fragment slot="head">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fragment+Mono:ital@0;1&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  </Fragment>
 
   <div class="bp-wrapper" id="bp-wrapper">
     {/* ── Persistent Grid Overlay ── */}
@@ -25,7 +28,7 @@ const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
           <a href="#workflow" class="bp-nav-link">Workflow</a>
           <a href="#harnesses" class="bp-nav-link">Harnesses</a>
           <a href="#supervised" class="bp-nav-link">Supervision</a>
-          <a href={GITHUB_REPO_URL} class="bp-nav-link" target="_blank" rel="noopener">GitHub</a>
+          <a href={GITHUB_REPO_URL} class="bp-nav-link" target="_blank" rel="noopener noreferrer">GitHub</a>
           <button class="bp-theme-toggle" id="theme-toggle" aria-label="Toggle theme">
             <svg class="bp-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2"/><path d="M12 21v2"/><path d="M4.22 4.22l1.42 1.42"/><path d="M18.36 18.36l1.42 1.42"/><path d="M1 12h2"/><path d="M21 12h2"/><path d="M4.22 19.78l1.42-1.42"/><path d="M18.36 5.64l1.42-1.42"/></svg>
             <svg class="bp-icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
@@ -62,7 +65,7 @@ const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
           </p>
           <div class="bp-hero-actions">
             <a href={LATEST_RELEASE_URL} class="bp-btn bp-btn-primary">Download vFactor</a>
-            <a href={GITHUB_REPO_URL} target="_blank" rel="noopener" class="bp-btn bp-btn-outline">View on GitHub</a>
+            <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" class="bp-btn bp-btn-outline">View on GitHub</a>
           </div>
         </div>
       </div>
@@ -313,7 +316,7 @@ const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
             <h2 class="bp-section-title">Own your code.<br />Inspect the app.</h2>
             <p class="bp-section-desc">vFactor is open source and community-driven. No black boxes, no vendor lock-in. Fork it, hack it, or contribute back.</p>
             <div class="bp-oss-actions">
-              <a href={GITHUB_REPO_URL} target="_blank" rel="noopener" class="bp-btn bp-btn-primary">View on GitHub</a>
+              <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" class="bp-btn bp-btn-primary">View on GitHub</a>
               <a href={LATEST_RELEASE_URL} class="bp-btn bp-btn-outline">Download vFactor</a>
             </div>
           </div>
@@ -339,7 +342,7 @@ const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
     <footer class="bp-footer">
       <div class="bp-container" style="display: flex; justify-content: space-between; align-items: center; height: 80px;">
         <span style="font-family: 'Fragment Mono', monospace; font-size: 0.9rem; color: var(--bp-muted);">vFactor</span>
-        <span style="font-family: 'Fragment Mono', monospace; font-size: 0.7rem; color: var(--bp-muted);">MIT License &middot; 2025</span>
+        <span style="font-family: 'Fragment Mono', monospace; font-size: 0.7rem; color: var(--bp-muted);">MIT License &middot; {currentYear}</span>
       </div>
     </footer>
   </div>
@@ -359,7 +362,7 @@ const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
         }
       }
 
-      apply(stored || (prefersDark ? 'dark' : 'dark'))
+      apply(stored || (prefersDark ? 'dark' : 'light'))
 
       toggle.addEventListener('click', () => {
         const isLight = wrapper.classList.toggle('light')

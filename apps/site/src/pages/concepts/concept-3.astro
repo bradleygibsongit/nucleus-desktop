@@ -3,12 +3,15 @@ import BaseLayout from "../../layouts/BaseLayout.astro"
 
 const GITHUB_REPO_URL = "https://github.com/vFactor-io/vfactor-desktop"
 const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
+const currentYear = new Date().getFullYear()
 ---
 
 <BaseLayout title="vFactor — Perspective Matrix">
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <Fragment slot="head">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  </Fragment>
 
   <div class="pm-wrapper">
     {/* ── Perspective Grid Background ── */}
@@ -32,7 +35,7 @@ const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
           <a href="#workflow" class="pm-nav-link">Workflow</a>
           <a href="#harnesses" class="pm-nav-link">Harnesses</a>
           <a href="#supervised" class="pm-nav-link">Supervision</a>
-          <a href={GITHUB_REPO_URL} class="pm-nav-link" target="_blank" rel="noopener">GitHub</a>
+          <a href={GITHUB_REPO_URL} class="pm-nav-link" target="_blank" rel="noopener noreferrer">GitHub</a>
         </div>
       </div>
     </nav>
@@ -51,7 +54,7 @@ const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
           </p>
           <div class="pm-actions">
             <a href={LATEST_RELEASE_URL} class="pm-btn pm-btn-primary">Download vFactor</a>
-            <a href={GITHUB_REPO_URL} target="_blank" rel="noopener" class="pm-btn pm-btn-ghost">View on GitHub</a>
+            <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" class="pm-btn pm-btn-ghost">View on GitHub</a>
           </div>
         </div>
       </div>
@@ -255,7 +258,7 @@ const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
             <h2 class="pm-section-title">Own your code.<br />Inspect the app.</h2>
             <p class="pm-section-desc">vFactor is open source and community-driven. No black boxes, no vendor lock-in. Fork it, hack it, or contribute back.</p>
             <div class="pm-oss-actions">
-              <a href={GITHUB_REPO_URL} target="_blank" rel="noopener" class="pm-btn pm-btn-primary">View on GitHub</a>
+              <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" class="pm-btn pm-btn-primary">View on GitHub</a>
               <a href={LATEST_RELEASE_URL} class="pm-btn pm-btn-ghost">Download vFactor</a>
             </div>
           </div>
@@ -282,7 +285,7 @@ const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
     <footer class="pm-footer">
       <div class="pm-container" style="display: flex; justify-content: space-between; align-items: center; height: 80px;">
         <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 1rem; color: var(--pm-text);">vFactor</span>
-        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 0.7rem; color: var(--pm-muted);">MIT License &middot; 2025</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 0.7rem; color: var(--pm-muted);">MIT License &middot; {currentYear}</span>
       </div>
     </footer>
   </div>

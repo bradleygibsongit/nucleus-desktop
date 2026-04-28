@@ -3,12 +3,15 @@ import BaseLayout from "../../layouts/BaseLayout.astro"
 
 const GITHUB_REPO_URL = "https://github.com/vFactor-io/vfactor-desktop"
 const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
+const currentYear = new Date().getFullYear()
 ---
 
 <BaseLayout title="vFactor — Modular Bento">
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <Fragment slot="head">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  </Fragment>
 
   <div class="mb-wrapper">
     <div class="mb-grid-bg" aria-hidden="true"></div>
@@ -16,7 +19,7 @@ const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
     {/* ── Nav ── */}
     <nav class="mb-nav">
       <div class="mb-container" style="display: flex; align-items: center; justify-content: space-between; height: 72px;">
-        <a href="#" class="mb-logo">
+        <a href="/" class="mb-logo">
           <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
             <rect width="28" height="28" rx="8" fill="url(#mb-logo-grad)"/>
             <path d="M8 20V8h2.5l5.5 8.5V8H18v12h-2.3L10 11.2V20H8z" fill="white"/>
@@ -32,7 +35,7 @@ const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
           <a href="#workflow" class="mb-nav-link">Workflow</a>
           <a href="#harnesses" class="mb-nav-link">Harnesses</a>
           <a href="#supervised" class="mb-nav-link">Supervision</a>
-          <a href={GITHUB_REPO_URL} class="mb-nav-link" target="_blank" rel="noopener">GitHub</a>
+          <a href={GITHUB_REPO_URL} class="mb-nav-link" target="_blank" rel="noopener noreferrer">GitHub</a>
         </div>
       </div>
     </nav>
@@ -46,7 +49,7 @@ const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
             <p class="mb-subtitle">Bring your own models. Own your code. Supervise the full workflow from prompt to pull request.</p>
             <div class="mb-actions">
               <a href={LATEST_RELEASE_URL} class="mb-btn mb-btn-primary">Download vFactor</a>
-              <a href={GITHUB_REPO_URL} target="_blank" rel="noopener" class="mb-btn mb-btn-ghost">View on GitHub</a>
+              <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" class="mb-btn mb-btn-ghost">View on GitHub</a>
             </div>
           </div>
 
@@ -271,7 +274,7 @@ const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
             <h2 class="mb-section-title">Own your code.<br />Inspect the app.</h2>
             <p class="mb-section-desc">No black boxes. No vendor lock-in. vFactor is open source, community-driven, and fully local.</p>
             <div class="mb-oss-actions">
-              <a href={GITHUB_REPO_URL} target="_blank" rel="noopener" class="mb-btn mb-btn-primary">View on GitHub</a>
+              <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" class="mb-btn mb-btn-primary">View on GitHub</a>
               <a href={LATEST_RELEASE_URL} class="mb-btn mb-btn-ghost">Download</a>
             </div>
           </div>
@@ -299,7 +302,7 @@ const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
     <footer class="mb-footer">
       <div class="mb-container" style="display: flex; justify-content: space-between; align-items: center; height: 80px;">
         <span style="font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700; font-size: 0.95rem; color: var(--mb-text);">vFactor</span>
-        <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--mb-muted);">MIT License &middot; 2025</span>
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--mb-muted);">MIT License &middot; {currentYear}</span>
       </div>
     </footer>
   </div>
@@ -1007,6 +1010,25 @@ const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
 
     @keyframes mbReveal {
       to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .mb-wrapper .mb-bento,
+      .mb-wrapper .mb-workflow-bento,
+      .mb-wrapper .mb-harness-bento,
+      .mb-wrapper .mb-super-bento,
+      .mb-wrapper .mb-oss-bento {
+        animation: none;
+        opacity: 1;
+        transform: none;
+      }
+
+      .mb-bento-cell:hover,
+      .mb-wf-cell:hover,
+      .mb-h-cell:hover,
+      .mb-s-cell:hover {
+        transform: none;
+      }
     }
   </style>
 </BaseLayout>
