@@ -112,6 +112,55 @@ describe("GitService repository setup", () => {
   })
 })
 
+describe("GitService.getFileDiff", () => {
+  test("does not return image file contents for diff previews", async () => {
+    const repoDir = await createRepository()
+
+    try {
+      await writeFile(path.join(repoDir, "image.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]))
+      await git(repoDir, ["add", "image.png"])
+      await git(repoDir, ["commit", "-m", "Add image"])
+      await writeFile(path.join(repoDir, "image.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x02]))
+
+      const service = new GitService()
+      const diff = await service.getFileDiff(repoDir, "image.png")
+
+      expect(diff.previewUnavailableReason).toBe("image")
+      expect(diff.isImage).toBe(true)
+      expect(diff.original).toBe("")
+      expect(diff.modified).toBe("")
+      expect(diff.patch).toBeNull()
+    } finally {
+      await rm(repoDir, { recursive: true, force: true })
+    }
+  })
+
+  test("does not return oversized text file contents for diff previews", async () => {
+    const repoDir = await createRepository()
+
+    try {
+      const largeOriginal = `${"a".repeat(2 * 1024 * 1024 + 1)}\n`
+      const largeModified = `${"b".repeat(2 * 1024 * 1024 + 1)}\n`
+
+      await writeFile(path.join(repoDir, "large.txt"), largeOriginal, "utf8")
+      await git(repoDir, ["add", "large.txt"])
+      await git(repoDir, ["commit", "-m", "Add large text"])
+      await writeFile(path.join(repoDir, "large.txt"), largeModified, "utf8")
+
+      const service = new GitService()
+      const diff = await service.getFileDiff(repoDir, "large.txt")
+
+      expect(diff.previewUnavailableReason).toBe("too_large")
+      expect(diff.isTooLarge).toBe(true)
+      expect(diff.original).toBe("")
+      expect(diff.modified).toBe("")
+      expect(diff.patch).toBeNull()
+    } finally {
+      await rm(repoDir, { recursive: true, force: true })
+    }
+  })
+})
+
 describe("GitService.runStackedAction", () => {
   test("commits selected files with a custom message without clearing unrelated staged work", async () => {
     const repoDir = await createRepository()

@@ -35,6 +35,22 @@ import type {
 const execFileAsync = promisify(execFile)
 const CODEX_REASONING_EFFORT = "low"
 const ENABLE_VERBOSE_GIT_LOGS = process.env.VFACTOR_VERBOSE_GIT_LOGS === "1"
+const MAX_DIFF_PREVIEW_FILE_BYTES = 2 * 1024 * 1024
+
+const IMAGE_DIFF_EXTENSIONS = new Set([
+  ".avif",
+  ".gif",
+  ".heic",
+  ".heif",
+  ".ico",
+  ".jpeg",
+  ".jpg",
+  ".png",
+  ".svg",
+  ".tif",
+  ".tiff",
+  ".webp",
+])
 
 type CommitSuggestion = {
   subject: string
@@ -646,6 +662,57 @@ async function readHeadFile(repoRoot: string, repoRelativePath: string): Promise
   }
 }
 
+function getWorkingTreeFileSize(repoRoot: string, repoRelativePath: string): number | null {
+  try {
+    return statSync(path.join(repoRoot, ...repoRelativePath.split("/"))).size
+  } catch {
+    return null
+  }
+}
+
+async function getHeadFileSize(repoRoot: string, repoRelativePath: string): Promise<number | null> {
+  try {
+    const output = await runGitCommand(repoRoot, ["cat-file", "-s", `HEAD:${repoRelativePath}`])
+    const size = Number.parseInt(output, 10)
+    return Number.isFinite(size) ? size : null
+  } catch {
+    return null
+  }
+}
+
+function isImageDiffPath(filePath: string): boolean {
+  return IMAGE_DIFF_EXTENSIONS.has(path.extname(filePath).toLowerCase())
+}
+
+function isBinaryPatch(patch: string | null): boolean {
+  return patch ? /^Binary files .+ differ$/m.test(patch) : false
+}
+
+function resolveLimitedDiffReason(input: {
+  path: string
+  previousPath: string
+  modifiedSize: number | null
+  originalSize: number | null
+  patch: string | null
+}): GitFileDiff["previewUnavailableReason"] | null {
+  if (isImageDiffPath(input.path) || isImageDiffPath(input.previousPath)) {
+    return "image"
+  }
+
+  if (isBinaryPatch(input.patch)) {
+    return "binary"
+  }
+
+  if (
+    (input.modifiedSize != null && input.modifiedSize > MAX_DIFF_PREVIEW_FILE_BYTES) ||
+    (input.originalSize != null && input.originalSize > MAX_DIFF_PREVIEW_FILE_BYTES)
+  ) {
+    return "too_large"
+  }
+
+  return null
+}
+
 async function readGitDiffPatch(
   projectPath: string,
   repoRelativePaths: string[],
@@ -731,9 +798,8 @@ async function getFileDiff(
     ? toRepoRelativePath(previousPath, scopePath)
     : repoRelativePath
   const hasHead = await gitHeadExists(projectPath)
-
-  const modified = await readWorkingTreeFile(repoRoot, repoRelativePath)
-  const original = hasHead ? await readHeadFile(repoRoot, previousRepoRelativePath) : ""
+  const modifiedSize = getWorkingTreeFileSize(repoRoot, repoRelativePath)
+  const originalSize = hasHead ? await getHeadFileSize(repoRoot, previousRepoRelativePath) : null
   const patch = await readGitDiffPatch(
     projectPath,
     previousPath && previousRepoRelativePath !== repoRelativePath
@@ -741,14 +807,27 @@ async function getFileDiff(
       : [repoRelativePath],
     hasHead
   )
+  const previewUnavailableReason = resolveLimitedDiffReason({
+    path: repoRelativePath,
+    previousPath: previousRepoRelativePath,
+    modifiedSize,
+    originalSize,
+    patch,
+  })
+
+  const modified = previewUnavailableReason ? "" : await readWorkingTreeFile(repoRoot, repoRelativePath)
+  const original = previewUnavailableReason || !hasHead ? "" : await readHeadFile(repoRoot, previousRepoRelativePath)
 
   let status: GitFileStatus = "modified"
 
-  if (!hasHead && modified) {
+  const hasModifiedFile = modifiedSize != null
+  const hasOriginalFile = originalSize != null || Boolean(original)
+
+  if (!hasHead && hasModifiedFile) {
     status = "untracked"
-  } else if (!original && modified) {
+  } else if (!hasOriginalFile && hasModifiedFile) {
     status = previousPath ? "renamed" : "added"
-  } else if (original && !modified) {
+  } else if (hasOriginalFile && !hasModifiedFile) {
     status = "deleted"
   } else if (previousPath && previousPath !== filePath) {
     status = "renamed"
@@ -760,7 +839,11 @@ async function getFileDiff(
     status,
     original,
     modified,
-    patch,
+    patch: previewUnavailableReason ? null : patch,
+    isBinary: previewUnavailableReason === "binary",
+    isImage: previewUnavailableReason === "image",
+    isTooLarge: previewUnavailableReason === "too_large",
+    previewUnavailableReason: previewUnavailableReason ?? undefined,
   }
 }
 
