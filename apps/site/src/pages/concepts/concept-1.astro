@@ -72,7 +72,6 @@ const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
     <section id="workflow" class="bp-section">
       <div class="bp-container">
         <div class="bp-section-header">
-          <div class="bp-label">Workflow</div>
           <h2 class="bp-section-title">From prompt to pull request.</h2>
           <p class="bp-section-desc">The full agentic development lifecycle, contained in one desktop workspace.</p>
         </div>
@@ -142,7 +141,6 @@ const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
     <section id="harnesses" class="bp-section">
       <div class="bp-container">
         <div class="bp-section-header">
-          <div class="bp-label">Provider Flexibility</div>
           <h2 class="bp-section-title">Use the harness you prefer.</h2>
           <p class="bp-section-desc">No vendor lock-in. One interface, any agent.</p>
         </div>
@@ -150,23 +148,40 @@ const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
         <div class="bp-harness-grid">
           <div class="bp-harness-card">
             <div class="bp-harness-top"></div>
+            <div class="bp-harness-card-logo" aria-hidden="true">
+              <img class="bp-logo-theme bp-logo-theme-openai" src="/brands/openai-symbol-dark.svg" alt="" loading="lazy" />
+            </div>
             <div class="bp-harness-name">Codex</div>
             <p class="bp-harness-desc">OpenAI's Codex App Server. Deep reasoning, code generation, and multi-file editing.</p>
           </div>
           <div class="bp-harness-card">
             <div class="bp-harness-top"></div>
+            <div class="bp-harness-card-logo" aria-hidden="true">
+              <img src="/brands/claude-color.svg" alt="" loading="lazy" />
+            </div>
             <div class="bp-harness-name">Claude Code</div>
             <p class="bp-harness-desc">Anthropic's CLI harness. Thoughtful analysis, debugging, and architecture decisions.</p>
           </div>
           <div class="bp-harness-card">
             <div class="bp-harness-top"></div>
+            <div class="bp-harness-card-logo bp-harness-card-logo-opencode" aria-hidden="true">
+              <img class="bp-logo-theme bp-logo-theme-opencode" src="/brands/opencode-dark.svg" alt="" loading="lazy" />
+            </div>
             <div class="bp-harness-name">OpenCode</div>
             <p class="bp-harness-desc">Community-driven harnesses and local LLM adapters. Open and extensible.</p>
           </div>
           <div class="bp-harness-card bp-harness-more">
             <div class="bp-harness-top"></div>
-            <div class="bp-harness-name">Future</div>
-            <p class="bp-harness-desc">More harnesses coming. The adapter model means any agent can plug in.</p>
+            <div class="bp-harness-more-logos" aria-label="Upcoming harness logos">
+              <span aria-label="Gemini">
+                <img src="/brands/gemini.svg" alt="" loading="lazy" />
+              </span>
+              <span aria-label="Cursor">
+                <img class="bp-logo-theme bp-logo-theme-cursor" src="/brands/cursor-dark.svg" alt="" loading="lazy" />
+              </span>
+            </div>
+            <div class="bp-harness-name">More coming soon</div>
+            <p class="bp-harness-desc">Gemini, Cursor, and additional adapters are on the way.</p>
           </div>
         </div>
 
@@ -181,23 +196,55 @@ const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
     <section id="pricing" class="bp-section bp-section-pricing">
       <div class="bp-container">
         <div class="bp-section-header">
-          <div class="bp-label">Pricing</div>
-          <h2 class="bp-section-title">Free, for real.</h2>
-          <p class="bp-section-desc">The core app stays open source and free. Future paid services will be optional add-ons.</p>
+          <h2 class="bp-section-title">Pricing.</h2>
+          <p class="bp-section-desc">Start with the full local desktop workspace. Bring your own agent subscriptions.</p>
         </div>
 
-        <div class="bp-pricing-card">
-          <div>
-            <div class="bp-pricing-label">Current plan</div>
-            <h3 class="bp-pricing-title">Free while we figure out what the f*ck we are doing.</h3>
-            <p class="bp-pricing-copy">
-              vFactor will remain open source and free to use. You bring the agent subscriptions; we provide the desktop workspace.
-              Paid features, if and when they show up, will be optional add-ons around the app.
-            </p>
+        <div class="bp-pricing-grid">
+          <div class="bp-pricing-card">
+            <div class="bp-pricing-card-top">
+              <h3 class="bp-pricing-title">vFactor Core</h3>
+              <p class="bp-pricing-copy">Everything currently available in the app.</p>
+            </div>
+            <div class="bp-pricing-price">
+              <span>Free</span>
+              <small>open source</small>
+            </div>
+            <ul class="bp-pricing-features" aria-label="vFactor Core features">
+              <li>Local desktop workspace</li>
+              <li>Codex, Claude Code, and OpenCode harnesses</li>
+              <li>Chat, planning, and tool-call timeline</li>
+              <li>Built-in browser, terminal, and file viewer</li>
+              <li>Project and workspace management</li>
+              <li>Git diffs and pull request flow</li>
+              <li>Approval controls and supervised agent work</li>
+              <li>Bring your own model subscriptions</li>
+            </ul>
           </div>
-          <div class="bp-pricing-price">
-            <span>$0</span>
-            <small>for now</small>
+
+          <div class="bp-pricing-card bp-pricing-card-pro">
+            <div class="bp-pricing-card-top">
+              <div class="bp-pricing-title-row">
+                <h3 class="bp-pricing-title">vFactor Pro</h3>
+                <span class="bp-pricing-status">Coming soon</span>
+              </div>
+              <p class="bp-pricing-copy">Team and cloud features for heavier agent workflows.</p>
+            </div>
+            <div class="bp-pricing-price">
+              <span>$20</span>
+              <small>per user / month</small>
+            </div>
+            <ul class="bp-pricing-features" aria-label="vFactor Pro features">
+              <li>Custom sandboxes</li>
+              <li>Multiple team members</li>
+              <li>Shared workspaces and permissions</li>
+              <li>Code review</li>
+              <li>Mobile app access</li>
+              <li>Third-party integrations</li>
+              <li>Team-level agent settings</li>
+              <li>Usage and activity history</li>
+              <li>Priority product updates</li>
+            </ul>
           </div>
         </div>
       </div>
@@ -207,7 +254,6 @@ const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
     <section id="supervised" class="bp-section">
       <div class="bp-container">
         <div class="bp-section-header">
-          <div class="bp-label">Supervised Autonomy</div>
           <h2 class="bp-section-title">You stay in control.</h2>
           <p class="bp-section-desc">Agents do the work. You see every plan, tool call, file change, and approval.</p>
         </div>
@@ -264,7 +310,6 @@ const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
       <div class="bp-container">
         <div class="bp-oss-grid">
           <div class="bp-oss-main">
-            <div class="bp-label">Open Source</div>
             <h2 class="bp-section-title">Own your code.<br />Inspect the app.</h2>
             <p class="bp-section-desc">vFactor is open source and community-driven. No black boxes, no vendor lock-in. Fork it, hack it, or contribute back.</p>
             <div class="bp-oss-actions">
@@ -882,60 +927,148 @@ const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
       }
     }
 
-    .bp-pricing-card {
+    .bp-pricing-grid {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 40px;
-      align-items: center;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1px;
+      width: 100%;
+      margin: 0 auto;
       border: 1px solid var(--bp-border);
-      background: var(--bp-bg);
-      padding: 36px;
+      background: var(--bp-border);
+      position: relative;
+      transition: background 0.3s ease, border-color 0.3s ease;
+    }
+
+    .bp-pricing-grid::before {
+      content: '';
+      position: absolute;
+      top: 28px;
+      bottom: 28px;
+      left: 50%;
+      width: 1px;
+      background: var(--bp-border-strong);
+      transform: translateX(-0.5px);
+      pointer-events: none;
+    }
+
+    .bp-pricing-card {
+      min-height: 520px;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--bp-border);
+      border-width: 0;
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--bp-surface) 55%, transparent), var(--bp-bg) 42%),
+        var(--bp-bg);
+      padding: 34px;
       transition: background 0.3s ease, border-color 0.3s ease;
     }
 
     .bp-pricing-card:hover {
-      background: var(--bp-surface);
-      border-color: var(--bp-border-strong);
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--bp-surface-2) 64%, transparent), var(--bp-surface) 46%),
+        var(--bp-surface);
     }
 
-    .bp-pricing-label {
-      font-family: 'Fragment Mono', monospace;
-      font-size: 0.72rem;
-      color: var(--bp-muted);
-      letter-spacing: 0.1em;
+    .bp-pricing-card-pro {
+      background:
+        repeating-linear-gradient(
+          -45deg,
+          transparent 0,
+          transparent 12px,
+          color-mix(in srgb, var(--bp-border) 42%, transparent) 12px,
+          color-mix(in srgb, var(--bp-border) 42%, transparent) 13px
+        ),
+        linear-gradient(180deg, color-mix(in srgb, var(--bp-surface-2) 48%, transparent), var(--bp-bg) 42%),
+        var(--bp-bg);
+    }
+
+    .bp-pricing-card-pro:hover {
+      background:
+        repeating-linear-gradient(
+          -45deg,
+          transparent 0,
+          transparent 12px,
+          color-mix(in srgb, var(--bp-border) 42%, transparent) 12px,
+          color-mix(in srgb, var(--bp-border) 42%, transparent) 13px
+        ),
+        linear-gradient(180deg, color-mix(in srgb, var(--bp-surface-2) 48%, transparent), var(--bp-bg) 42%),
+        var(--bp-bg);
+    }
+
+    .bp-pricing-card-pro .bp-pricing-price,
+    .bp-pricing-card-pro .bp-pricing-features {
+      opacity: 0.62;
+    }
+
+    .bp-pricing-card-top {
+      min-height: 116px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: flex-start;
+    }
+
+    .bp-pricing-title-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
       margin-bottom: 14px;
-      text-transform: uppercase;
     }
 
     .bp-pricing-title {
       font-family: 'Fragment Mono', monospace;
-      font-size: clamp(1.35rem, 3vw, 2rem);
+      font-size: clamp(1.35rem, 3vw, 1.8rem);
       line-height: 1.2;
       color: var(--bp-text-bright);
       font-weight: 400;
+      margin-bottom: 0;
+    }
+
+    .bp-pricing-card:not(.bp-pricing-card-pro) .bp-pricing-title {
       margin-bottom: 14px;
+    }
+
+    .bp-pricing-status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 4px 7px;
+      border: 1px solid var(--bp-border-strong);
+      font-family: 'Fragment Mono', monospace;
+      font-size: 0.62rem;
+      line-height: 1;
+      color: var(--bp-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      background: color-mix(in srgb, var(--bp-bg) 78%, transparent);
     }
 
     .bp-pricing-copy {
       color: var(--bp-muted);
-      font-size: 0.96rem;
-      line-height: 1.6;
-      max-width: 680px;
+      font-size: 0.92rem;
+      line-height: 1.5;
+      max-width: 320px;
     }
 
     .bp-pricing-price {
       display: flex;
       flex-direction: column;
-      align-items: flex-end;
-      justify-content: center;
-      min-width: 150px;
+      align-items: flex-start;
+      justify-content: flex-start;
       font-family: 'Fragment Mono', monospace;
       color: var(--bp-text-bright);
+      text-align: left;
+      padding: 28px 0;
+      margin: 26px 0 0;
+      border-top: 1px solid var(--bp-border);
+      border-bottom: 1px solid var(--bp-border);
     }
 
     .bp-pricing-price span {
-      font-size: clamp(3rem, 7vw, 5rem);
-      line-height: 0.95;
+      font-size: clamp(2.35rem, 5vw, 4rem);
+      line-height: 1;
       letter-spacing: 0;
     }
 
@@ -945,15 +1078,46 @@ const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
       margin-top: 10px;
     }
 
+    .bp-pricing-features {
+      list-style: none;
+      margin: 28px 0 0;
+      padding: 0;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 13px;
+    }
+
+    .bp-pricing-features li {
+      position: relative;
+      padding-left: 20px;
+      color: var(--bp-text);
+      font-size: 0.92rem;
+      line-height: 1.45;
+    }
+
+    .bp-pricing-features li::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0.58em;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--bp-text-bright);
+    }
+
     @media (max-width: 768px) {
-      .bp-pricing-card {
+      .bp-pricing-grid {
         grid-template-columns: 1fr;
-        gap: 28px;
-        padding: 28px 24px;
       }
 
-      .bp-pricing-price {
-        align-items: flex-start;
+      .bp-pricing-grid::before {
+        display: none;
+      }
+
+      .bp-pricing-card {
+        padding: 28px 24px;
+        min-height: auto;
       }
     }
 
@@ -1000,6 +1164,42 @@ const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
       opacity: 1;
     }
 
+    .bp-harness-card-logo {
+      width: 32px;
+      height: 32px;
+      margin-bottom: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .bp-harness-card-logo img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .bp-harness-card-logo-opencode {
+      border: 1px solid var(--bp-border-strong);
+    }
+
+    .bp-logo-theme {
+      display: block;
+    }
+
+    .bp-wrapper.light .bp-logo-theme-openai {
+      content: url('/brands/openai-symbol-light.svg');
+    }
+
+    .bp-wrapper.light .bp-logo-theme-opencode {
+      content: url('/brands/opencode-light.svg');
+    }
+
+    .bp-wrapper.light .bp-logo-theme-cursor {
+      content: url('/brands/cursor-light.svg');
+    }
+
     .bp-harness-name {
       font-family: 'Fragment Mono', monospace;
       font-size: 1.1rem;
@@ -1017,6 +1217,41 @@ const LATEST_RELEASE_URL = `${GITHUB_REPO_URL}/releases/latest`
 
     .bp-harness-more .bp-harness-name {
       color: var(--bp-muted);
+    }
+
+    .bp-harness-more {
+      background:
+        linear-gradient(135deg, var(--bp-surface) 0%, var(--bp-bg) 64%),
+        var(--bp-bg);
+    }
+
+    .bp-harness-more:hover {
+      background:
+        linear-gradient(135deg, var(--bp-surface-2) 0%, var(--bp-surface) 64%),
+        var(--bp-surface);
+    }
+
+    .bp-harness-more-logos {
+      height: 32px;
+      margin-bottom: 18px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .bp-harness-more-logos span {
+      width: 32px;
+      height: 32px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .bp-harness-more-logos img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
     }
 
     /* Supervised */
