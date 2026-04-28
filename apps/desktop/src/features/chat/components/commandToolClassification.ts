@@ -2,6 +2,7 @@ export type CommandCliKind = "git" | "github"
 
 const SHELL_LAUNCHERS = new Set(["bash", "sh", "zsh"])
 const SHELL_COMMAND_FLAGS = new Set(["-c", "-lc"])
+const COMMAND_WRAPPERS = new Set(["command", "env", "sudo"])
 const MAX_SHELL_UNWRAP_DEPTH = 8
 
 function getStringField(source: Record<string, unknown>, keys: string[]): string | null {
@@ -36,7 +37,9 @@ function getExecutableName(token: string | undefined): string | null {
     return null
   }
 
-  return stripWrappingQuotes(token).split(/[\\/]/).at(-1) ?? null
+  const executable = stripWrappingQuotes(token).split(/[\\/]/).at(-1)?.toLowerCase()
+
+  return executable?.replace(/\.(?:exe|cmd|bat|ps1)$/i, "") ?? null
 }
 
 function getShellCommandArgument(tokens: string[]): string | null {
@@ -94,7 +97,7 @@ function getCommandExecutables(command: string): string[] {
         index += 1
       }
 
-      while (tokens[index] === "env" || tokens[index] === "sudo" || tokens[index] === "command") {
+      while (COMMAND_WRAPPERS.has(getExecutableName(tokens[index]) ?? "")) {
         index += 1
 
         while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=.*/.test(tokens[index] ?? "")) {
