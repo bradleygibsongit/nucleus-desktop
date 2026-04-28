@@ -102,7 +102,7 @@ function createTheme(seed: ThemeSeed): ThemeDefinition {
   const isDark = seed.appearance === "dark"
   const border = mix(seed.foreground, isDark ? 14 : 15, seed.border)
   const controlBorder = seed.controlBorder ?? mix(seed.foreground, isDark ? 18 : 15, seed.background)
-  const input = mix(seed.foreground, isDark ? 12 : 11, seed.background)
+  const input = seed.input ?? mix(seed.foreground, isDark ? 12 : 11, seed.background)
   const sidebarBorder = seed.sidebarBorder ?? mix(seed.foreground, isDark ? 11 : 8, seed.background)
   const secondary = seed.secondary ?? mix(seed.foreground, isDark ? 18 : 10, seed.background)
   const accent = seed.accent ?? mix(seed.primary, isDark ? 34 : 26, seed.surfaceElevated)
@@ -522,7 +522,7 @@ export const THEME_REGISTRY: Record<ConcreteThemeId, ThemeDefinition> = {
     foreground: "#575279",
     mutedForeground: "#797593",
     border: "#dfdad9",
-    input: "#f2e9e1",
+    input: "#efe1d6",
     ring: "#907aa9",
     primary: "#907aa9",
     primaryForeground: "#faf4ed",
@@ -630,7 +630,7 @@ export const THEME_REGISTRY: Record<ConcreteThemeId, ThemeDefinition> = {
     foreground: "#3b4048",
     mutedForeground: "#606f73",
     border: "#d7d2c4",
-    input: "#f2eee2",
+    input: "#ece8dc",
     ring: "#1abc9c",
     primary: "#1abc9c",
     primaryForeground: "#10151a",
@@ -657,7 +657,7 @@ export const THEME_REGISTRY: Record<ConcreteThemeId, ThemeDefinition> = {
     foreground: "#24292f",
     mutedForeground: "#57606a",
     border: "#d0d7de",
-    input: "#f6f8fa",
+    input: "#eaeef2",
     ring: "#0969da",
     primary: "#0969da",
     primaryForeground: "#ffffff",
@@ -819,7 +819,7 @@ export const THEME_REGISTRY: Record<ConcreteThemeId, ThemeDefinition> = {
     foreground: "#5c6166",
     mutedForeground: "#828e9f",
     border: "#ebeef0",
-    input: "#fcfcfc",
+    input: "#e4e8eb",
     ring: "#f29718",
     primary: "#f29718",
     primaryForeground: "#fffaf2",
@@ -873,7 +873,7 @@ export const THEME_REGISTRY: Record<ConcreteThemeId, ThemeDefinition> = {
     foreground: "#545464",
     mutedForeground: "#716e61",
     border: "#dcd7ba",
-    input: "#f4f1d0",
+    input: "#e5dca4",
     ring: "#4d699b",
     primary: "#4d699b",
     primaryForeground: "#f9f7ec",
@@ -981,7 +981,7 @@ export const THEME_REGISTRY: Record<ConcreteThemeId, ThemeDefinition> = {
     foreground: "#e8fbff",
     mutedForeground: "#9b8bc8",
     border: "#3b1f62",
-    input: "#1d0a3c",
+    input: "#241047",
     ring: "#00f0ff",
     primary: "#00ff9f",
     primaryForeground: "#071313",
