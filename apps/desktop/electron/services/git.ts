@@ -3,7 +3,7 @@ import { existsSync, realpathSync, statSync } from "node:fs"
 import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { promisify } from "node:util"
+import { promisify, TextDecoder } from "node:util"
 import { capture, captureException } from "./analytics"
 
 import type {
@@ -36,6 +36,7 @@ const execFileAsync = promisify(execFile)
 const CODEX_REASONING_EFFORT = "low"
 const ENABLE_VERBOSE_GIT_LOGS = process.env.VFACTOR_VERBOSE_GIT_LOGS === "1"
 const MAX_DIFF_PREVIEW_FILE_BYTES = 2 * 1024 * 1024
+const UTF8_DECODER_FATAL = new TextDecoder("utf-8", { fatal: true })
 
 const IMAGE_DIFF_EXTENSIONS = new Set([
   ".avif",
@@ -688,6 +689,31 @@ function isBinaryPatch(patch: string | null): boolean {
   return patch ? /^Binary files .+ differ$/m.test(patch) : false
 }
 
+async function isWorkingTreeFileBinary(repoRoot: string, repoRelativePath: string): Promise<boolean> {
+  let contents: Buffer
+
+  try {
+    contents = await readFile(path.join(repoRoot, ...repoRelativePath.split("/")))
+  } catch {
+    return false
+  }
+
+  if (contents.length === 0) {
+    return false
+  }
+
+  if (contents.includes(0)) {
+    return true
+  }
+
+  try {
+    UTF8_DECODER_FATAL.decode(contents)
+    return false
+  } catch {
+    return true
+  }
+}
+
 function resolveLimitedDiffReason(input: {
   path: string
   previousPath: string
@@ -800,20 +826,35 @@ async function getFileDiff(
   const hasHead = await gitHeadExists(projectPath)
   const modifiedSize = getWorkingTreeFileSize(repoRoot, repoRelativePath)
   const originalSize = hasHead ? await getHeadFileSize(repoRoot, previousRepoRelativePath) : null
-  const patch = await readGitDiffPatch(
-    projectPath,
+  const pathspecs =
     previousPath && previousRepoRelativePath !== repoRelativePath
       ? [previousRepoRelativePath, repoRelativePath]
-      : [repoRelativePath],
-    hasHead
-  )
-  const previewUnavailableReason = resolveLimitedDiffReason({
+      : [repoRelativePath]
+  let previewUnavailableReason = resolveLimitedDiffReason({
     path: repoRelativePath,
     previousPath: previousRepoRelativePath,
     modifiedSize,
     originalSize,
-    patch,
+    patch: null,
   })
+
+  if (!previewUnavailableReason && modifiedSize != null) {
+    previewUnavailableReason = (await isWorkingTreeFileBinary(repoRoot, repoRelativePath)) ? "binary" : null
+  }
+
+  const patch = previewUnavailableReason
+    ? null
+    : await readGitDiffPatch(projectPath, pathspecs, hasHead)
+
+  if (!previewUnavailableReason) {
+    previewUnavailableReason = resolveLimitedDiffReason({
+      path: repoRelativePath,
+      previousPath: previousRepoRelativePath,
+      modifiedSize,
+      originalSize,
+      patch,
+    })
+  }
 
   const modified = previewUnavailableReason ? "" : await readWorkingTreeFile(repoRoot, repoRelativePath)
   const original = previewUnavailableReason || !hasHead ? "" : await readHeadFile(repoRoot, previousRepoRelativePath)

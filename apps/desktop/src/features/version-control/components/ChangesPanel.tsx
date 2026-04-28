@@ -323,6 +323,7 @@ export function ChangesPanel({ projectPath, changes }: ChangesPanelProps) {
   const [diffsByKey, setDiffsByKey] = useState<Record<string, GitFileDiff>>({})
   const [diffErrorsByKey, setDiffErrorsByKey] = useState<Record<string, string>>({})
   const inFlightDiffsRef = useRef(new Map<string, Promise<void>>())
+  const diffGenerationRef = useRef(0)
   const projectPathRef = useRef(projectPath)
 
   // Persist collapsed keys per project so navigation away and back restores the exact state.
@@ -348,6 +349,13 @@ export function ChangesPanel({ projectPath, changes }: ChangesPanelProps) {
     })
   }, [visibleChanges])
 
+  useEffect(() => {
+    diffGenerationRef.current += 1
+    setDiffsByKey({})
+    setDiffErrorsByKey({})
+    inFlightDiffsRef.current.clear()
+  }, [visibleChanges])
+
   const preloadDiff = useCallback(
     (change: FileChange) => {
       const changeKey = getChangeKey(change)
@@ -357,10 +365,14 @@ export function ChangesPanel({ projectPath, changes }: ChangesPanelProps) {
       }
 
       const requestProjectPath = projectPath
+      const requestGeneration = diffGenerationRef.current
       const request = desktop.git
         .getFileDiff(requestProjectPath, change.path, change.previousPath)
         .then((nextDiff) => {
-          if (projectPathRef.current !== requestProjectPath) {
+          if (
+            projectPathRef.current !== requestProjectPath ||
+            diffGenerationRef.current !== requestGeneration
+          ) {
             return
           }
 
@@ -376,14 +388,19 @@ export function ChangesPanel({ projectPath, changes }: ChangesPanelProps) {
         })
         .catch((error) => {
           console.error("Failed to preload changes panel diff:", error)
-          if (projectPathRef.current !== requestProjectPath) {
+          if (
+            projectPathRef.current !== requestProjectPath ||
+            diffGenerationRef.current !== requestGeneration
+          ) {
             return
           }
 
           setDiffErrorsByKey((current) => ({ ...current, [changeKey]: "Failed to load diff." }))
         })
         .finally(() => {
-          inFlightDiffsRef.current.delete(changeKey)
+          if (inFlightDiffsRef.current.get(changeKey) === request) {
+            inFlightDiffsRef.current.delete(changeKey)
+          }
         })
 
       inFlightDiffsRef.current.set(changeKey, request)
@@ -419,6 +436,7 @@ export function ChangesPanel({ projectPath, changes }: ChangesPanelProps) {
 
   useEffect(() => {
     projectPathRef.current = projectPath
+    diffGenerationRef.current += 1
     setDiffsByKey({})
     setDiffErrorsByKey({})
     inFlightDiffsRef.current.clear()

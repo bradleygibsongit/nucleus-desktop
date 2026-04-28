@@ -159,6 +159,45 @@ describe("GitService.getFileDiff", () => {
       await rm(repoDir, { recursive: true, force: true })
     }
   })
+
+  test("does not return untracked non-image binary file contents for diff previews", async () => {
+    const repoDir = await createRepository()
+
+    try {
+      await writeFile(path.join(repoDir, "archive.bin"), Buffer.from([0xff, 0xfe, 0xfd, 0xfc]))
+
+      const service = new GitService()
+      const diff = await service.getFileDiff(repoDir, "archive.bin")
+
+      expect(diff.previewUnavailableReason).toBe("binary")
+      expect(diff.isBinary).toBe(true)
+      expect(diff.original).toBe("")
+      expect(diff.modified).toBe("")
+      expect(diff.patch).toBeNull()
+    } finally {
+      await rm(repoDir, { recursive: true, force: true })
+    }
+  })
+
+  test("does not return newly added non-image binary file contents for diff previews", async () => {
+    const repoDir = await createRepository()
+
+    try {
+      await writeFile(path.join(repoDir, "payload.dat"), Buffer.from([0x00, 0x01, 0x02, 0x03]))
+      await git(repoDir, ["add", "payload.dat"])
+
+      const service = new GitService()
+      const diff = await service.getFileDiff(repoDir, "payload.dat")
+
+      expect(diff.previewUnavailableReason).toBe("binary")
+      expect(diff.isBinary).toBe(true)
+      expect(diff.original).toBe("")
+      expect(diff.modified).toBe("")
+      expect(diff.patch).toBeNull()
+    } finally {
+      await rm(repoDir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe("GitService.runStackedAction", () => {
