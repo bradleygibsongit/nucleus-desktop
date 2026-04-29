@@ -1272,6 +1272,11 @@ type RawPullRequestChecksResult = {
   error: string | null
 }
 
+type RawPullRequestActivityResult<T> = {
+  items: T[]
+  error: string | null
+}
+
 type RawPullRequestReview = {
   id?: string | null
   state?: string | null
@@ -1630,15 +1635,16 @@ async function getRawPullRequestReviews(
   projectPath: string,
   pullRequestNumber: number,
   pullRequestUrl: string | null | undefined
-): Promise<RawPullRequestReview[]> {
+): Promise<RawPullRequestActivityResult<RawPullRequestReview>> {
   const repository = parseOwnerAndRepoFromPullRequestUrl(pullRequestUrl)
   if (!repository) {
+    const error = "Unable to determine repository owner/name for pull request reviews."
     console.warn("[git] getRawPullRequestReviews:error", {
       projectPath,
       pullRequestNumber,
-      error: "Unable to determine repository owner/name for pull request reviews.",
+      error,
     })
-    return []
+    return { items: [], error }
   }
 
   try {
@@ -1656,7 +1662,7 @@ async function getRawPullRequestReviews(
     ])
 
     if (!output.trim()) {
-      return []
+      return { items: [], error: null }
     }
 
     const parsed = JSON.parse(output) as {
@@ -1670,14 +1676,18 @@ async function getRawPullRequestReviews(
         } | null
       } | null
     }
-    return parsed.data?.repository?.pullRequest?.reviews?.nodes ?? []
+    return {
+      items: parsed.data?.repository?.pullRequest?.reviews?.nodes ?? [],
+      error: null,
+    }
   } catch (error) {
+    const errorMessage = formatGhError(error, "Unable to load pull request reviews from GitHub.")
     console.warn("[git] getRawPullRequestReviews:error", {
       projectPath,
       pullRequestNumber,
-      error: formatGhError(error, "Unable to load pull request reviews from GitHub."),
+      error: errorMessage,
     })
-    return []
+    return { items: [], error: errorMessage }
   }
 }
 
@@ -1685,15 +1695,16 @@ async function getRawPullRequestComments(
   projectPath: string,
   pullRequestNumber: number,
   pullRequestUrl: string | null | undefined
-): Promise<RawPullRequestComment[]> {
+): Promise<RawPullRequestActivityResult<RawPullRequestComment>> {
   const repository = parseOwnerAndRepoFromPullRequestUrl(pullRequestUrl)
   if (!repository) {
+    const error = "Unable to determine repository owner/name for pull request comments."
     console.warn("[git] getRawPullRequestComments:error", {
       projectPath,
       pullRequestNumber,
-      error: "Unable to determine repository owner/name for pull request comments.",
+      error,
     })
-    return []
+    return { items: [], error }
   }
 
   try {
@@ -1711,7 +1722,7 @@ async function getRawPullRequestComments(
     ])
 
     if (!output.trim()) {
-      return []
+      return { items: [], error: null }
     }
 
     const parsed = JSON.parse(output) as {
@@ -1725,14 +1736,18 @@ async function getRawPullRequestComments(
         } | null
       } | null
     }
-    return parsed.data?.repository?.pullRequest?.comments?.nodes ?? []
+    return {
+      items: parsed.data?.repository?.pullRequest?.comments?.nodes ?? [],
+      error: null,
+    }
   } catch (error) {
+    const errorMessage = formatGhError(error, "Unable to load pull request comments from GitHub.")
     console.warn("[git] getRawPullRequestComments:error", {
       projectPath,
       pullRequestNumber,
-      error: formatGhError(error, "Unable to load pull request comments from GitHub."),
+      error: errorMessage,
     })
-    return []
+    return { items: [], error: errorMessage }
   }
 }
 
@@ -1760,15 +1775,16 @@ async function getRawPullRequestReviewComments(
   projectPath: string,
   pullRequestNumber: number,
   pullRequestUrl: string | null | undefined
-): Promise<GitPullRequestReviewComment[]> {
+): Promise<RawPullRequestActivityResult<GitPullRequestReviewComment>> {
   const repository = parseOwnerAndRepoFromPullRequestUrl(pullRequestUrl)
   if (!repository) {
+    const error = "Unable to determine repository owner/name for pull request review threads."
     console.warn("[git] getRawPullRequestReviewComments:error", {
       projectPath,
       pullRequestNumber,
-      error: "Unable to determine repository owner/name for pull request review threads.",
+      error,
     })
-    return []
+    return { items: [], error }
   }
 
   try {
@@ -1786,7 +1802,7 @@ async function getRawPullRequestReviewComments(
     ])
 
     if (!output.trim()) {
-      return []
+      return { items: [], error: null }
     }
 
     const parsed = JSON.parse(output) as {
@@ -1801,45 +1817,51 @@ async function getRawPullRequestReviewComments(
       } | null
     }
 
-    return (
-      parsed.data?.repository?.pullRequest?.reviewThreads?.nodes?.flatMap((thread) => {
-        const threadId = thread.id?.trim()
-        if (!threadId) {
-          return []
-        }
+    return {
+      items:
+        parsed.data?.repository?.pullRequest?.reviewThreads?.nodes?.flatMap((thread) => {
+          const threadId = thread.id?.trim()
+          if (!threadId) {
+            return []
+          }
 
-        return (thread.comments?.nodes ?? []).map((comment) => ({
-          id:
-            comment.id?.trim() ||
-            `${threadId}:${comment.author?.login?.trim() || "unknown"}:${comment.createdAt ?? "unknown"}`,
-          threadId,
-          authorLogin: comment.author?.login?.trim() || "unknown",
-          authorAvatarUrl: comment.author?.avatarUrl?.trim() || null,
-          body: comment.body?.trim() || null,
-          path: comment.path?.trim() || null,
-          state: comment.state?.trim() || null,
-          createdAt: comment.createdAt ?? null,
-          publishedAt: comment.publishedAt ?? null,
-          url: comment.url?.trim() || null,
-          diffHunk: comment.diffHunk?.trim() || null,
-          line: typeof comment.line === "number" ? comment.line : null,
-          startLine: typeof comment.startLine === "number" ? comment.startLine : null,
-          originalLine: typeof comment.originalLine === "number" ? comment.originalLine : null,
-          originalStartLine:
-            typeof comment.originalStartLine === "number" ? comment.originalStartLine : null,
-          isResolved: thread.isResolved === true,
-          isOutdated: thread.isOutdated === true,
-          replyToId: comment.replyTo?.id?.trim() || null,
-        }))
-      }) ?? []
-    )
+          return (thread.comments?.nodes ?? []).map((comment) => ({
+            id:
+              comment.id?.trim() ||
+              `${threadId}:${comment.author?.login?.trim() || "unknown"}:${comment.createdAt ?? "unknown"}`,
+            threadId,
+            authorLogin: comment.author?.login?.trim() || "unknown",
+            authorAvatarUrl: comment.author?.avatarUrl?.trim() || null,
+            body: comment.body?.trim() || null,
+            path: comment.path?.trim() || null,
+            state: comment.state?.trim() || null,
+            createdAt: comment.createdAt ?? null,
+            publishedAt: comment.publishedAt ?? null,
+            url: comment.url?.trim() || null,
+            diffHunk: comment.diffHunk?.trim() || null,
+            line: typeof comment.line === "number" ? comment.line : null,
+            startLine: typeof comment.startLine === "number" ? comment.startLine : null,
+            originalLine: typeof comment.originalLine === "number" ? comment.originalLine : null,
+            originalStartLine:
+              typeof comment.originalStartLine === "number" ? comment.originalStartLine : null,
+            isResolved: thread.isResolved === true,
+            isOutdated: thread.isOutdated === true,
+            replyToId: comment.replyTo?.id?.trim() || null,
+          }))
+        }) ?? [],
+      error: null,
+    }
   } catch (error) {
+    const errorMessage = formatGhError(
+      error,
+      "Unable to load pull request review comments from GitHub."
+    )
     console.warn("[git] getRawPullRequestReviewComments:error", {
       projectPath,
       pullRequestNumber,
-      error: formatGhError(error, "Unable to load pull request review comments from GitHub."),
+      error: errorMessage,
     })
-    return []
+    return { items: [], error: errorMessage }
   }
 }
 
@@ -2882,6 +2904,7 @@ export class GitService {
         pullRequestNumber: null,
         error: null,
         activityIncluded: includeActivity,
+        activityError: null,
       }
     }
 
@@ -2899,6 +2922,7 @@ export class GitService {
         pullRequestNumber: pullRequest.number,
         error: rawChecks.error,
         activityIncluded: false,
+        activityError: null,
       }
     }
 
@@ -2907,17 +2931,37 @@ export class GitService {
       getRawPullRequestComments(trimmedPath, pullRequest.number, pullRequest.url),
       getRawPullRequestReviewComments(trimmedPath, pullRequest.number, pullRequest.url),
     ])
-    const reviews = rawReviews.map((rawReview) => mapPullRequestReview(rawReview))
-    const comments = rawComments.map((rawComment) => mapPullRequestComment(rawComment))
+    const activityErrors = [
+      rawReviews.error,
+      rawComments.error,
+      reviewComments.error,
+    ].filter((error): error is string => Boolean(error))
+
+    if (activityErrors.length > 0) {
+      return {
+        checks,
+        reviews: [],
+        comments: [],
+        reviewComments: [],
+        pullRequestNumber: pullRequest.number,
+        error: rawChecks.error,
+        activityIncluded: false,
+        activityError: activityErrors[0],
+      }
+    }
+
+    const reviews = rawReviews.items.map((rawReview) => mapPullRequestReview(rawReview))
+    const comments = rawComments.items.map((rawComment) => mapPullRequestComment(rawComment))
 
     return {
       checks,
       reviews,
       comments,
-      reviewComments,
+      reviewComments: reviewComments.items,
       pullRequestNumber: pullRequest.number,
       error: rawChecks.error,
       activityIncluded: true,
+      activityError: null,
     }
   }
 

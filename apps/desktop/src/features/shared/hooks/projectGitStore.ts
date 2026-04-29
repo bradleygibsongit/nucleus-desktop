@@ -63,6 +63,7 @@ function normalizePullRequestChecksPayload(
     comments: Array.isArray(result.comments) ? result.comments : [],
     reviewComments: Array.isArray(result.reviewComments) ? result.reviewComments : [],
     activityIncluded: result.activityIncluded !== false,
+    activityError: result.activityError ?? null,
   }
 }
 
@@ -128,6 +129,17 @@ function shouldPreservePendingChecks(
         (nextPullRequest.checksStatus === "none" &&
           entry.pullRequestChecksPendingUntil != null &&
           Date.now() < entry.pullRequestChecksPendingUntil))
+  )
+}
+
+function shouldClearCheckDetailsForPendingState(
+  entry: ProjectGitEntry,
+  nextBranchData: GitBranchesResponse | null
+): boolean {
+  return Boolean(
+    nextBranchData?.openPullRequest?.state === "open" &&
+      nextBranchData.openPullRequest.checksStatus === "pending" &&
+      !hasPendingPullRequestChecks(entry)
   )
 }
 
@@ -429,6 +441,8 @@ export const useProjectGitStore = create<ProjectGitStoreState>((set, get) => ({
         currentEntry.branchData,
         nextBranchData
       )
+      const shouldClearCheckDetails =
+        shouldClearCheckDetailsForPendingState(currentEntry, nextBranchData)
 
       return {
         entriesByProjectPath: {
@@ -436,12 +450,18 @@ export const useProjectGitStore = create<ProjectGitStoreState>((set, get) => ({
           [projectPath]: {
             ...currentEntry,
             branchData: nextBranchData,
-            pullRequestChecks: shouldRetainChecks ? currentEntry.pullRequestChecks : [],
+            pullRequestChecks:
+              shouldRetainChecks && !shouldClearCheckDetails
+                ? currentEntry.pullRequestChecks
+                : [],
             pullRequestComments: shouldRetainChecks ? currentEntry.pullRequestComments : [],
             pullRequestReviews: shouldRetainChecks ? currentEntry.pullRequestReviews : [],
             pullRequestReviewComments: shouldRetainChecks ? currentEntry.pullRequestReviewComments : [],
             branchError: null,
-            pullRequestChecksError: shouldRetainChecks ? currentEntry.pullRequestChecksError : null,
+            pullRequestChecksError:
+              shouldRetainChecks && !shouldClearCheckDetails
+                ? currentEntry.pullRequestChecksError
+                : null,
             pullRequestChecksPendingUntil,
             pullRequestChecksRateLimitedUntil: shouldRetainChecks
               ? currentEntry.pullRequestChecksRateLimitedUntil
@@ -537,6 +557,8 @@ export const useProjectGitStore = create<ProjectGitStoreState>((set, get) => ({
                 currentEntry.branchData,
                 nextBranchData
               )
+              const shouldClearCheckDetails =
+                shouldClearCheckDetailsForPendingState(currentEntry, nextBranchData)
 
               return {
                 entriesByProjectPath: {
@@ -544,16 +566,20 @@ export const useProjectGitStore = create<ProjectGitStoreState>((set, get) => ({
                   [projectPath]: {
                     ...currentEntry,
                     branchData: nextBranchData,
-                    pullRequestChecks: shouldRetainChecks ? currentEntry.pullRequestChecks : [],
+                    pullRequestChecks:
+                      shouldRetainChecks && !shouldClearCheckDetails
+                        ? currentEntry.pullRequestChecks
+                        : [],
                     pullRequestComments: shouldRetainChecks ? currentEntry.pullRequestComments : [],
                     pullRequestReviews: shouldRetainChecks ? currentEntry.pullRequestReviews : [],
                     pullRequestReviewComments: shouldRetainChecks
                       ? currentEntry.pullRequestReviewComments
                       : [],
                     branchError: null,
-                    pullRequestChecksError: shouldRetainChecks
-                      ? currentEntry.pullRequestChecksError
-                      : null,
+                    pullRequestChecksError:
+                      shouldRetainChecks && !shouldClearCheckDetails
+                        ? currentEntry.pullRequestChecksError
+                        : null,
                     pullRequestChecksPendingUntil,
                     pullRequestChecksRateLimitedUntil: shouldRetainChecks
                       ? currentEntry.pullRequestChecksRateLimitedUntil

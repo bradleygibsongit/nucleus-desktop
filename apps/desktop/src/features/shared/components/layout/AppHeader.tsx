@@ -499,8 +499,14 @@ export function SourceControlActionGroup({
         if (!nextBranchData?.openPullRequest) {
           seedOptimisticPullRequest(nextBranchData, result.pr)
         }
-        setFeedbackTone("info")
-        setFeedbackMessage(null)
+        if (result.pr.status === "opened_existing") {
+          seedOptimisticPendingChecks(nextBranchData)
+          setFeedbackTone("success")
+          setFeedbackMessage(summarizeGitResult(result))
+        } else {
+          setFeedbackTone("info")
+          setFeedbackMessage(null)
+        }
       } else if (
         (action === "commit_push" || action === "commit_push_pr") &&
         (nextBranchData?.openPullRequest?.state === "open" ||

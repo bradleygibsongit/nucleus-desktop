@@ -174,6 +174,7 @@ export interface GitPullRequestChecksResponse {
   pullRequestNumber: number | null
   error?: string | null
   activityIncluded?: boolean
+  activityError?: string | null
 }
 
 export interface GitPullRequestChecksOptions {

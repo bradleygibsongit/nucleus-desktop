@@ -99,6 +99,7 @@ function normalizePullRequestChecksResponse(
   const pullRequestNumber =
     typeof response.pullRequestNumber === "number" ? response.pullRequestNumber : null
   const error = response.error ?? null
+  const activityError = response.activityError ?? null
 
   if (!hasReviewsArray || !hasCommentsArray || !hasReviewCommentsArray) {
     const legacyBridgeMessage =
@@ -111,6 +112,8 @@ function normalizePullRequestChecksResponse(
       reviewComments,
       pullRequestNumber,
       error: error ? `${error} ${legacyBridgeMessage}` : legacyBridgeMessage,
+      activityIncluded: false,
+      activityError,
     }
   }
 
@@ -122,6 +125,7 @@ function normalizePullRequestChecksResponse(
     pullRequestNumber,
     error,
     activityIncluded: response.activityIncluded !== false,
+    activityError,
   }
 }
 
@@ -245,6 +249,7 @@ export const desktop = {
           pullRequestNumber: null,
           error: "Pull request checks are unavailable in the current desktop bridge.",
           activityIncluded: false,
+          activityError: null,
         })
       }
 
