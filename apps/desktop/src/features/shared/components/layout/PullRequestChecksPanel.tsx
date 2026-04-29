@@ -7,13 +7,14 @@ import {
   InformationCircle,
   X,
 } from "@/components/icons"
-import type {
-  GitPullRequest as DesktopGitPullRequest,
-  GitPullRequestCheck,
-  GitPullRequestCommit,
-  GitPullRequestComment,
-  GitPullRequestReviewComment,
-  GitPullRequestReview,
+import {
+  desktop,
+  type GitPullRequest as DesktopGitPullRequest,
+  type GitPullRequestCheck,
+  type GitPullRequestCommit,
+  type GitPullRequestComment,
+  type GitPullRequestReviewComment,
+  type GitPullRequestReview,
 } from "@/desktop/client"
 import { PatchDiff } from "@pierre/diffs/react"
 import { MessageResponse } from "@/features/chat/components/ai-elements/message"
@@ -34,7 +35,14 @@ import {
   TooltipTrigger,
 } from "@/features/shared/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type ComponentProps,
+  type MouseEvent,
+  type ReactNode,
+} from "react"
 import { sortPullRequestChecks, summarizePullRequestChecks } from "./pullRequestChecks"
 import {
   buildReviewPatch,
@@ -82,6 +90,24 @@ type GitHubBodySegment =
       body: string
       defaultOpen: boolean
     }
+
+function ExternalLink({ href, onClick, children, ...props }: ComponentProps<"a">) {
+  const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
+    onClick?.(event)
+    if (event.defaultPrevented || !href) {
+      return
+    }
+
+    event.preventDefault()
+    void desktop.shell.openExternal(href)
+  }
+
+  return (
+    <a href={href} onClick={handleClick} {...props}>
+      {children}
+    </a>
+  )
+}
 
 function ActivityAvatar({
   avatarUrl,
@@ -702,11 +728,9 @@ function TimelineItemFrame({
 function ChecksBlock({
   pullRequest,
   checks,
-  isLoading,
 }: {
   pullRequest: DesktopGitPullRequest
   checks: GitPullRequestCheck[]
-  isLoading: boolean
 }) {
   const sorted = useMemo(() => sortPullRequestChecks(checks), [checks])
   const summary = summarizePullRequestChecks(pullRequest, checks)
@@ -720,9 +744,7 @@ function ChecksBlock({
   }, [summary.tone])
 
   if (sorted.length === 0 && summary.totalCount === 0) {
-    if (!isLoading && summary.tone === "idle") {
-      return null
-    }
+    return null
   }
 
   let summaryIcon: ReactNode
@@ -801,14 +823,12 @@ function ChecksBlock({
                   <div className="flex min-w-0 items-center gap-2">
                     <CheckStatusIcon status={check.status} />
                     {check.detailsUrl ? (
-                      <a
+                      <ExternalLink
                         href={check.detailsUrl}
-                        target="_blank"
-                        rel="noreferrer"
                         className="truncate text-foreground hover:underline"
                       >
                         {check.name}
-                      </a>
+                      </ExternalLink>
                     ) : (
                       <span className="truncate text-foreground">{check.name}</span>
                     )}
@@ -976,27 +996,23 @@ function CommitTimelineEvent({
   const timestamp = commit.committedDate ?? commit.authoredDate
 
   const message = commit.url ? (
-    <a
+    <ExternalLink
       href={commit.url}
-      target="_blank"
-      rel="noreferrer"
       className="truncate font-medium text-foreground hover:underline"
     >
       {commit.messageHeadline}
-    </a>
+    </ExternalLink>
   ) : (
     <span className="truncate font-medium text-foreground">{commit.messageHeadline}</span>
   )
 
   const sha = commit.url ? (
-    <a
+    <ExternalLink
       href={commit.url}
-      target="_blank"
-      rel="noreferrer"
       className="rounded-md border border-sidebar-border/70 bg-background/70 px-1.5 py-0.5 font-mono text-[10px] leading-none text-muted-foreground transition-colors hover:border-sidebar-border hover:text-foreground"
     >
       {commit.abbreviatedOid}
-    </a>
+    </ExternalLink>
   ) : (
     <span className="rounded-md border border-sidebar-border/70 bg-background/70 px-1.5 py-0.5 font-mono text-[10px] leading-none text-muted-foreground">
       {commit.abbreviatedOid}
@@ -1263,7 +1279,6 @@ export function PullRequestChecksPanel({
   comments,
   reviews,
   reviewComments,
-  isLoading,
   loadError,
 }: PullRequestChecksPanelProps) {
   const [isDescriptionOpen, setIsDescriptionOpen] = useState(false)
@@ -1289,7 +1304,7 @@ export function PullRequestChecksPanel({
 
   const checksSummary = summarizePullRequestChecks(pullRequest, normalizedChecks)
   const shouldShowWaitingForChecks =
-    normalizedChecks.length === 0 && (isLoading || checksSummary.tone === "waiting")
+    normalizedChecks.length === 0 && checksSummary.tone === "waiting"
 
   if (!isOpenPullRequest || !pullRequest) {
     return (
@@ -1359,17 +1374,7 @@ export function PullRequestChecksPanel({
           </div>
         ) : null}
 
-        <ChecksBlock pullRequest={pullRequest} checks={normalizedChecks} isLoading={isLoading} />
-
-        {shouldShowWaitingForChecks && normalizedChecks.length === 0 ? (
-          <div className="flex items-center justify-center gap-2 rounded-xl border border-sidebar-border/60 bg-background/40 py-6 text-sm text-muted-foreground">
-            <CircleNotch
-              size={15}
-              className={cn("size-4 shrink-0", feedbackIconClassName("warning"), "animate-spin")}
-            />
-            <span>Waiting for checks to report back...</span>
-          </div>
-        ) : null}
+        <ChecksBlock pullRequest={pullRequest} checks={normalizedChecks} />
 
         {timelineItems.length > 0 ? (
           <div className="flex flex-col gap-2">
