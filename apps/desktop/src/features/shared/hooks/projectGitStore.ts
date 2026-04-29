@@ -105,21 +105,29 @@ function shouldRetainPullRequestChecks(
   return currentPullRequestNumber != null && currentPullRequestNumber === nextPullRequestNumber
 }
 
+function hasPendingPullRequestChecks(entry: ProjectGitEntry): boolean {
+  return entry.pullRequestChecks.some((check) => check.status === "pending")
+}
+
 function shouldPreservePendingChecks(
   entry: ProjectGitEntry,
   nextBranchData: GitBranchesResponse | null
 ): boolean {
   const currentPullRequest = entry.branchData?.openPullRequest
   const nextPullRequest = nextBranchData?.openPullRequest
+  const hasCurrentPendingChecks =
+    currentPullRequest?.checksStatus === "pending" || hasPendingPullRequestChecks(entry)
 
   return Boolean(
     currentPullRequest?.state === "open" &&
       nextPullRequest?.state === "open" &&
       currentPullRequest.number === nextPullRequest.number &&
-      currentPullRequest.checksStatus === "pending" &&
-      nextPullRequest.checksStatus === "none" &&
-      entry.pullRequestChecksPendingUntil != null &&
-      Date.now() < entry.pullRequestChecksPendingUntil
+      hasCurrentPendingChecks &&
+      nextPullRequest.checksStatus !== "failed" &&
+      (hasPendingPullRequestChecks(entry) ||
+        (nextPullRequest.checksStatus === "none" &&
+          entry.pullRequestChecksPendingUntil != null &&
+          Date.now() < entry.pullRequestChecksPendingUntil))
   )
 }
 
@@ -233,8 +241,9 @@ function updateBranchDataFromPullRequestChecks(
   if (
     checksStatus === "none" &&
     pullRequest.checksStatus === "pending" &&
-    entry.pullRequestChecksPendingUntil != null &&
-    Date.now() < entry.pullRequestChecksPendingUntil
+    (hasPendingPullRequestChecks(entry) ||
+      (entry.pullRequestChecksPendingUntil != null &&
+        Date.now() < entry.pullRequestChecksPendingUntil))
   ) {
     return branchData
   }
