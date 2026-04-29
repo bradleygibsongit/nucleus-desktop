@@ -78,15 +78,6 @@ function getChecksPendingHint(branchData: GitBranchesResponse): string {
   return "Required checks are still running for this pull request."
 }
 
-function getChecksFailedHint(branchData: GitBranchesResponse): string {
-  const failedCount = branchData.openPullRequest?.failedChecksCount ?? 0
-  if (failedCount > 0) {
-    return failedCount === 1 ? "1 required check is failing." : `${failedCount} required checks are failing.`
-  }
-
-  return "Required checks are failing for this pull request."
-}
-
 function canResolvePullRequest(branchData: GitBranchesResponse): boolean {
   return branchData.openPullRequest?.state === "open" && Boolean(branchData.openPullRequest.resolveReason)
 }
@@ -351,10 +342,11 @@ export function resolveQuickAction(
         disabled: false,
         icon: "chat",
         kind: "resolve_pr",
-        hint:
-          pullRequest.resolveReason === "failed_checks"
-            ? getChecksFailedHint(branchData)
-            : getResolveHint(pullRequest.resolveReason),
+        hint: getResolveHint(pullRequest.resolveReason, {
+          baseBranch: pullRequest.baseBranch,
+          failedChecksCount: pullRequest.failedChecksCount,
+          pendingChecksCount: pullRequest.pendingChecksCount,
+        }),
         tone: getResolveTone(pullRequest.resolveReason),
       }
     }

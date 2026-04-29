@@ -804,7 +804,7 @@ export function SourceControlActionGroup({
                 <span>{setupActionLabel}</span>
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom" align="end" className="max-w-72 text-sm leading-5">
+            <TooltipContent side="bottom" align="end" className="max-w-72 whitespace-pre-line text-sm leading-5">
               {actionHint}
             </TooltipContent>
           </Tooltip>
@@ -815,7 +815,7 @@ export function SourceControlActionGroup({
                 <TooltipTrigger asChild>
                   <span className="inline-flex">{renderQuickButton}</span>
                 </TooltipTrigger>
-                <TooltipContent side="bottom" align="end" className="max-w-72 text-sm leading-5">
+                <TooltipContent side="bottom" align="end" className="max-w-72 whitespace-pre-line text-sm leading-5">
                   {actionHint}
                 </TooltipContent>
               </Tooltip>
