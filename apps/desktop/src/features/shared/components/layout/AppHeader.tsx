@@ -17,6 +17,8 @@ import {
   GitPullRequest,
   InformationCircle,
   Refresh,
+  ShieldWarning,
+  X,
 } from "@/components/icons"
 import { normalizeGitGenerationModel, useSettingsStore } from "@/features/settings/store/settingsStore"
 import {
@@ -29,7 +31,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/features/shared/components/ui/alert-dialog"
-import { contentTextClassNames, iconTextClassNames } from "@/features/shared/appearance"
+import {
+  contentTextClassNames,
+  feedbackSurfaceClassName,
+  iconTextClassNames,
+} from "@/features/shared/appearance"
 import { Button } from "@/features/shared/components/ui/button"
 import {
   DropdownMenu,
@@ -192,6 +198,18 @@ export function SourceControlActionGroup({
       setActiveStep(event.step)
     })
   }, [])
+
+  useEffect(() => {
+    if (!feedbackMessage || feedbackTone === "error") {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setFeedbackMessage(null)
+    }, 4_000)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [feedbackMessage, feedbackTone])
 
   const hasChanges = changes.length > 0
   const isBusy = isSubmitting || isBranchLoading || isChangesLoading
@@ -699,6 +717,19 @@ export function SourceControlActionGroup({
   const displayLabel = busyLabel ?? (isSubmitting && activeStep ? STEP_LABELS[activeStep] : quickAction.label)
   const iconKey = isSubmitting ? "spinner" : quickAction.label
   const labelKey = displayLabel
+  const splitButtonTone = feedbackTone === "error" && feedbackMessage ? "danger" : quickAction.tone
+  const feedbackSurfaceTone = feedbackTone === "error" ? "destructive" : "info"
+  const feedbackTitle = feedbackTone === "error" ? "Git action failed" : "Git action"
+  const splitButtonToneClassName =
+    splitButtonTone === "warning"
+      ? "border-[color:var(--color-warning-border)] bg-[color:var(--color-warning-surface)] text-[color:var(--color-warning-surface-foreground)] hover:bg-[color:var(--color-warning-surface)]/85 hover:text-[color:var(--color-warning-surface-foreground)]"
+      : splitButtonTone === "danger"
+        ? "border-[color:var(--color-destructive-border)] bg-[color:var(--color-destructive-surface)] text-[color:var(--color-destructive-surface-foreground)] hover:bg-[color:var(--color-destructive-surface)]/85 hover:text-[color:var(--color-destructive-surface-foreground)]"
+        : undefined
+  const splitButtonIconClassName =
+    splitButtonTone === "default"
+      ? "[&_svg]:text-[color:var(--color-icon)]"
+      : "[&_svg]:text-current"
 
   const enterTransition = { duration: 0.25, ease: [0.4, 0, 0.2, 1] }
   const exitTransition = { duration: 0.15, ease: [0.4, 0, 1, 1] }
@@ -713,12 +744,8 @@ export function SourceControlActionGroup({
       className={cn(
         "h-7 rounded-r-none border-r-0 border-control-border bg-[color:color-mix(in_oklab,var(--sidebar)_74%,var(--card))] shadow-none hover:bg-[var(--sidebar-item-hover)]",
         contentTextClassNames.default,
-        "[&_svg]:text-[color:var(--color-icon)]",
-        quickAction.tone === "warning" &&
-          "border-[color:var(--color-warning-border)] bg-[color:var(--color-warning-surface)] text-[color:var(--color-warning-surface-foreground)] hover:bg-[color:var(--color-warning-surface)]/85 hover:text-[color:var(--color-warning-surface-foreground)]",
-        quickAction.tone === "danger" &&
-          "border-[color:var(--color-destructive-border)] bg-[color:var(--color-destructive-surface)] text-[color:var(--color-destructive-surface-foreground)] hover:bg-[color:var(--color-destructive-surface)]/85 hover:text-[color:var(--color-destructive-surface-foreground)]",
-        feedbackTone === "error" && feedbackMessage ? "border-destructive/50" : undefined,
+        splitButtonIconClassName,
+        splitButtonToneClassName,
         className
       )}
     >
@@ -805,7 +832,8 @@ export function SourceControlActionGroup({
                     size="icon-sm"
                     className={cn(
                       "h-7 w-8 rounded-l-none border-control-border bg-[color:color-mix(in_oklab,var(--sidebar)_74%,var(--card))] shadow-none hover:bg-[var(--sidebar-item-hover)]",
-                      iconTextClassNames.default
+                      splitButtonTone === "default" ? iconTextClassNames.default : "text-current",
+                      splitButtonToneClassName
                     )}
                     aria-label="Open git actions menu"
                     disabled={isBusy}
@@ -835,6 +863,51 @@ export function SourceControlActionGroup({
           </div>
         )}
       </div>
+
+      <AnimatePresence>
+        {feedbackMessage ? (
+          <motion.div
+            key={`${feedbackTone}:${feedbackMessage}`}
+            role={feedbackTone === "error" ? "alert" : "status"}
+            aria-live={feedbackTone === "error" ? "assertive" : "polite"}
+            className="pointer-events-none fixed top-12 right-3 z-50 w-[min(92vw,360px)]"
+            initial={{ opacity: 0, y: -8, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.98 }}
+            transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <div
+              className={cn(
+                feedbackSurfaceClassName(feedbackSurfaceTone),
+                "pointer-events-auto flex items-start gap-2 rounded-lg px-3 py-2 text-sm shadow-lg"
+              )}
+            >
+              <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
+                {feedbackTone === "error" ? (
+                  <ShieldWarning size={16} />
+                ) : (
+                  <InformationCircle size={16} />
+                )}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-medium leading-4">{feedbackTitle}</p>
+                <p className="mt-0.5 break-words text-xs leading-5">{feedbackMessage}</p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="-mr-1 -mt-1 size-6 shrink-0 text-current opacity-70 hover:bg-current/10 hover:text-current hover:opacity-100"
+                aria-label="Dismiss git action feedback"
+                title="Dismiss"
+                onClick={() => setFeedbackMessage(null)}
+              >
+                <X size={12} />
+              </Button>
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       <CommitChangesDialog
         open={isCommitDialogOpen}

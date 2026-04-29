@@ -3,7 +3,7 @@ import type {
   GitRunStackedActionResult,
   GitStackedAction,
 } from "@/desktop/client"
-import { getResolveHint, getResolveTone } from "./gitResolve"
+import { getResolveActionLabel, getResolveHint, getResolveTone } from "./gitResolve"
 
 export type GitActionIconName =
   | "archive"
@@ -162,9 +162,10 @@ export function buildMenuItems(
   ]
 
   if (canResolvePullRequest(branchData)) {
+    const resolveReason = branchData.openPullRequest!.resolveReason!
     menuItems.push({
       id: "resolve",
-      label: "Resolve",
+      label: getResolveActionLabel(resolveReason),
       disabled: isBusy,
       icon: "chat",
       kind: "resolve_pr",
@@ -346,7 +347,7 @@ export function resolveQuickAction(
 
     if (pullRequest.resolveReason) {
       return {
-        label: "Resolve",
+        label: getResolveActionLabel(pullRequest.resolveReason),
         disabled: false,
         icon: "chat",
         kind: "resolve_pr",

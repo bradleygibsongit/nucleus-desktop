@@ -185,6 +185,23 @@ export function getResolveHint(resolveReason: GitPullRequestResolveReason): stri
   }
 }
 
+export function getResolveActionLabel(resolveReason: GitPullRequestResolveReason): string {
+  switch (resolveReason) {
+    case "conflicts":
+      return "Fix conflicts"
+    case "behind":
+      return "Update branch"
+    case "failed_checks":
+      return "Fix checks"
+    case "blocked":
+      return "Resolve blocker"
+    case "draft":
+      return "Draft PR"
+    case "unknown":
+      return "View blocker"
+  }
+}
+
 function formatGitStatusSummary(branchData: GitBranchesResponse): string {
   const summary = branchData.workingTreeSummary
   if (summary.changedFiles === 0) {

@@ -519,6 +519,8 @@ describe("pull request metadata helpers", () => {
   test("maps merge states into the desktop contract", () => {
     expect(normalizePullRequestMergeStatus("MERGED", "MERGEABLE", "CLEAN")).toBe("merged")
     expect(normalizePullRequestMergeStatus("OPEN", "MERGEABLE", "CLEAN")).toBe("mergeable")
+    expect(normalizePullRequestMergeStatus("OPEN", "MERGEABLE", "BEHIND")).toBe("blocked")
+    expect(normalizePullRequestMergeStatus("OPEN", true, "BLOCKED")).toBe("blocked")
     expect(normalizePullRequestMergeStatus("OPEN", "CONFLICTING", "DIRTY")).toBe("blocked")
     expect(normalizePullRequestMergeStatus("OPEN", "UNKNOWN", "UNKNOWN")).toBe("unknown")
   })
@@ -637,6 +639,30 @@ describe("pull request metadata helpers", () => {
       isMergeable: true,
       passedChecksCount: 2,
       resolveReason: undefined,
+    })
+  })
+
+  test("treats GitHub blocker states as not mergeable even when mergeable is optimistic", () => {
+    const pullRequest = mapPullRequest(
+      {
+        number: 19,
+        title: "Header blocked flow",
+        url: "https://example.com/pr/19",
+        state: "OPEN",
+        baseRefName: "main",
+        headRefName: "feature/header",
+        mergeable: "MERGEABLE",
+        mergeStateStatus: "BEHIND",
+      },
+      [{ bucket: "pass" }]
+    )
+
+    expect(pullRequest).toMatchObject({
+      state: "open",
+      checksStatus: "passed",
+      mergeStatus: "blocked",
+      isMergeable: false,
+      resolveReason: "behind",
     })
   })
 

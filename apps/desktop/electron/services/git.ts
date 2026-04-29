@@ -1287,6 +1287,16 @@ export function normalizePullRequestMergeStatus(
     return "merged"
   }
 
+  switch (rawMergeStateStatus?.toUpperCase()) {
+    case "BEHIND":
+    case "BLOCKED":
+    case "DIRTY":
+    case "DRAFT":
+      return "blocked"
+    default:
+      break
+  }
+
   const normalizedMergeable =
     typeof rawMergeable === "string" ? rawMergeable.toUpperCase() : rawMergeable
   if (normalizedMergeable === true || normalizedMergeable === "MERGEABLE") {
@@ -1302,11 +1312,6 @@ export function normalizePullRequestMergeStatus(
     case "HAS_HOOKS":
     case "UNSTABLE":
       return "mergeable"
-    case "BEHIND":
-    case "BLOCKED":
-    case "DIRTY":
-    case "DRAFT":
-      return "blocked"
     default:
       return "unknown"
   }
