@@ -33,7 +33,7 @@ import {
 } from "@/features/shared/components/ui/alert-dialog"
 import {
   contentTextClassNames,
-  feedbackSurfaceClassName,
+  feedbackIconClassName,
   iconTextClassNames,
 } from "@/features/shared/appearance"
 import { Button } from "@/features/shared/components/ui/button"
@@ -188,7 +188,7 @@ export function SourceControlActionGroup({
   const [busyLabel, setBusyLabel] = useState<string | null>(null)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null)
-  const [feedbackTone, setFeedbackTone] = useState<"error" | "neutral">("neutral")
+  const [feedbackTone, setFeedbackTone] = useState<"error" | "success" | "info">("info")
   const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false)
 
   useEffect(() => {
@@ -386,7 +386,7 @@ export function SourceControlActionGroup({
 
     try {
       await desktop.shell.openExternal(prUrl)
-      setFeedbackTone("neutral")
+      setFeedbackTone("info")
       setFeedbackMessage(null)
     } catch (error) {
       setFeedbackTone("error")
@@ -401,7 +401,7 @@ export function SourceControlActionGroup({
       return
     }
 
-    setFeedbackTone("neutral")
+    setFeedbackTone("info")
     setFeedbackMessage(null)
     setIsArchiveModalOpen(true)
   }
@@ -409,7 +409,7 @@ export function SourceControlActionGroup({
   const handleInstallGit = async () => {
     try {
       await desktop.shell.openExternal(GIT_DOWNLOADS_URL)
-      setFeedbackTone("neutral")
+      setFeedbackTone("info")
       setFeedbackMessage(null)
     } catch (error) {
       setFeedbackTone("error")
@@ -426,7 +426,7 @@ export function SourceControlActionGroup({
       const nextBranchData = await desktop.git.initRepo(resolvedProjectPath)
       setBranchData(nextBranchData)
       await refreshGitState()
-      setFeedbackTone("neutral")
+      setFeedbackTone("success")
       setFeedbackMessage("Git initialized for this project.")
     } catch (error) {
       setFeedbackTone("error")
@@ -499,7 +499,7 @@ export function SourceControlActionGroup({
         if (!nextBranchData?.openPullRequest) {
           seedOptimisticPullRequest(nextBranchData, result.pr)
         }
-        setFeedbackTone("neutral")
+        setFeedbackTone("info")
         setFeedbackMessage(null)
       } else if (
         (action === "commit_push" || action === "commit_push_pr") &&
@@ -507,10 +507,10 @@ export function SourceControlActionGroup({
           branchStatus?.openPullRequest?.state === "open")
       ) {
         seedOptimisticPendingChecks(nextBranchData)
-        setFeedbackTone("neutral")
+        setFeedbackTone("success")
         setFeedbackMessage(summarizeGitResult(result))
       } else {
-        setFeedbackTone("neutral")
+        setFeedbackTone("success")
         setFeedbackMessage(summarizeGitResult(result))
       }
       console.debug("[AppHeader] runGitAction:success", {
@@ -552,7 +552,7 @@ export function SourceControlActionGroup({
         projectPath: resolvedProjectPath,
         result,
       })
-      setFeedbackTone("neutral")
+      setFeedbackTone("success")
       setFeedbackMessage(
         result.status === "pulled"
           ? `Pulled ${result.branch}`
@@ -575,7 +575,7 @@ export function SourceControlActionGroup({
   const openChecksTab = () => {
     expandRightSidebar()
     setRightSidebarActiveTab("checks")
-    setFeedbackTone("neutral")
+    setFeedbackTone("info")
     setFeedbackMessage(null)
   }
 
@@ -595,7 +595,7 @@ export function SourceControlActionGroup({
         projectPath: resolvedProjectPath,
         result,
       })
-      setFeedbackTone("neutral")
+      setFeedbackTone("success")
       setFeedbackMessage(`Merged PR #${result.number}`)
     } catch (error) {
       console.error("[AppHeader] handleMergePullRequest:error", {
@@ -647,7 +647,7 @@ export function SourceControlActionGroup({
     openChatSession(session.id, session.title)
     setIsSubmitting(true)
     setBusyLabel("Resolving")
-    setFeedbackTone("neutral")
+    setFeedbackTone("info")
     setFeedbackMessage(null)
 
     try {
@@ -713,7 +713,7 @@ export function SourceControlActionGroup({
     }
 
     if (quickAction.hint) {
-      setFeedbackTone("neutral")
+      setFeedbackTone("info")
       setFeedbackMessage(quickAction.hint)
     }
   }
@@ -766,8 +766,14 @@ export function SourceControlActionGroup({
   const labelKey = displayLabel
   const isChecksPendingAction = quickAction.kind === "open_checks"
   const splitButtonTone = feedbackTone === "error" && feedbackMessage ? "danger" : quickAction.tone
-  const feedbackSurfaceTone = feedbackTone === "error" ? "destructive" : "info"
-  const feedbackTitle = feedbackTone === "error" ? "Git action failed" : "Git action"
+  const feedbackIconTone =
+    feedbackTone === "error" ? "destructive" : feedbackTone === "success" ? "success" : "info"
+  const feedbackTitle =
+    feedbackTone === "error"
+      ? "Git action failed"
+      : feedbackTone === "success"
+        ? "Git action complete"
+        : "Git action"
   const splitButtonToneClassName =
     splitButtonTone === "warning"
       ? "border-[color:var(--color-warning-border)] bg-[color:var(--color-warning-surface)] text-[color:var(--color-warning-surface-foreground)] hover:bg-[color:var(--color-warning-surface)]/85 hover:text-[color:var(--color-warning-surface-foreground)]"
@@ -930,11 +936,15 @@ export function SourceControlActionGroup({
           >
             <div
               className={cn(
-                feedbackSurfaceClassName(feedbackSurfaceTone),
-                "pointer-events-auto flex items-start gap-2 rounded-lg px-3 py-2 text-sm shadow-lg"
+                "pointer-events-auto flex items-start gap-2 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-popover)] px-3 py-2 text-sm text-[color:var(--color-popover-foreground)] shadow-lg"
               )}
             >
-              <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
+              <span
+                className={cn(
+                  "mt-0.5 flex size-4 shrink-0 items-center justify-center",
+                  feedbackIconClassName(feedbackIconTone)
+                )}
+              >
                 {feedbackTone === "error" ? (
                   <ShieldWarning size={16} />
                 ) : (
