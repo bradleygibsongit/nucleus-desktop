@@ -15,6 +15,7 @@ import {
   writeCachedTerminalData,
   type CachedTerminalSession,
 } from "./terminalSessionCache"
+import { shouldRestoreTerminalInitialData } from "./terminalInitialData"
 import { findTerminalUrlAtPoint } from "./terminalLinks"
 import "@wterm/dom/css"
 
@@ -209,6 +210,7 @@ export function Terminal({
         }
       }
 
+      const hasReadyCachedSessionForCwd = cachedSession.isReady && cachedSession.cwd === cwd
       const cols = Math.max(1, cachedSession.lastCols)
       const rows = Math.max(1, cachedSession.lastRows)
 
@@ -222,7 +224,12 @@ export function Terminal({
         cachedSession.isReady = true
         isSessionReadyRef.current = true
 
-        if (response.initialData.length > 0) {
+        if (
+          shouldRestoreTerminalInitialData({
+            initialData: response.initialData,
+            hasReadyCachedSessionForCwd,
+          })
+        ) {
           cachedSession.isRestoringBuffer = true
           writeCachedTerminalData(sessionId, response.initialData)
           requestAnimationFrame(() => {
