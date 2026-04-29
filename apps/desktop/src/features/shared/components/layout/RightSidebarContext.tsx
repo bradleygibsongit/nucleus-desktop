@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef, type ReactNode } from "react"
 import { RightSidebarContext, type RightSidebarTab } from "./right-sidebar-context"
 import { useCurrentProjectWorktree } from "@/features/shared/hooks"
+import { useProjectStore } from "@/features/workspace/store"
 import { useSidebar } from "./useSidebar"
 import { MIN_MAIN_CONTENT_WIDTH, RIGHT_SIDEBAR_WIDTH_CSS_VAR } from "./layoutSizing"
 
@@ -44,9 +45,13 @@ function clampRightSidebarWidth(width: number, maxWidth: number, activeTab: Righ
 }
 
 export function RightSidebarProvider({ children }: { children: ReactNode }) {
-  const { activeWorktreePath } = useCurrentProjectWorktree()
+  const { focusedProjectId, activeWorktreePath } = useCurrentProjectWorktree()
+  const newWorkspaceSetupProjectId = useProjectStore((state) => state.newWorkspaceSetupProjectId)
   const { isCollapsed: isLeftSidebarCollapsed, width: leftSidebarWidth } = useSidebar()
-  const isAvailable = Boolean(activeWorktreePath)
+  const hasActiveWorktree = Boolean(activeWorktreePath)
+  const isNewWorkspaceSetupActive =
+    focusedProjectId != null && newWorkspaceSetupProjectId === focusedProjectId
+  const isAvailable = hasActiveWorktree && !isNewWorkspaceSetupActive
   const effectiveLeftSidebarWidth = isLeftSidebarCollapsed
     ? 0
     : leftSidebarWidth
@@ -108,14 +113,16 @@ export function RightSidebarProvider({ children }: { children: ReactNode }) {
   }, [width])
 
   useEffect(() => {
-    if (!isAvailable) {
-      setIsCollapsedState(true)
-
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(RIGHT_SIDEBAR_COLLAPSED_STORAGE_KEY, "true")
-      }
+    if (hasActiveWorktree || isNewWorkspaceSetupActive) {
+      return
     }
-  }, [isAvailable])
+
+    setIsCollapsedState(true)
+
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(RIGHT_SIDEBAR_COLLAPSED_STORAGE_KEY, "true")
+    }
+  }, [hasActiveWorktree, isNewWorkspaceSetupActive])
 
   useEffect(() => {
     if (typeof window === "undefined") {
