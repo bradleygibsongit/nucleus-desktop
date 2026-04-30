@@ -8,6 +8,7 @@ describe("mapTurnItemsToMessages", () => {
     const turn: CodexTurn = {
       id: "turn-1",
       status: "completed",
+      error: null,
       items: [
         {
           type: "reasoning",

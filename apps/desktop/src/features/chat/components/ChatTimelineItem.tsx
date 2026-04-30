@@ -1540,12 +1540,13 @@ export function ChatTimelineItem({
     )
   }
 
-  if (!text.trim()) {
-    return null
-  }
-
   const itemType = message.info.itemType
   const phase = message.info.phase
+  const hasReasoningTitle = Boolean(message.info.title?.trim())
+
+  if (!text.trim() && !(itemType === "reasoning" && hasReasoningTitle)) {
+    return null
+  }
 
   if (itemType === "providerNotice") {
     return (
