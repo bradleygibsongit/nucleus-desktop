@@ -43,6 +43,8 @@ import type { ChildSessionData } from "./agent-activity/AgentActivitySubagent"
 import { getFileChangeEntries, getToolPart } from "./timelineActivity"
 import { UploadChip } from "./UploadChip"
 import { getCommandCliKind, getCommandLabel } from "./commandToolClassification"
+import { getSearchActivityTarget } from "./searchActivitySummary"
+import { getThoughtSummaryTitle } from "./thoughtTitle"
 import {
   useViewportAnchorToggle,
 } from "./useViewportAnchorToggle"
@@ -494,15 +496,13 @@ function prettyValue(value: unknown): string {
 
 function renderCommandSummary(toolPart: RuntimeToolPart) {
   const input = toolPart.state.input
-  const commandSummary = getReadableCommandSummary(input)
+  const commandSummary = getReadableCommandSummary(input, toolPart.state.output)
 
   if (commandSummary) {
     return (
       <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
         <span className="shrink-0">{commandSummary.label}</span>
-        {commandSummary.kind === "read"
-          ? renderInlinePath(getCommandSummaryPathLabel(commandSummary.path))
-          : null}
+        {renderInlinePath(getCommandSummaryPathLabel(commandSummary.path))}
       </span>
     )
   }
@@ -587,7 +587,10 @@ type ReadableCommandSummary = {
   lines: string | null
 }
 
-function getReadableCommandSummary(input: Record<string, unknown>): ReadableCommandSummary | null {
+function getReadableCommandSummary(
+  input: Record<string, unknown>,
+  output?: unknown
+): ReadableCommandSummary | null {
   const readAction = getCommandActions(input).find((action) => action.type === "read")
   const searchAction = getCommandActions(input).find((action) => action.type === "search")
   const command = typeof input.command === "string" ? input.command : ""
@@ -610,6 +613,7 @@ function getReadableCommandSummary(input: Record<string, unknown>): ReadableComm
 
   if (searchAction) {
     const target =
+      getSearchActivityTarget({ ...input, commandActions: [searchAction] }, output) ??
       getStringField(searchAction, ["query", "q", "pattern", "path", "directory", "dir", "search"]) ??
       "workspace"
 
@@ -774,9 +778,12 @@ function getDynamicToolSummary(toolPart: RuntimeToolPart): SemanticToolSummary |
     normalizedTool === "codesearch" ||
     normalizedTool.endsWith("/codesearch")
   ) {
+    const target = getSearchActivityTarget(input, toolPart.state.output)
+
     return {
       kind: "search",
       label: "Searched",
+      target: target ?? undefined,
     }
   }
 
@@ -1455,10 +1462,12 @@ export function InlineSubagentActivity({
 
 function ThoughtTimelineRow({
   text,
+  title,
   isStreaming,
   withinGroup = false,
 }: {
   text: string
+  title?: string | null
   isStreaming?: boolean
   withinGroup?: boolean
 }) {
@@ -1466,11 +1475,12 @@ function ThoughtTimelineRow({
     () => renderThoughtDetails(text, Boolean(isStreaming)),
     [isStreaming, text]
   )
+  const summaryTitle = useMemo(() => getThoughtSummaryTitle(text, title), [text, title])
 
   return (
     <InlineActivityRow
       icon={Brain}
-      summary={<span>Thought</span>}
+      summary={<span>{summaryTitle}</span>}
       details={details}
       withinGroup={withinGroup}
     />
@@ -1530,12 +1540,13 @@ export function ChatTimelineItem({
     )
   }
 
-  if (!text.trim()) {
-    return null
-  }
-
   const itemType = message.info.itemType
   const phase = message.info.phase
+  const hasReasoningTitle = Boolean(message.info.title?.trim())
+
+  if (!text.trim() && !(itemType === "reasoning" && hasReasoningTitle)) {
+    return null
+  }
 
   if (itemType === "providerNotice") {
     return (
@@ -1551,6 +1562,7 @@ export function ChatTimelineItem({
     return (
       <ThoughtTimelineRow
         text={text}
+        title={message.info.title}
         isStreaming={isStreaming}
         withinGroup={withinGroup}
       />
