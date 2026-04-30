@@ -24,4 +24,29 @@ describe("mapTurnItemsToMessages", () => {
       "Inspecting files"
     )
   })
+
+  test("does not duplicate explicit reasoning titles into message text", () => {
+    const turn: CodexTurn = {
+      id: "turn-1",
+      status: "completed",
+      error: null,
+      items: [
+        {
+          type: "reasoning",
+          id: "reasoning-1",
+          title: "Finalizing story structure",
+          summary: ["Finalizing story structure"],
+          content: [],
+        },
+      ],
+    }
+
+    expect(mapTurnItemsToMessages(turn, "session-1")[0]?.parts).toEqual([
+      {
+        id: "reasoning-1:text",
+        type: "text",
+        text: "",
+      },
+    ])
+  })
 })

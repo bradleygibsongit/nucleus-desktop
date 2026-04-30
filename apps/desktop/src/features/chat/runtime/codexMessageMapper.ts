@@ -191,6 +191,15 @@ function appendDelta(current: string[] | undefined, index: number, delta: string
   return next
 }
 
+function buildReasoningText(item: Extract<CodexThreadItem, { type: "reasoning" }>): string {
+  const title = item.title?.trim()
+  const summary = title
+    ? item.summary.filter((entry) => entry.trim() !== title)
+    : item.summary
+
+  return [...summary, ...item.content].join("\n\n")
+}
+
 export class CodexTurnState {
   private itemOrder: string[] = []
   private itemsById = new Map<string, CodexThreadItem>()
@@ -398,7 +407,7 @@ export function mapTurnItemsToMessages(turn: CodexTurn, sessionId: string): Mess
               {
                 id: `${item.id}:text`,
                 type: "text",
-                text: [...item.summary, ...item.content].join("\n\n"),
+                text: buildReasoningText(item),
               },
             ],
             undefined,
