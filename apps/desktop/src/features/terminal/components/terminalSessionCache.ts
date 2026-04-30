@@ -90,6 +90,7 @@ function applyTerminalSurfaceStyles(container: HTMLElement) {
 
   container.style.backgroundColor = theme.background
   container.style.color = theme.foreground
+  container.style.borderRadius = "0"
   container.style.setProperty("--term-bg", theme.background)
   container.style.setProperty("--term-fg", theme.foreground)
   container.style.setProperty("--term-cursor", theme.cursor)
@@ -317,7 +318,7 @@ function ensureTerminalInitialized(session: CachedTerminalSession) {
 
 function createCachedTerminalSession(sessionId: string): CachedTerminalSession {
   const wrapper = document.createElement("div")
-  wrapper.className = "vfactor-wterm-shell h-full min-h-0 w-full overflow-hidden bg-terminal"
+  wrapper.className = "terminal-surface vfactor-wterm-shell h-full min-h-0 w-full overflow-hidden bg-terminal"
 
   const listeners = new Set<(event: CachedTerminalEvent) => void>()
 

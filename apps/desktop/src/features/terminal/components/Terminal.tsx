@@ -372,7 +372,7 @@ export function Terminal({
   return (
     <div
       className={cn(
-        "border-t border-terminal-border bg-terminal text-terminal-foreground",
+        "terminal-surface border-t border-terminal-border bg-terminal text-terminal-foreground",
         padded && "px-3 py-2",
         className
       )}
@@ -380,7 +380,7 @@ export function Terminal({
       onMouseMove={handleTerminalMouseMove}
       onMouseLeave={clearHoveredLinkRow}
     >
-      <div ref={terminalRef} className="h-full min-h-0 bg-terminal" />
+      <div ref={terminalRef} className="terminal-surface h-full min-h-0 bg-terminal" />
       {connectionError ? <span className="sr-only">{connectionError}</span> : null}
     </div>
   )
