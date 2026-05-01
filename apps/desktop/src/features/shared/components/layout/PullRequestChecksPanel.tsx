@@ -160,6 +160,23 @@ function getCheckTone(status: GitPullRequestCheck["status"]): string {
   }
 }
 
+function getCheckStatusA11yLabel(status: GitPullRequestCheck["status"]): string {
+  switch (status) {
+    case "pending":
+      return "status: pending"
+    case "failed":
+      return "status: failed"
+    case "passed":
+      return "status: passed"
+    case "cancelled":
+      return "status: cancelled"
+    case "skipped":
+      return "status: skipped"
+    default:
+      return "status: unknown"
+  }
+}
+
 function truncateMiddle(value: string, startChars = 12, endChars = 11) {
   if (value.length <= startChars + endChars + 3) {
     return value
@@ -809,9 +826,13 @@ function ChecksBlock({
                   className="truncate text-foreground hover:underline"
                 >
                   {check.name}
+                  <span className="sr-only">{`: ${getCheckStatusA11yLabel(check.status)}`}</span>
                 </ExternalLink>
               ) : (
-                <span className="truncate text-foreground">{check.name}</span>
+                <span className="truncate text-foreground">
+                  {check.name}
+                  <span className="sr-only">{`: ${getCheckStatusA11yLabel(check.status)}`}</span>
+                </span>
               )}
             </li>
           ))}
