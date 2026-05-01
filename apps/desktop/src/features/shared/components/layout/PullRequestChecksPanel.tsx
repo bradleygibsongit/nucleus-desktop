@@ -160,23 +160,6 @@ function getCheckTone(status: GitPullRequestCheck["status"]): string {
   }
 }
 
-function getCheckStatusLabel(status: GitPullRequestCheck["status"]): string {
-  switch (status) {
-    case "pending":
-      return "Pending"
-    case "failed":
-      return "Failed"
-    case "passed":
-      return "Passed"
-    case "cancelled":
-      return "Cancelled"
-    case "skipped":
-      return "Skipped"
-    default:
-      return "Unknown"
-  }
-}
-
 function truncateMiddle(value: string, startChars = 12, endChars = 11) {
   if (value.length <= startChars + endChars + 3) {
     return value
@@ -797,52 +780,43 @@ function ChecksBlock({
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <div className="overflow-hidden rounded-xl border border-sidebar-border/60 bg-background/55">
-        <CollapsibleTrigger
-          className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-sidebar-accent/40"
-          disabled={sorted.length === 0}
-        >
-          {summaryIcon}
-          <div className={cn("min-w-0 flex-1 truncate text-sm font-medium", summaryToneClass)}>
-            {summary.label}
-          </div>
-          {sorted.length > 0 ? (
-            <CaretRight
-              size={12}
-              className={cn(
-                "shrink-0 text-muted-foreground transition-transform",
-                isOpen && "rotate-90"
+      <CollapsibleTrigger
+        className="flex w-full items-center gap-2.5 py-1.5 text-left transition-colors"
+        disabled={sorted.length === 0}
+      >
+        {summaryIcon}
+        <div className={cn("min-w-0 flex-1 truncate text-sm font-medium", summaryToneClass)}>
+          {summary.label}
+        </div>
+        {sorted.length > 0 ? (
+          <CaretRight
+            size={12}
+            className={cn(
+              "shrink-0 text-muted-foreground transition-transform",
+              isOpen && "rotate-90"
+            )}
+          />
+        ) : null}
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <ul className="space-y-1.5 pt-1">
+          {sorted.map((check) => (
+            <li key={check.id} className="flex min-w-0 items-center gap-2 text-sm">
+              <CheckStatusIcon status={check.status} />
+              {check.detailsUrl ? (
+                <ExternalLink
+                  href={check.detailsUrl}
+                  className="truncate text-foreground hover:underline"
+                >
+                  {check.name}
+                </ExternalLink>
+              ) : (
+                <span className="truncate text-foreground">{check.name}</span>
               )}
-            />
-          ) : null}
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className="border-t border-sidebar-border/40 px-3 py-2">
-            <ul className="space-y-1.5">
-              {sorted.map((check) => (
-                <li key={check.id} className="flex items-center justify-between gap-3 text-xs">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <CheckStatusIcon status={check.status} />
-                    {check.detailsUrl ? (
-                      <ExternalLink
-                        href={check.detailsUrl}
-                        className="truncate text-foreground hover:underline"
-                      >
-                        {check.name}
-                      </ExternalLink>
-                    ) : (
-                      <span className="truncate text-foreground">{check.name}</span>
-                    )}
-                  </div>
-                  <span className={cn("shrink-0 text-[11px]", getCheckTone(check.status))}>
-                    {getCheckStatusLabel(check.status)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </CollapsibleContent>
-      </div>
+            </li>
+          ))}
+        </ul>
+      </CollapsibleContent>
     </Collapsible>
   )
 }
