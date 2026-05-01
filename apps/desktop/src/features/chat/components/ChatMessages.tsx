@@ -105,6 +105,7 @@ const TEXT_LINE_HEIGHT_ESTIMATE_PX = 22
 const FALLBACK_TIMELINE_WIDTH_PX = 784
 const ESTIMATED_AVERAGE_CHARACTER_WIDTH_PX = 7.2
 const MIN_ESTIMATED_CHARS_PER_LINE = 1
+const ALWAYS_MOUNTED_TAIL_BLOCK_COUNT = 4
 const EMPTY_APPROVAL_STATE_BY_MESSAGE_ID = new Map<string, RuntimeApprovalDisplayState>()
 
 function getMessageText(message: MessageWithParts): string {
@@ -307,6 +308,45 @@ function computeStablePreparedDisplayBlocks(
   return didChange ? { byKey: nextByKey, result } : previousState
 }
 
+function displayBlockContainsMessageId(block: DisplayBlock, messageId: string): boolean {
+  if (block.type === "message") {
+    return block.message.info.id === messageId
+  }
+
+  return block.messages.some((message) => message.info.id === messageId)
+}
+
+function getAlwaysMountedTailStartIndex(
+  preparedDisplayBlocks: PreparedDisplayBlock[],
+  latestTurnFooterMessageId: string | null,
+  latestTurnStreamingTextMessageId: string | null
+): number {
+  if (preparedDisplayBlocks.length === 0) {
+    return 0
+  }
+
+  const defaultTailStartIndex = Math.max(
+    0,
+    preparedDisplayBlocks.length - ALWAYS_MOUNTED_TAIL_BLOCK_COUNT
+  )
+  const anchoredMessageIds = [
+    latestTurnFooterMessageId,
+    latestTurnStreamingTextMessageId,
+  ].filter((messageId): messageId is string => messageId != null)
+  const firstAnchoredIndex =
+    anchoredMessageIds.length === 0
+      ? -1
+      : preparedDisplayBlocks.findIndex((preparedBlock) =>
+          anchoredMessageIds.some((messageId) =>
+            displayBlockContainsMessageId(preparedBlock.block, messageId)
+          )
+        )
+
+  return firstAnchoredIndex === -1
+    ? defaultTailStartIndex
+    : Math.min(defaultTailStartIndex, firstAnchoredIndex)
+}
+
 export function ChatMessages({
   threadKey,
   messages,
@@ -420,6 +460,25 @@ export function ChatMessages({
     [displayBlocks]
   )
   const stablePreparedDisplayBlocks = useStablePreparedDisplayBlocks(preparedDisplayBlocks)
+  const {
+    virtualizedPreparedDisplayBlocks,
+    alwaysMountedPreparedDisplayBlocks,
+  } = useMemo(() => {
+    const tailStartIndex = getAlwaysMountedTailStartIndex(
+      stablePreparedDisplayBlocks,
+      latestTurnFooterMessageId,
+      latestTurnStreamingTextMessageId
+    )
+
+    return {
+      virtualizedPreparedDisplayBlocks: stablePreparedDisplayBlocks.slice(0, tailStartIndex),
+      alwaysMountedPreparedDisplayBlocks: stablePreparedDisplayBlocks.slice(tailStartIndex),
+    }
+  }, [
+    latestTurnFooterMessageId,
+    latestTurnStreamingTextMessageId,
+    stablePreparedDisplayBlocks,
+  ])
   const [preparedThreadKey, setPreparedThreadKey] = useState(threadKey)
   const isThreadPrepared = preparedThreadKey === threadKey
   const handleOpenImagePreview = useMemo(
@@ -447,7 +506,7 @@ export function ChatMessages({
       <ConversationContent className="mx-auto flex w-full max-w-[784px] flex-col gap-0 px-6 pb-10">
         <>
           <VirtualizedTimelineBlocks
-            preparedDisplayBlocks={stablePreparedDisplayBlocks}
+            preparedDisplayBlocks={virtualizedPreparedDisplayBlocks}
             childSessions={childSessionData}
             approvalStateByMessageId={approvalStateByMessageId}
             completedFooterByMessageId={resolvedCompletedFooterByMessageId}
@@ -457,6 +516,20 @@ export function ChatMessages({
             worktreePath={selectedWorktree?.path ?? null}
             onOpenImagePreview={handleOpenImagePreview}
           />
+          {alwaysMountedPreparedDisplayBlocks.map((preparedBlock) => (
+            <TimelineDisplayBlockRow
+              key={preparedBlock.key}
+              preparedBlock={preparedBlock}
+              childSessions={childSessionData}
+              approvalStateByMessageId={approvalStateByMessageId}
+              completedFooterByMessageId={resolvedCompletedFooterByMessageId}
+              latestTurnFooterMessageId={latestTurnFooterMessageId}
+              latestTurnStreamingTextMessageId={latestTurnStreamingTextMessageId}
+              status={status}
+              worktreePath={selectedWorktree?.path ?? null}
+              onOpenImagePreview={handleOpenImagePreview}
+            />
+          ))}
           {orphanChildSessions.length > 0 ? (
             <div className="space-y-3">
               {orphanChildSessions.map((childSession) => (
@@ -506,6 +579,55 @@ function ConversationEdgeFades() {
         )}
       />
     </>
+  )
+}
+
+function TimelineDisplayBlockRow({
+  preparedBlock,
+  childSessions,
+  approvalStateByMessageId,
+  completedFooterByMessageId,
+  latestTurnFooterMessageId,
+  latestTurnStreamingTextMessageId,
+  status,
+  worktreePath,
+  onOpenImagePreview,
+}: {
+  preparedBlock: PreparedDisplayBlock
+  childSessions?: Map<string, ChildSessionData>
+  approvalStateByMessageId: Map<string, RuntimeApprovalDisplayState>
+  completedFooterByMessageId: CompletedFooterStateByMessageId
+  latestTurnFooterMessageId: string | null
+  latestTurnStreamingTextMessageId: string | null
+  status: "idle" | "connecting" | "streaming" | "error"
+  worktreePath?: string | null
+  onOpenImagePreview?: (preview: ChatImagePreviewRequest) => void
+}) {
+  const message = preparedBlock.block.type === "message" ? preparedBlock.block.message : null
+  const completedFooter =
+    message == null ? null : completedFooterByMessageId.get(message.info.id) ?? null
+  const approvalState =
+    message == null ? null : approvalStateByMessageId.get(message.info.id) ?? null
+  const isLatestTurnFooterMessage =
+    message != null && message.info.id === latestTurnFooterMessageId
+  const isLatestTurnStreamingTextMessage =
+    message != null && message.info.id === latestTurnStreamingTextMessageId
+  const groupApprovalStateByMessageId =
+    preparedBlock.block.type === "turnStepsDropdown" ? approvalStateByMessageId : undefined
+
+  return (
+    <MemoizedDisplayBlockRow
+      preparedBlock={preparedBlock}
+      childSessions={childSessions}
+      approvalState={approvalState}
+      groupApprovalStateByMessageId={groupApprovalStateByMessageId}
+      completedFooter={completedFooter}
+      isLatestTurnFooterMessage={isLatestTurnFooterMessage}
+      isLatestTurnStreamingTextMessage={isLatestTurnStreamingTextMessage}
+      status={status}
+      worktreePath={worktreePath}
+      onOpenImagePreview={onOpenImagePreview}
+    />
   )
 }
 
@@ -605,19 +727,6 @@ function VirtualizedTimelineBlocks({
           return null
         }
 
-        const message =
-          preparedBlock.block.type === "message" ? preparedBlock.block.message : null
-        const completedFooter =
-          message == null ? null : completedFooterByMessageId.get(message.info.id) ?? null
-        const approvalState =
-          message == null ? null : approvalStateByMessageId.get(message.info.id) ?? null
-        const isLatestTurnFooterMessage =
-          message != null && message.info.id === latestTurnFooterMessageId
-        const isLatestTurnStreamingTextMessage =
-          message != null && message.info.id === latestTurnStreamingTextMessageId
-        const groupApprovalStateByMessageId =
-          preparedBlock.block.type === "turnStepsDropdown" ? approvalStateByMessageId : undefined
-
         return (
           <div
             key={virtualItem.key}
@@ -626,14 +735,13 @@ function VirtualizedTimelineBlocks({
             className="absolute left-0 top-0 w-full"
             style={{ transform: `translateY(${virtualItem.start}px)` }}
           >
-            <MemoizedDisplayBlockRow
+            <TimelineDisplayBlockRow
               preparedBlock={preparedBlock}
               childSessions={childSessions}
-              approvalState={approvalState}
-              groupApprovalStateByMessageId={groupApprovalStateByMessageId}
-              completedFooter={completedFooter}
-              isLatestTurnFooterMessage={isLatestTurnFooterMessage}
-              isLatestTurnStreamingTextMessage={isLatestTurnStreamingTextMessage}
+              approvalStateByMessageId={approvalStateByMessageId}
+              completedFooterByMessageId={completedFooterByMessageId}
+              latestTurnFooterMessageId={latestTurnFooterMessageId}
+              latestTurnStreamingTextMessageId={latestTurnStreamingTextMessageId}
               status={status}
               worktreePath={worktreePath}
               onOpenImagePreview={onOpenImagePreview}

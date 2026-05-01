@@ -118,7 +118,9 @@ export function prewarmProjectData(
   })
 
   return Promise.all([
-    chatPrewarmPromise,
+    chatPrewarmPromise.catch((error) => {
+      console.error("Failed to prewarm chat data:", error)
+    }),
     scheduleBackgroundPrewarm(worktreePath, target, requestId),
   ]).then(() => {})
 }
