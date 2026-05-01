@@ -167,31 +167,48 @@ export function RightSidebar({ activeView = "chat" }: RightSidebarProps) {
   }, [fileTreeData, selectedPreviewFile])
 
   useEffect(() => {
-    if (activeTab !== "files") {
-      setPendingFileTreePath(null)
-      return
+    let cancelled = false
+
+    const activateFileTree = async () => {
+      const requestedPath = selectedWorktreePath
+
+      if (activeTab !== "files") {
+        setPendingFileTreePath(null)
+        return
+      }
+
+      // File tree activation is demand-driven so workspace selection stays cheap.
+      if (!requestedPath) {
+        setPendingFileTreePath(null)
+        await initializeFileTreeStore()
+        if (!cancelled) {
+          setActiveProjectPath(null)
+        }
+        return
+      }
+
+      if (!hasCachedFileTreeForSelectedPath) {
+        setPendingFileTreePath(requestedPath)
+      } else {
+        setPendingFileTreePath(null)
+      }
+
+      await initializeFileTreeStore()
+      if (cancelled) {
+        return
+      }
+
+      setActiveProjectPath(requestedPath)
+      setPendingFileTreePath((currentPath) =>
+        currentPath === requestedPath ? null : currentPath
+      )
     }
 
-    // File tree activation is demand-driven so workspace selection stays cheap.
-    if (!selectedWorktreePath) {
-      setPendingFileTreePath(null)
-      void initializeFileTreeStore().then(() => setActiveProjectPath(null))
-      return
-    }
+    void activateFileTree()
 
-    if (!hasCachedFileTreeForSelectedPath) {
-      setPendingFileTreePath(selectedWorktreePath)
-    } else {
-      setPendingFileTreePath(null)
+    return () => {
+      cancelled = true
     }
-
-    void initializeFileTreeStore()
-      .then(() => setActiveProjectPath(selectedWorktreePath))
-      .finally(() => {
-        setPendingFileTreePath((currentPath) =>
-          currentPath === selectedWorktreePath ? null : currentPath
-        )
-      })
   }, [
     activeTab,
     hasCachedFileTreeForSelectedPath,

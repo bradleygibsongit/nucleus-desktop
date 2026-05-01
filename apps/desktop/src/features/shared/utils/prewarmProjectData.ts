@@ -113,6 +113,7 @@ export function prewarmProjectData(
   const requestId = ++latestBackgroundPrewarmRequestId
   const chatPrewarmPromise = trackPrewarm(`${worktreeId}:${worktreePath}:chat`, async () => {
     const chatStore = useChatStore.getState()
+    await chatStore.initialize()
     await chatStore.loadSessionsForProject(worktreeId, worktreePath)
   })
 

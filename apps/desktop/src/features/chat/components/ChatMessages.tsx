@@ -102,7 +102,9 @@ const TOOL_ROW_ESTIMATE_PX = 96
 const FILE_CHANGE_ROW_ESTIMATE_PX = 156
 const USER_ROW_ESTIMATE_PX = 88
 const TEXT_LINE_HEIGHT_ESTIMATE_PX = 22
-const ESTIMATED_CHARS_PER_LINE = 82
+const FALLBACK_TIMELINE_WIDTH_PX = 784
+const ESTIMATED_AVERAGE_CHARACTER_WIDTH_PX = 7.2
+const MIN_ESTIMATED_CHARS_PER_LINE = 1
 const EMPTY_APPROVAL_STATE_BY_MESSAGE_ID = new Map<string, RuntimeApprovalDisplayState>()
 
 function getMessageText(message: MessageWithParts): string {
@@ -179,22 +181,33 @@ function getDisplayBlockPaddingTop(
   return previousRole === currentRole ? SAME_ROLE_BLOCK_GAP_PX : ROLE_CHANGE_BLOCK_GAP_PX
 }
 
-function estimateTextHeight(text: string): number {
+function estimateTextHeight(text: string, timelineWidth: number): number {
   const trimmedText = text.trim()
 
   if (!trimmedText) {
     return TEXT_LINE_HEIGHT_ESTIMATE_PX
   }
 
+  const estimatedCharsPerLine = Math.max(
+    MIN_ESTIMATED_CHARS_PER_LINE,
+    Math.floor(
+      (Number.isFinite(timelineWidth) && timelineWidth > 0
+        ? timelineWidth
+        : FALLBACK_TIMELINE_WIDTH_PX) / ESTIMATED_AVERAGE_CHARACTER_WIDTH_PX
+    )
+  )
   const explicitLines = trimmedText.split("\n")
   const estimatedLineCount = explicitLines.reduce((lineCount, line) => {
-    return lineCount + Math.max(1, Math.ceil(line.length / ESTIMATED_CHARS_PER_LINE))
+    return lineCount + Math.max(1, Math.ceil(line.length / estimatedCharsPerLine))
   }, 0)
 
   return estimatedLineCount * TEXT_LINE_HEIGHT_ESTIMATE_PX
 }
 
-function estimateDisplayBlockSize(preparedBlock: PreparedDisplayBlock): number {
+function estimateDisplayBlockSize(
+  preparedBlock: PreparedDisplayBlock,
+  timelineWidth: number
+): number {
   const block = preparedBlock.block
   const paddingTop = preparedBlock.paddingTop
 
@@ -208,7 +221,12 @@ function estimateDisplayBlockSize(preparedBlock: PreparedDisplayBlock): number {
   const toolPart = message.parts.find((part) => part.type === "tool")
 
   if (message.info.role === "user") {
-    return paddingTop + USER_ROW_ESTIMATE_PX + estimateTextHeight(text) + (hasAttachment ? 42 : 0)
+    return (
+      paddingTop +
+      USER_ROW_ESTIMATE_PX +
+      estimateTextHeight(text, timelineWidth) +
+      (hasAttachment ? 42 : 0)
+    )
   }
 
   if (toolPart) {
@@ -218,7 +236,7 @@ function estimateDisplayBlockSize(preparedBlock: PreparedDisplayBlock): number {
     )
   }
 
-  return paddingTop + DEFAULT_ROW_ESTIMATE_PX + estimateTextHeight(text)
+  return paddingTop + DEFAULT_ROW_ESTIMATE_PX + estimateTextHeight(text, timelineWidth)
 }
 
 function areMessageListsEqualById(
@@ -513,16 +531,53 @@ function VirtualizedTimelineBlocks({
   onOpenImagePreview?: (preview: ChatImagePreviewRequest) => void
 }) {
   const { scrollRef } = useConversationScrollContext()
+  const preparedDisplayBlocksRef = useRef(preparedDisplayBlocks)
+  preparedDisplayBlocksRef.current = preparedDisplayBlocks
+  const [timelineElement, setTimelineElement] = useState<HTMLDivElement | null>(null)
+  const [timelineWidth, setTimelineWidth] = useState(FALLBACK_TIMELINE_WIDTH_PX)
+  const timelineWidthKey = Math.max(1, Math.round(timelineWidth))
+
+  useLayoutEffect(() => {
+    if (timelineElement == null) {
+      return
+    }
+
+    const updateTimelineWidth = () => {
+      setTimelineWidth((previousWidth) => {
+        const nextWidth = Math.max(1, timelineElement.getBoundingClientRect().width)
+
+        return Math.abs(previousWidth - nextWidth) < 0.5 ? previousWidth : nextWidth
+      })
+    }
+
+    updateTimelineWidth()
+
+    if (typeof ResizeObserver === "undefined") {
+      return
+    }
+
+    const observer = new ResizeObserver(updateTimelineWidth)
+    observer.observe(timelineElement)
+
+    return () => observer.disconnect()
+  }, [timelineElement])
+
   const getItemKey = useCallback(
-    (index: number) => preparedDisplayBlocks[index]?.key ?? index,
-    [preparedDisplayBlocks]
+    (index: number) => {
+      const itemKey = preparedDisplayBlocksRef.current[index]?.key ?? index
+
+      return `${timelineWidthKey}:${itemKey}`
+    },
+    [timelineWidthKey]
   )
   const estimateSize = useCallback(
     (index: number) => {
-      const preparedBlock = preparedDisplayBlocks[index]
-      return preparedBlock ? estimateDisplayBlockSize(preparedBlock) : DEFAULT_ROW_ESTIMATE_PX
+      const preparedBlock = preparedDisplayBlocksRef.current[index]
+      return preparedBlock
+        ? estimateDisplayBlockSize(preparedBlock, timelineWidth)
+        : DEFAULT_ROW_ESTIMATE_PX
     },
-    [preparedDisplayBlocks]
+    [timelineWidth]
   )
   const rowVirtualizer = useVirtualizer({
     count: preparedDisplayBlocks.length,
@@ -533,8 +588,13 @@ function VirtualizedTimelineBlocks({
   })
   const virtualItems = rowVirtualizer.getVirtualItems()
 
+  useLayoutEffect(() => {
+    rowVirtualizer.measure()
+  }, [rowVirtualizer, timelineWidthKey])
+
   return (
     <div
+      ref={setTimelineElement}
       className="relative w-full"
       style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
     >
