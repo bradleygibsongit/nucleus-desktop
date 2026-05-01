@@ -105,6 +105,27 @@ function createAgentMessage(id: string, turnId: string, createdAt: number, text:
   }
 }
 
+function createReasoningMessage(id: string, turnId: string, createdAt: number, title: string): MessageWithParts {
+  return {
+    info: {
+      id,
+      sessionId: "session-1",
+      role: "assistant",
+      createdAt,
+      turnId,
+      itemType: "reasoning",
+      title,
+    },
+    parts: [
+      {
+        id: `${id}:text`,
+        type: "text",
+        text: "",
+      },
+    ],
+  }
+}
+
 function createFileChangeMessage({
   id,
   turnId = "turn-1",
@@ -193,6 +214,20 @@ describe("buildChatTimelineViewModel", () => {
     expect(viewModel.completedFooterByMessageId.get("assistant-1")).toMatchObject({
       durationMs: 1400,
     })
+  })
+
+  test("anchors footers to the final assistant response instead of later reasoning rows", () => {
+    const userMessage = createUserMessage("user-1", "ship it", 100)
+    const agentMessage = createAgentMessage("assistant-1", "turn-1", 1500, "done")
+    const reasoningMessage = createReasoningMessage("reasoning-1", "turn-1", 1800, "Checking release")
+
+    const viewModel = buildChatTimelineViewModel({
+      messages: [userMessage, agentMessage, reasoningMessage],
+    })
+
+    expect(viewModel.latestTurnFooterMessageId).toBe("assistant-1")
+    expect(viewModel.completedFooterByMessageId.has("assistant-1")).toBe(true)
+    expect(viewModel.completedFooterByMessageId.has("reasoning-1")).toBe(false)
   })
 
   test("builds per-file footer entries for changed files", () => {

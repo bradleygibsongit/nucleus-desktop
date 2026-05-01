@@ -142,6 +142,18 @@ function isAssistantWorkMessage(message: MessageWithParts): boolean {
   return message.info.role === "assistant" && message.info.itemType !== "providerNotice"
 }
 
+function isAssistantResponseMessage(message: MessageWithParts): boolean {
+  return message.info.role === "assistant" && message.info.itemType === "agentMessage"
+}
+
+function getFooterAnchorMessage(messages: MessageWithParts[]): MessageWithParts | null {
+  return (
+    [...messages].reverse().find(isAssistantResponseMessage) ??
+    [...messages].reverse().find(isAssistantWorkMessage) ??
+    null
+  )
+}
+
 function buildApprovalTimelineMessage(
   activePromptState: RuntimePromptState,
   approvalDisplayState: RuntimeApprovalDisplayState
@@ -280,8 +292,7 @@ export function buildChatTimelineViewModel({
   }
 
   const latestTurnMessages = renderedMessages.slice(latestTurnStartIndex)
-  const latestTurnFooterMessage =
-    [...latestTurnMessages].reverse().find(isAssistantWorkMessage) ?? null
+  const latestTurnFooterMessage = getFooterAnchorMessage(latestTurnMessages)
   const latestTurnFooterMessageId = latestTurnFooterMessage?.info.id ?? null
   const latestTurnStreamingTextMessageId =
     [...latestTurnMessages]
@@ -313,7 +324,7 @@ export function buildChatTimelineViewModel({
 
   const earliestTimestampByTurnId = new Map<string, number>()
   const completedWorkDurationByMessageId = new Map<string, number>()
-  const lastAssistantMessageByTurnId = new Map<string, MessageWithParts>()
+  const assistantMessagesByTurnId = new Map<string, MessageWithParts[]>()
   const fileChangeTotalsByTurnId = new Map<
     string,
     Map<string, { added: number; removed: number; changes: TimelineFileChangeEntry[] }>
@@ -377,7 +388,10 @@ export function buildChatTimelineViewModel({
       message.info.id,
       Math.max(0, message.info.createdAt - startTime)
     )
-    lastAssistantMessageByTurnId.set(turnId, message)
+
+    const assistantMessages = assistantMessagesByTurnId.get(turnId) ?? []
+    assistantMessages.push(message)
+    assistantMessagesByTurnId.set(turnId, assistantMessages)
   }
 
   const completedFooterByMessageId = new Map<
@@ -388,7 +402,12 @@ export function buildChatTimelineViewModel({
     }
   >()
 
-  for (const [turnId, message] of lastAssistantMessageByTurnId.entries()) {
+  for (const [turnId, assistantMessages] of assistantMessagesByTurnId.entries()) {
+    const message = getFooterAnchorMessage(assistantMessages)
+    if (!message) {
+      continue
+    }
+
     const durationMs = completedWorkDurationByMessageId.get(message.info.id)
     if (durationMs == null) {
       continue
