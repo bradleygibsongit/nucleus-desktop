@@ -62,6 +62,30 @@ interface ExecuteProjectChatCommandInput extends ProjectChatWorkspaceInput {
   onSessionReady?: ProjectChatSessionReadyHandler
 }
 
+function closeProjectChatSessionTab(sessionId: string): void {
+  const tabStore = useTabStore.getState()
+  const sessionTab = tabStore.tabs.find(
+    (tab) => tab.type === "chat-session" && tab.sessionId === sessionId
+  )
+
+  if (sessionTab) {
+    tabStore.closeTab(sessionTab.id)
+  }
+}
+
+async function cleanupCreatedProjectChatSession(
+  worktreeId: string | null,
+  sessionId: string
+): Promise<void> {
+  closeProjectChatSessionTab(sessionId)
+
+  if (!worktreeId) {
+    return
+  }
+
+  await useChatStore.getState().deleteSession(worktreeId, sessionId)
+}
+
 export function ensureProjectChatSessionTab(
   worktreeId: string | null,
   sessionId: string | null
@@ -106,6 +130,14 @@ export async function submitProjectChatTurn(
 
   const shouldContinue = await input.onSessionReady?.(sessionResult.session)
   if (shouldContinue === false) {
+    if (sessionResult.createdSession) {
+      await cleanupCreatedProjectChatSession(input.worktreeId, sessionResult.session.id).catch(
+        (error) => {
+          console.error("[projectChatSession] Failed to clean up cancelled session:", error)
+        }
+      )
+    }
+
     return {
       ok: false,
       reason: "cancelled",
@@ -130,6 +162,14 @@ export async function executeProjectChatCommand(
 
   const shouldContinue = await input.onSessionReady?.(sessionResult.session)
   if (shouldContinue === false) {
+    if (sessionResult.createdSession) {
+      await cleanupCreatedProjectChatSession(input.worktreeId, sessionResult.session.id).catch(
+        (error) => {
+          console.error("[projectChatSession] Failed to clean up cancelled session:", error)
+        }
+      )
+    }
+
     return {
       ok: false,
       reason: "cancelled",
@@ -153,6 +193,11 @@ async function ensureProjectChatSession(
       ok: false,
       reason: "missing-workspace",
     }
+  }
+
+  const chatStore = useChatStore.getState()
+  if (!chatStore.isInitialized) {
+    await chatStore.initialize()
   }
 
   await useChatStore.getState().loadSessionsForProject(input.worktreeId, input.worktreePath)

@@ -135,9 +135,15 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose }: TabBarPro
       options: {
         harnessId,
       },
-    }).catch((error) => {
-      console.error("[TabBar] Failed to create a chat session:", error)
     })
+      .then((result) => {
+        if (!result.ok) {
+          console.error("[TabBar] Failed to create a chat session:", result.reason)
+        }
+      })
+      .catch((error) => {
+        console.error("[TabBar] Failed to create a chat session:", error)
+      })
   }
 
   const handleCreateTerminalTab = () => {
