@@ -799,7 +799,7 @@ function ChecksBlock({
         ) : null}
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <ul className="space-y-1.5 pt-1">
+        <ul className="space-y-1.5">
           {sorted.map((check) => (
             <li key={check.id} className="flex min-w-0 items-center gap-2 text-sm">
               <CheckStatusIcon status={check.status} />
