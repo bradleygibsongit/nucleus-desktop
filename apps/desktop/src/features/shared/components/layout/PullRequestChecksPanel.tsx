@@ -212,8 +212,8 @@ function PendingCheckSpinner({ className }: { className?: string }) {
         className
       )}
     >
-      <span className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-b-current border-r-current border-t-current" />
-      <span className="size-1.5 rounded-full bg-current" />
+      <span className="absolute inset-0 animate-spin rounded-full border-[1.5px] border-transparent border-b-current border-r-current border-t-current" />
+      <span className="size-2 rounded-full bg-current" />
     </span>
   )
 }
