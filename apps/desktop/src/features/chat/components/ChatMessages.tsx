@@ -1,11 +1,13 @@
 import {
   useEffect,
   useLayoutEffect,
+  useCallback,
   memo,
   useMemo,
   useRef,
   useState,
 } from "react"
+import { useVirtualizer } from "@tanstack/react-virtual"
 import { motion, useReducedMotion } from "framer-motion"
 import { vcsTextClassNames } from "@/features/shared/appearance"
 import type { Project, ProjectWorktree } from "@/features/workspace/types"
@@ -73,10 +75,12 @@ interface LatestTurnDropdownBlock {
 
 type DisplayBlock = TimelineBlock | LatestTurnDropdownBlock
 
-type CompletedFooterStateByMessageId = Map<string, {
+interface CompletedFooterState {
   durationMs: number
   changedFilesSummary: TimelineFileChangeSummary | null
-}>
+}
+
+type CompletedFooterStateByMessageId = Map<string, CompletedFooterState>
 
 interface PreparedDisplayBlock {
   block: DisplayBlock
@@ -91,6 +95,15 @@ interface StablePreparedDisplayBlocksState {
 
 const SAME_ROLE_BLOCK_GAP_PX = 12
 const ROLE_CHANGE_BLOCK_GAP_PX = 28
+const TIMELINE_OVERSCAN_ROWS = 8
+const DEFAULT_ROW_ESTIMATE_PX = 104
+const TURN_STEPS_ROW_ESTIMATE_PX = 68
+const TOOL_ROW_ESTIMATE_PX = 96
+const FILE_CHANGE_ROW_ESTIMATE_PX = 156
+const USER_ROW_ESTIMATE_PX = 88
+const TEXT_LINE_HEIGHT_ESTIMATE_PX = 22
+const ESTIMATED_CHARS_PER_LINE = 82
+const EMPTY_APPROVAL_STATE_BY_MESSAGE_ID = new Map<string, RuntimeApprovalDisplayState>()
 
 function getMessageText(message: MessageWithParts): string {
   return getMessageTextContent(message.parts)
@@ -164,6 +177,48 @@ function getDisplayBlockPaddingTop(
   }
 
   return previousRole === currentRole ? SAME_ROLE_BLOCK_GAP_PX : ROLE_CHANGE_BLOCK_GAP_PX
+}
+
+function estimateTextHeight(text: string): number {
+  const trimmedText = text.trim()
+
+  if (!trimmedText) {
+    return TEXT_LINE_HEIGHT_ESTIMATE_PX
+  }
+
+  const explicitLines = trimmedText.split("\n")
+  const estimatedLineCount = explicitLines.reduce((lineCount, line) => {
+    return lineCount + Math.max(1, Math.ceil(line.length / ESTIMATED_CHARS_PER_LINE))
+  }, 0)
+
+  return estimatedLineCount * TEXT_LINE_HEIGHT_ESTIMATE_PX
+}
+
+function estimateDisplayBlockSize(preparedBlock: PreparedDisplayBlock): number {
+  const block = preparedBlock.block
+  const paddingTop = preparedBlock.paddingTop
+
+  if (block.type === "turnStepsDropdown") {
+    return paddingTop + TURN_STEPS_ROW_ESTIMATE_PX + block.messages.length * 10
+  }
+
+  const message = block.message
+  const text = getMessageText(message)
+  const hasAttachment = message.parts.some((part) => part.type === "attachment")
+  const toolPart = message.parts.find((part) => part.type === "tool")
+
+  if (message.info.role === "user") {
+    return paddingTop + USER_ROW_ESTIMATE_PX + estimateTextHeight(text) + (hasAttachment ? 42 : 0)
+  }
+
+  if (toolPart) {
+    return (
+      paddingTop +
+      (message.info.itemType === "fileChange" ? FILE_CHANGE_ROW_ESTIMATE_PX : TOOL_ROW_ESTIMATE_PX)
+    )
+  }
+
+  return paddingTop + DEFAULT_ROW_ESTIMATE_PX + estimateTextHeight(text)
 }
 
 function areMessageListsEqualById(
@@ -373,7 +428,7 @@ export function ChatMessages({
       />
       <ConversationContent className="mx-auto flex w-full max-w-[784px] flex-col gap-0 px-6 pb-10">
         <>
-          <HybridTimelineBlocks
+          <VirtualizedTimelineBlocks
             preparedDisplayBlocks={stablePreparedDisplayBlocks}
             childSessions={childSessionData}
             approvalStateByMessageId={approvalStateByMessageId}
@@ -436,7 +491,7 @@ function ConversationEdgeFades() {
   )
 }
 
-function HybridTimelineBlocks({
+function VirtualizedTimelineBlocks({
   preparedDisplayBlocks,
   childSessions,
   approvalStateByMessageId,
@@ -448,8 +503,8 @@ function HybridTimelineBlocks({
   onOpenImagePreview,
 }: {
   preparedDisplayBlocks: PreparedDisplayBlock[]
-  childSessions: Map<string, ChildSessionData>
-  approvalStateByMessageId: Map<string, RuntimeApprovalDisplayState | null>
+  childSessions?: Map<string, ChildSessionData>
+  approvalStateByMessageId: Map<string, RuntimeApprovalDisplayState>
   completedFooterByMessageId: CompletedFooterStateByMessageId
   latestTurnFooterMessageId: string | null
   latestTurnStreamingTextMessageId: string | null
@@ -457,22 +512,75 @@ function HybridTimelineBlocks({
   worktreePath?: string | null
   onOpenImagePreview?: (preview: ChatImagePreviewRequest) => void
 }) {
+  const { scrollRef } = useConversationScrollContext()
+  const getItemKey = useCallback(
+    (index: number) => preparedDisplayBlocks[index]?.key ?? index,
+    [preparedDisplayBlocks]
+  )
+  const estimateSize = useCallback(
+    (index: number) => {
+      const preparedBlock = preparedDisplayBlocks[index]
+      return preparedBlock ? estimateDisplayBlockSize(preparedBlock) : DEFAULT_ROW_ESTIMATE_PX
+    },
+    [preparedDisplayBlocks]
+  )
+  const rowVirtualizer = useVirtualizer({
+    count: preparedDisplayBlocks.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize,
+    getItemKey,
+    overscan: TIMELINE_OVERSCAN_ROWS,
+  })
+  const virtualItems = rowVirtualizer.getVirtualItems()
+
   return (
-    <div className="flex w-full flex-col">
-      {preparedDisplayBlocks.map((preparedBlock) => (
-        <MemoizedDisplayBlockRow
-          key={preparedBlock.key}
-          preparedBlock={preparedBlock}
-          childSessions={childSessions}
-          approvalStateByMessageId={approvalStateByMessageId}
-          completedFooterByMessageId={completedFooterByMessageId}
-          latestTurnFooterMessageId={latestTurnFooterMessageId}
-          latestTurnStreamingTextMessageId={latestTurnStreamingTextMessageId}
-          status={status}
-          worktreePath={worktreePath}
-          onOpenImagePreview={onOpenImagePreview}
-        />
-      ))}
+    <div
+      className="relative w-full"
+      style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+    >
+      {virtualItems.map((virtualItem) => {
+        const preparedBlock = preparedDisplayBlocks[virtualItem.index]
+
+        if (!preparedBlock) {
+          return null
+        }
+
+        const message =
+          preparedBlock.block.type === "message" ? preparedBlock.block.message : null
+        const completedFooter =
+          message == null ? null : completedFooterByMessageId.get(message.info.id) ?? null
+        const approvalState =
+          message == null ? null : approvalStateByMessageId.get(message.info.id) ?? null
+        const isLatestTurnFooterMessage =
+          message != null && message.info.id === latestTurnFooterMessageId
+        const isLatestTurnStreamingTextMessage =
+          message != null && message.info.id === latestTurnStreamingTextMessageId
+        const groupApprovalStateByMessageId =
+          preparedBlock.block.type === "turnStepsDropdown" ? approvalStateByMessageId : undefined
+
+        return (
+          <div
+            key={virtualItem.key}
+            ref={rowVirtualizer.measureElement}
+            data-index={virtualItem.index}
+            className="absolute left-0 top-0 w-full"
+            style={{ transform: `translateY(${virtualItem.start}px)` }}
+          >
+            <MemoizedDisplayBlockRow
+              preparedBlock={preparedBlock}
+              childSessions={childSessions}
+              approvalState={approvalState}
+              groupApprovalStateByMessageId={groupApprovalStateByMessageId}
+              completedFooter={completedFooter}
+              isLatestTurnFooterMessage={isLatestTurnFooterMessage}
+              isLatestTurnStreamingTextMessage={isLatestTurnStreamingTextMessage}
+              status={status}
+              worktreePath={worktreePath}
+              onOpenImagePreview={onOpenImagePreview}
+            />
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -498,20 +606,22 @@ function useStablePreparedDisplayBlocks(
 function DisplayBlockRow({
   preparedBlock,
   childSessions,
-  approvalStateByMessageId,
-  completedFooterByMessageId,
-  latestTurnFooterMessageId,
-  latestTurnStreamingTextMessageId,
+  approvalState,
+  groupApprovalStateByMessageId,
+  completedFooter,
+  isLatestTurnFooterMessage,
+  isLatestTurnStreamingTextMessage,
   status,
   worktreePath,
   onOpenImagePreview,
 }: {
   preparedBlock: PreparedDisplayBlock
-  childSessions: Map<string, ChildSessionData>
-  approvalStateByMessageId: Map<string, RuntimeApprovalDisplayState | null>
-  completedFooterByMessageId: CompletedFooterStateByMessageId
-  latestTurnFooterMessageId: string | null
-  latestTurnStreamingTextMessageId: string | null
+  childSessions?: Map<string, ChildSessionData>
+  approvalState: RuntimeApprovalDisplayState | null
+  groupApprovalStateByMessageId?: Map<string, RuntimeApprovalDisplayState>
+  completedFooter: CompletedFooterState | null
+  isLatestTurnFooterMessage: boolean
+  isLatestTurnStreamingTextMessage: boolean
   status: "idle" | "connecting" | "streaming" | "error"
   worktreePath?: string | null
   onOpenImagePreview?: (preview: ChatImagePreviewRequest) => void
@@ -527,7 +637,7 @@ function DisplayBlockRow({
         <TurnStepsDropdown
           messages={block.messages}
           childSessions={childSessions}
-          approvalStateByMessageId={approvalStateByMessageId}
+          approvalStateByMessageId={groupApprovalStateByMessageId ?? EMPTY_APPROVAL_STATE_BY_MESSAGE_ID}
           worktreePath={worktreePath}
           onOpenImagePreview={onOpenImagePreview}
         />
@@ -536,23 +646,21 @@ function DisplayBlockRow({
           <ChatTimelineItem
             message={block.message}
             childSessions={childSessions}
-            approvalState={approvalStateByMessageId.get(block.message.info.id) ?? null}
+            approvalState={approvalState}
             isStreaming={
               status === "streaming" &&
-              block.message.info.id === latestTurnStreamingTextMessageId
+              isLatestTurnStreamingTextMessage
             }
             worktreePath={worktreePath}
             onOpenImagePreview={onOpenImagePreview}
           />
-          {completedFooterByMessageId.get(block.message.info.id) != null &&
-          !(status === "streaming" && block.message.info.id === latestTurnFooterMessageId) ? (
+          {completedFooter != null &&
+          !(status === "streaming" && isLatestTurnFooterMessage) ? (
             <AssistantTurnFooter
               startTime={null}
-              completedDurationMs={completedFooterByMessageId.get(block.message.info.id)?.durationMs}
+              completedDurationMs={completedFooter.durationMs}
               copyText={getMessageText(block.message)}
-              changedFilesSummary={
-                completedFooterByMessageId.get(block.message.info.id)?.changedFilesSummary
-              }
+              changedFilesSummary={completedFooter.changedFilesSummary}
             />
           ) : null}
         </>
@@ -566,11 +674,12 @@ const MemoizedDisplayBlockRow = memo(
   (previousProps, nextProps) =>
     previousProps.preparedBlock === nextProps.preparedBlock &&
     previousProps.childSessions === nextProps.childSessions &&
-    previousProps.approvalStateByMessageId === nextProps.approvalStateByMessageId &&
-    previousProps.completedFooterByMessageId === nextProps.completedFooterByMessageId &&
-    previousProps.latestTurnFooterMessageId === nextProps.latestTurnFooterMessageId &&
-    previousProps.latestTurnStreamingTextMessageId ===
-      nextProps.latestTurnStreamingTextMessageId &&
+    previousProps.approvalState === nextProps.approvalState &&
+    previousProps.groupApprovalStateByMessageId === nextProps.groupApprovalStateByMessageId &&
+    previousProps.completedFooter === nextProps.completedFooter &&
+    previousProps.isLatestTurnFooterMessage === nextProps.isLatestTurnFooterMessage &&
+    previousProps.isLatestTurnStreamingTextMessage ===
+      nextProps.isLatestTurnStreamingTextMessage &&
     previousProps.status === nextProps.status &&
     previousProps.worktreePath === nextProps.worktreePath &&
     previousProps.onOpenImagePreview === nextProps.onOpenImagePreview
